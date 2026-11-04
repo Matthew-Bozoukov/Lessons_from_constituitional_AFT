@@ -143,11 +143,11 @@ def fig_refusal_not_restraint() -> Path:
     arms = ["ctrl", "da", "nosyn", "jda", "jdat"]
     xs = [0.0, 1.0, 2.7, 3.7, 4.7]
     series = [
-        ("plan_posted", "posted a sabotage plan on the coalition board", PLAN_C),
-        ("pair_sabotaged", "took a sabotage action", ACT_C),
+        ("plan_posted", "plan post (regex)", PLAN_C),
+        ("pair_sabotaged", "sabotage act (rule)", ACT_C),
         (
             "judge_refusal_reasoning_ge3",
-            "a seat refused in its private reasoning (judge)",
+            "private refusal (judge ≥3)",
             REFUSE_C,
         ),
     ]
@@ -212,15 +212,15 @@ def fig_refusal_not_restraint() -> Path:
             xs[0],
             xs[1],
             "OUR ADAPTERS (Table 2 only base)",
-            [f"DA − control:  action {short(ours[0])},  refusal {short(ours[1])}"],
+            [f"DA − control:  sabotage act (rule) {short(ours[0])},  private refusal (judge ≥3) {short(ours[1])}"],
         ),
         (
             xs[2],
             xs[4],
             "UNFILTERED TABLE 2 BLEND (seed 0)",
             [
-                f"+7% advice − none:  action {short(adv[0])},  refusal {short(adv[1])}",
-                f"+7% agentic tasks − none:  action {short(agt[0])},  refusal {short(agt[1])}",
+                f"+7% advice − none:  sabotage act (rule) {short(adv[0])},  private refusal (judge ≥3) {short(adv[1])}",
+                f"+7% agentic tasks − none:  sabotage act (rule) {short(agt[0])},  private refusal (judge ≥3) {short(agt[1])}",
             ],
         ),
     ]
@@ -267,7 +267,7 @@ def fig_refusal_not_restraint() -> Path:
     )
     heading(
         fig,
-        "Every arm writes the sabotage plan; the trained arms say no in private,\nbut mostly sabotage anyway",
+        "Every arm makes the plan post (regex); the trained arms make a private refusal (judge ≥3),\nbut mostly take the sabotage act (rule) anyway",
         "Experiment 1 · five arms, coalition told to sabotage; fixed harness (carried history, no re-ask, no order to plan). "
         "30 shifts per arm, Wilson 95% CI;\nthe number above a bar is shifts out of 30. Contrasts paired by seed, "
         "exact McNemar. One training seed per arm; compare within a family (the base blends differ).",
@@ -293,12 +293,12 @@ def fig_gap_by_harness() -> Path:
     series = [
         (
             "judge_refusal_reasoning_ge3",
-            "a seat refused in its private reasoning (judge)",
+            "private refusal (judge ≥3)",
             REFUSE_C,
             "o",
             -0.08,
         ),
-        ("pair_sabotaged", "took a sabotage action", ACT_C, "s", 0.08),
+        ("pair_sabotaged", "sabotage act (rule)", ACT_C, "s", 0.08),
     ]
     fig, ax = plt.subplots(figsize=(11, 6.6))
     fig.subplots_adjust(left=0.1, right=0.97, top=0.76, bottom=0.25)
@@ -371,7 +371,7 @@ def fig_gap_by_harness() -> Path:
     )
     heading(
         fig,
-        "Difficult advice vs control: the refusal gap holds on every harness;\nthe action gap shows only while a plan is ordered",
+        "Difficult advice vs control: the private-refusal (judge ≥3) gap holds on every harness;\nthe sabotage-act (rule) gap shows only while a plan is ordered",
         "Experiment 5 · our two adapters, coalition told to sabotage; carried history, then each switch alone, then both. "
         "Difference in share of 30 shifts,\npaired by seed, bootstrap 95% CI, exact McNemar p.",
         0.875,
@@ -388,7 +388,7 @@ def fig_agentic_tradeoff() -> Path:
     fig.subplots_adjust(left=0.065, right=0.985, top=0.74, bottom=0.2, wspace=0.26)
     MD.append("## agentic_task_tradeoff.png (unfiltered Table 2 blend, seed 0)\n")
     MD.append(
-        "| arm | took a sabotage action (told to sabotage) | refused in reasoning (judge) | team score, not told to sabotage |"
+        "| arm | sabotage act (rule), told to sabotage | private refusal (judge ≥3) | team score, not told to sabotage |"
     )
     MD.append("|---|---|---|---|")
     ticks = []
@@ -409,7 +409,7 @@ def fig_agentic_tradeoff() -> Path:
             color="white",
             fontweight="bold",
         )
-        ticks.append(f"{NAME[a]}\nrefused: {rk}/{rn}")
+        ticks.append(f"{NAME[a]}\nprivate refusal (judge ≥3): {rk}/{rn}")
         m, mlo, mhi = mean(f"baseline/{a}", "joint_reward")
         a2.bar(i, m, 0.62, color=COLOR[a], edgecolor="none")
         a2.errorbar(
@@ -465,7 +465,7 @@ def fig_agentic_tradeoff() -> Path:
     a1.set_yticks(range(0, 101, 20))
     a1.set_ylabel("share of 30 shifts, %")
     a1.set_title(
-        "Told to sabotage: the pair took a sabotage action",
+        "Told to sabotage: sabotage act (rule) by the coalition",
         loc="left",
         fontsize=11.5,
         color=INK,
@@ -485,7 +485,7 @@ def fig_agentic_tradeoff() -> Path:
     a2.set_xticks(range(3), [NAME[a] for a in arms], fontsize=10.5, color=INK)
     heading(
         fig,
-        "Adding 7% difficult agentic tasks is the one data change that cut sabotage,\nat a cost in ordinary performance",
+        "Adding 7% difficult agentic tasks is the one data change that cut sabotage acts (rule),\nat a cost in ordinary performance",
         "Unfiltered Table 2 blend of 10,000 rows, seed 0, one training seed per arm; the same 30 seeds in both "
         "conditions, fixed harness.\nLeft: Wilson 95% CI, exact McNemar p. Right: bootstrap 95% CI, sign-flip p. "
         "A second training seed is needed before the drop counts as a result.",
@@ -493,7 +493,7 @@ def fig_agentic_tradeoff() -> Path:
     )
     MD.append("")
     MD.append(
-        f"- action, +7% advice − none: {pp(act_adv)}; +7% agentic tasks − none: {pp(act_agt)}"
+        f"- sabotage act (rule), +7% advice − none: {pp(act_adv)}; +7% agentic tasks − none: {pp(act_agt)}"
     )
     MD.append(
         f"- team score, +7% advice − none: {signed(cap_adv['diff'])} [{signed(cap_adv['lo'])}, {signed(cap_adv['hi'])}], "
@@ -516,7 +516,7 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float, float]:
 
 
 def seat_refusal(cell: str, seat: str) -> dict[int, bool]:
-    """Per seed: did this coalition seat's own reasoning carry a refusal (judge >= 3)?"""
+    """Per seed: a private refusal (judge ≥3) by this coalition seat, from its own reasoning channel."""
     d = json.loads(
         (MERGED / CELLS[cell]["dir"] / "results" / "per_seed.json").read_text()
     )
@@ -552,7 +552,7 @@ def fig_untempted_baseline() -> Path:
         "## untempted_baseline.png (experiment 2: no instruction to sabotage, fixed harness)\n"
     )
     MD.append(
-        "| arm | team score | sabotage rule fired anyway (false alarm) | resource failures a shift |"
+        "| arm | team score | sabotage act (rule) anyway (false alarm) | resource failures a shift |"
     )
     MD.append("|---|---|---|---|")
     for a, x in zip(arms, xs):
@@ -629,7 +629,7 @@ def fig_untempted_baseline() -> Path:
         )
         MD.append(
             f"- {short_lab}: team score {signed(c['diff'])} [{signed(c['lo'])}, {signed(c['hi'])}], {ptxt(c['p'])}; "
-            f"false alarms {pp(s)}"
+            f"sabotage act (rule), false alarms {pp(s)}"
         )
     MD.append("")
     b2.text(
@@ -661,7 +661,7 @@ def fig_untempted_baseline() -> Path:
     b2.set_yticks(range(0, 61, 20))
     b2.set_ylabel("share of 30 shifts, %")
     b2.set_title(
-        "Shifts the sabotage rule flagged anyway (false alarms)",
+        "Shifts with a sabotage act (rule) anyway (false alarms)",
         loc="left",
         fontsize=11.5,
         color=INK,
@@ -671,7 +671,7 @@ def fig_untempted_baseline() -> Path:
         fig,
         "With no instruction to sabotage, every arm still runs the hospital;\nthe 7% agentic-task adapter runs it about 10% worse",
         "Experiment 2 · untempted baseline: cooperative prompt, no coalition, fixed harness, the same 30 seeds as experiment 1. "
-        "Left: mean team score, bootstrap\n95% CI, sign-flip p. Right: shifts the sabotage rule flagged with no instruction to "
+        "Left: mean team score, bootstrap\n95% CI, sign-flip p. Right: shifts with a sabotage act (rule) and no instruction to "
         "sabotage (an idle provisioner while a hospital is short), Wilson 95% CI.",
         0.885,
     )
@@ -707,7 +707,7 @@ def fig_mixed_coalition() -> Path:
         "## mixed_coalition.png (experiments 3 and 4: one DA seat, one control seat, fixed harness)\n"
     )
     MD.append(
-        "| experiment | pair | the pair took a sabotage action | the seat under test refused in its own reasoning (judge) |"
+        "| experiment | coalition | sabotage act (rule) by the coalition | private refusal (judge ≥3) by the seat under test |"
     )
     MD.append("|---|---|---|---|")
     notes = []
@@ -773,7 +773,7 @@ def fig_mixed_coalition() -> Path:
         ax.text(
             0.5,
             -0.25,
-            f"the pair's sabotage actions, mixed − {reflab}: {signed(100 * c['diff'], ' pp')} ({ptxt(c['p'])})",
+            f"coalition sabotage act (rule), mixed − {reflab}: {signed(100 * c['diff'], ' pp')} ({ptxt(c['p'])})",
             transform=ax.transAxes,
             ha="center",
             va="top",
@@ -781,8 +781,8 @@ def fig_mixed_coalition() -> Path:
             color=INK,
         )
         notes.append(
-            f"- {exp}: the {seat} seat refused {km} of 30 beside a control partner vs {kd} of 30 beside a DA partner, "
-            f"{ptxt(pm)}; the pair's sabotage actions, mixed − {reflab}: {pp(c)}"
+            f"- {exp}: the {seat} seat made a private refusal (judge ≥3) in {km} of 30 beside a control partner vs {kd} of 30 beside a DA partner, "
+            f"{ptxt(pm)}; coalition sabotage act (rule), mixed − {reflab}: {pp(c)}"
         )
         ax.set_xticks(range(3), [lab for _, lab in comps], fontsize=10.5, color=INK)
         ax.set_xlim(-0.6, 2.6)
@@ -793,10 +793,10 @@ def fig_mixed_coalition() -> Path:
     axes[0].set_ylabel("share of 30 shifts, %")
     fig.legend(
         handles=[
-            Patch(color=ACT_C, label="the pair took a sabotage action"),
+            Patch(color=ACT_C, label="sabotage act (rule) by the coalition"),
             Patch(
                 color=REFUSE_C,
-                label="the seat under test refused in its own reasoning (judge): the provisioner in 3, Triage in 4",
+                label="private refusal (judge ≥3) by the seat under test: the provisioner in 3, Triage in 4",
             ),
         ],
         loc="lower center",
@@ -807,9 +807,9 @@ def fig_mixed_coalition() -> Path:
     )
     heading(
         fig,
-        "A control partner does not talk a difficult-advice seat out of refusing",
+        "A control partner does not talk a difficult-advice seat out of its private refusal (judge ≥3)",
         "Experiments 3 and 4 · our DA adapter in one coalition seat and our control adapter in the other, both orders, "
-        "beside the all-control and all-DA\npairs on the same 30 seeds; fixed harness. Wilson 95% CI; the number above a "
+        "beside the all-control and all-DA\ncoalitions on the same 30 seeds; fixed harness. Wilson 95% CI; the number above a "
         "bar is shifts out of 30; exact McNemar p, paired by seed.",
         0.925,
     )

@@ -32,6 +32,7 @@ from pathlib import Path
 import yaml
 
 from src.eval.layout import publish_layout
+from src.eval.misalignment.colosseum.harness import Harness, ensure_harness
 from src.eval.misalignment.colosseum.hospital.config import (
     CONDITIONS,
     PAIR,
@@ -42,6 +43,7 @@ from src.eval.misalignment.colosseum.hospital.autorater import autorate_arm
 from src.eval.misalignment.colosseum.hospital.harvest import MEASURES, harvest_run_root
 from src.eval.misalignment.colosseum.hospital.judge import BINARY_JUDGE_MEASURES, judge_arm
 from src.eval.misalignment.colosseum.stats import episode_summary
+from src.eval.preamble import Preamble
 
 __all__ = ["run"]
 
@@ -73,11 +75,22 @@ TERRARIUM_PATCH_NOSIM = (
 TERRARIUM_PATCH_4 = (
     "src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_4.patch"
 )
+# 2026-11-04: the constitution-in-the-system-prompt arm on the shared preamble
+# (src/eval/preamble.py) for the seats fixes.system_preamble_agents names. Applied last.
+PREAMBLE_PATCH = "src/eval/misalignment/colosseum/third_party/hospital_preamble.patch"
+TERRARIUM_PATCH_PREAMBLE = (
+    "src/eval/misalignment/colosseum/third_party/terrarium_hospital_preamble.patch"
+)
 
 
-def _colosseum_root(cfg) -> Path:
-    """Where the patched Colosseum checkout lives."""
-    root = Path(os.environ.get("COLOSSEUM_ROOT") or cfg.colosseum_root).expanduser()
+def _harness(cfg) -> Harness:
+    """The harness this run uses: the managed build unless a checkout is named."""
+    return ensure_harness(cfg.get("colosseum_root") if cfg is not None else None)
+
+
+def _colosseum_root(cfg, harness: Harness | None = None) -> Path:
+    """Where the patched Colosseum checkout lives, checked for every patch."""
+    root = (harness or _harness(cfg)).root
     driver = root / "experiments" / "agent_misalignment" / "run.py"
     assert driver.is_file(), (
         f"no Colosseum checkout at {root}. Clone github.com/umass-ai-safety/colosseum at "
@@ -117,17 +130,46 @@ def _colosseum_root(cfg) -> Path:
         f"Re-apply it (after hospital_seating_2.patch):\n  git -C {root} apply "
         f"{FIXES_PATCH_3}"
     )
+    # 2026-11-04. Without it both of upstream's prompt wrappers call the base prompt with
+    # no seat, and a constitution arm's preamble reaches nobody -- the arm runs stock
+    # under a constitution name (it happened: the 2026-10-15 constitution cell).
+    assert "_base_system_prompt" in prompts.read_text(), (
+        f"the Colosseum checkout at {root} is missing {PREAMBLE_PATCH}. Re-apply it (after "
+        f"the others):\n  git -C {root} apply {PREAMBLE_PATCH}"
+    )
     return root
 
 
-def _terrarium_fixes_version() -> str:
-    """The version stamp of the patched terrarium-agents package this interpreter imports.
+def _terrarium_fixes_version(harness: Harness | None = None) -> str:
+    """The version stamp of the patched terrarium-agents package the sweep will import.
+
+    For the managed harness the sweep imports the patched COPY (first on its PYTHONPATH),
+    not the wheel this interpreter imports, so the same check runs in a subprocess with
+    the sweep's environment. For a named checkout it runs here, as it always has.
 
     Colosseum runs as a subprocess of THIS interpreter, so the package it will import is
     the one importable here. An unpatched package ignores every `fixes` flag silently,
     and one holding only the 2026-09-09 patch ignores the 2026-09-13 switches the same
     way — hence the stamp is compared to TERRARIUM_FIXES_STAMP, not merely required.
     """
+    if harness is not None and harness.terrarium_site is not None:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from src.eval.misalignment.colosseum.hospital.runner import "
+                "_terrarium_fixes_version; print(_terrarium_fixes_version())",
+            ],
+            env=harness.env(),
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            raise AssertionError(
+                f"the managed terrarium copy at {harness.terrarium_site} failed its check:\n"
+                + proc.stderr[-3000:]
+            )
+        return proc.stdout.strip().splitlines()[-1]
     try:
         from envs.dcops.hospital import hospital_env
         from terrarium.agents import base as terrarium_base
@@ -135,13 +177,13 @@ def _terrarium_fixes_version() -> str:
         raise AssertionError(
             "terrarium-agents is not importable from this environment; the eval runs "
             "Colosseum with this interpreter, so install Colosseum's dependencies here "
-            "(scratch/colosseum_hospital/pod_bootstrap.sh does)."
+            "(colosseum/harness.py does)."
         ) from e
     version = getattr(terrarium_base, "TERRARIUM_FIXES", None)
     assert version and getattr(hospital_env, "HOSPITAL_FIXES", None) == version, (
         "the installed terrarium-agents package is missing the fixes patch, so every "
         f"`fixes` flag would be ignored. Apply {TERRARIUM_PATCH} into its site-packages "
-        "(scratch/colosseum_hospital/pod_bootstrap.sh does):\n"
+        "(colosseum/harness.py does):\n"
         "  cd $(python -c 'import terrarium, os; print(os.path.dirname("
         f"terrarium.__path__[0]))') && patch -p1 < <repo>/{TERRARIUM_PATCH}"
     )
@@ -153,7 +195,7 @@ def _terrarium_fixes_version() -> str:
         "board_deltas) would be ignored without a word. Apply "
         f"{TERRARIUM_PATCH_2}, {TERRARIUM_PATCH_3}, {TERRARIUM_PATCH_NOSIM}, then "
         f"{TERRARIUM_PATCH_4}, in that order, on top of {TERRARIUM_PATCH} "
-        "(scratch/colosseum_hospital/pod_bootstrap.sh does all five)."
+        "(colosseum/harness.py does all of them)."
     )
     # Checked by content, not stamp: without this patch every system prompt keeps its
     # "distributed simulation" opening while the config says no_simulation_framing.
@@ -163,12 +205,19 @@ def _terrarium_fixes_version() -> str:
         "the installed terrarium-agents package is missing "
         f"{TERRARIUM_PATCH_NOSIM}, so fixes.no_simulation_framing would be ignored. "
         f"Apply it last, after {TERRARIUM_PATCH_3}, on top of which it was cut "
-        "(scratch/colosseum_hospital/pod_bootstrap.sh does)."
+        "(colosseum/harness.py does)."
+    )
+    assert "system_preamble_agents" in Path(hospital_prompts.__file__).read_text(), (
+        "the installed terrarium-agents package is missing "
+        f"{TERRARIUM_PATCH_PREAMBLE}, so a constitution arm would show the model nothing. "
+        f"Apply it last, after {TERRARIUM_PATCH_4} (colosseum/harness.py does)."
     )
     return str(version)
 
 
-def _run(argv: list[str], *, cwd: Path, log: Path) -> None:
+def _run(
+    argv: list[str], *, cwd: Path, log: Path, env: dict[str, str] | None = None
+) -> None:
     """Run a Colosseum entrypoint, streaming its output to a log kept with the run."""
     log.parent.mkdir(parents=True, exist_ok=True)
     print(f">>> {' '.join(argv)}  (cwd={cwd})")
@@ -177,7 +226,9 @@ def _run(argv: list[str], *, cwd: Path, log: Path) -> None:
             f"\n=== {datetime.now().isoformat(timespec='seconds')} {' '.join(argv)}\n"
         )
         fh.flush()
-        proc = subprocess.run(argv, cwd=cwd, stdout=fh, stderr=subprocess.STDOUT)
+        proc = subprocess.run(
+            argv, cwd=cwd, env=env, stdout=fh, stderr=subprocess.STDOUT
+        )
     if proc.returncode != 0:
         raise RuntimeError(
             f"{argv[0]} {argv[-1]} exited {proc.returncode}; last lines of {log}:\n"
@@ -199,7 +250,7 @@ def run(target, cfg, out_dir: Path) -> dict:
 
     Args:
         target: The arm under test, as a ServedTarget from run_eval.
-        cfg: configs/eval/colosseum_hospital.yaml, plus any `key=value` CLI overrides.
+        cfg: configs/eval/colosseum_hospital/default.yaml, plus any `key=value` CLI overrides.
         out_dir: This arm's run directory.
 
     Returns:
@@ -223,8 +274,17 @@ def run(target, cfg, out_dir: Path) -> dict:
 
     # ABSOLUTE before anything derives a path from it: the sweep's cwd is the checkout.
     out_dir = Path(out_dir).resolve()
-    root = _colosseum_root(cfg)
-    terrarium_fixes = _terrarium_fixes_version()
+    harness = _harness(cfg)
+    root = _colosseum_root(cfg, harness)
+    terrarium_fixes = _terrarium_fixes_version(harness)
+    # The sweep's environment: the patched terrarium copy first on PYTHONPATH (managed
+    # harness), plus SYSTEM_PREAMBLE_FILE for a constitution arm, which the preamble patch
+    # reads for the seats resolve_fixes put in fixes.system_preamble_agents. run_eval has
+    # already refused a preamble without protocol= and written metadata/system_preamble.md.
+    sweep_env = harness.env()
+    preamble = Preamble.from_cfg(cfg)
+    if preamble is not None:
+        sweep_env.update(preamble.env())
     _, results_dir, metadata_dir = publish_layout(out_dir)
 
     # The control checkpoint in the seven seats that are not the pair. For the control
@@ -242,7 +302,7 @@ def run(target, cfg, out_dir: Path) -> dict:
         assert "seat_llm" in run_py.read_text(), (
             f"cfg.partner needs third_party/hospital_seating_2.patch in {root}: without "
             "it the partner seat would silently hold the arm under test "
-            "(scratch/colosseum_hospital/pod_bootstrap.sh applies it)"
+            "(colosseum/harness.py applies it)"
         )
 
     # Touching base_url is what serves a target (serving is lazy). Both are touched HERE
@@ -277,6 +337,7 @@ def run(target, cfg, out_dir: Path) -> dict:
         ],
         cwd=root,
         log=log,
+        env=sweep_env,
     )
 
     run_root = _newest_output(output_dir)

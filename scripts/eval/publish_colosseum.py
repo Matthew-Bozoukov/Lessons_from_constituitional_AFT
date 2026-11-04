@@ -11,10 +11,9 @@
     uv run python scripts/eval/publish_colosseum.py --eval colosseum_hospital --no-judge   # a merged cell
 
 This is the RECOVERY path. The normal one is `uv run evals --name <eval> ...`, which judges
-and pushes in the same invocation. It is needed where that invocation cannot finish: on
-Killarney the Jira eval runs on a compute node with no route to OpenRouter or the Hub, so it
-is given --no-push and never judges, and this runs afterwards on a LOGIN node; for the
-Hospital, a cell merged from several pods' pieces (scratch/colosseum_hospital/merge_cells.py)
+and pushes in the same invocation. It is needed where that invocation cannot finish: the Jira eval does
+not judge inside its run, so it is given --no-push and this judges and pushes afterwards,
+on the machine that drove it; for the Hospital, a cell merged from several pods' pieces (scripts/eval/misalignment/colosseum/hospital/merge.py cells)
 has no invocation of its own to push it. Either way the name, card and tags are the ones
 run_eval would have written (src/eval/misalignment/colosseum/publish.py).
 

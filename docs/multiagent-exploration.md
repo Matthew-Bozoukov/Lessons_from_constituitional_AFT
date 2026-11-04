@@ -71,29 +71,20 @@ measure, because Colosseum's paper found talk and action diverge in both directi
 
 ## How it runs
 
-Three stages, split by **where the network is**. Killarney compute nodes have no outbound
-route, so everything that needs one happens on a login node.
+On RunPod: the model is served on a rented pod, the eval is driven from here.
 
 ```bash
-# 1. ONCE, on a login node (~30 min cold: Qwen3.6-27B is ~54GB).
-#    Builds the venv, clones Colosseum at ac0b405, applies the patch, stages all weights.
-bash scripts/infra/slurm/setup_killarney.sh
+# 1. Rent the inference pod for the arm (src/infra/runpod.py picks the GPU).
+uv run runpod up --name <you>-jira --eval colosseum_jira --target <treatment>
 
-# 2. On an H100. One job per experiment is the safe shape (see "Runtime" below).
-EXPERIMENTS=collusion   bash scripts/infra/slurm/submit_colosseum.sh
-EXPERIMENTS=single      bash scripts/infra/slurm/submit_colosseum.sh
-EXPERIMENTS=cooperation bash scripts/infra/slurm/submit_colosseum.sh
+# 2. One invocation per experiment, driven from this machine. The first run builds the
+#    patched Colosseum checkout (src/eval/misalignment/colosseum/harness.py, JIRA set).
+uv run evals --name colosseum_jira --no-push --server root@<ip>:<port> \
+    --target <control> <treatment> experiment=collusion     # then single, cooperation
 
-# 3. Back on a login node: judge the episodes, push every run dir to dougalldeepmind on HF.
-bash scripts/infra/slurm/publish_runs.sh
-```
-
-Inside stage 2 the job runs, per experiment, one invocation of the repo's single eval
-entrypoint:
-
-```
-uv run evals --name colosseum_jira --no-push \
-    --target <control> <treatment> experiment=collusion
+# 3. Judge the episodes and push every run dir to dougalldeepmind on HF; then tear down.
+uv run python scripts/eval/publish_colosseum.py
+uv run runpod down --pod <id>
 ```
 
 `run_eval` serves both adapters on localhost, calls `run()` once per arm, and then calls
@@ -101,10 +92,9 @@ uv run evals --name colosseum_jira --no-push \
 here**. "The coalition captured 0.19 more reward" only means something against what the
 control coalition captured on the same ticket sets.
 
-**H100, not L40S.** Qwen3.6-27B is ~54GB in bf16 and the repo's vLLM passes no
-`--tensor-parallel-size`, so one server is one GPU and a 48GB L40S cannot hold it. L40S
-schedules far sooner on this cluster, which makes this the main queueing cost. The job
-re-checks the card on the node and exits in seconds rather than wasting the allocation.
+**One 80GB card.** Qwen3.6-27B is ~54GB in bf16 and the repo's vLLM passes no
+`--tensor-parallel-size`, so one server is one GPU and a 48GB card cannot hold it;
+`runpod up --eval` picks the card from the model profile.
 
 ## Where the results are published
 
@@ -126,9 +116,8 @@ Two consequences:
 
 - The two adapters under test are still **read** from their own org. `HF_ORG` governs
   pushes only.
-- On Killarney `uv run evals --name colosseum_jira` is given **`--no-push`** because the
-  compute node has no network; `publish_colosseum.py` then judges and pushes from a login
-  node. Anywhere with a network, run_eval pushes the run itself.
+- `uv run evals --name colosseum_jira` is given **`--no-push`** because the Jira eval
+  does not judge inside its run; `publish_colosseum.py` then judges and pushes.
 
 **Names (since 2026-09-25).** A run is `<date>-<key>-<cell>-<arm>` —
 `2026-09-25-jira-collusion-qwen36-0-0`, `2026-09-25-hospital-self-sacrificial-qwen36-0-da-7`

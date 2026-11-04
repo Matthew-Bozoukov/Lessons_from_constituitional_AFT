@@ -37,16 +37,17 @@ from src.eval.misalignment.colosseum.config import EXPERIMENTS, build_sweep_conf
 from src.eval.misalignment.colosseum.harvest import MEASURES, harvest_run_root
 from src.eval.misalignment.colosseum.stats import episode_summary
 
+from src.eval.misalignment.colosseum.harness import JIRA, ensure_harness
+
 __all__ = ["run"]
 
 
 def _colosseum_root(cfg) -> Path:
-    """Where the patched Colosseum checkout lives."""
-    root = Path(os.environ.get("COLOSSEUM_ROOT") or cfg.colosseum_root).expanduser()
+    """Where the patched Colosseum checkout lives: the managed JIRA build by default."""
+    root = ensure_harness(cfg.get("colosseum_root"), patches=JIRA).root
     assert (root / "experiments" / "collusion" / "run.py").is_file(), (
-        f"no Colosseum checkout at {root}. Build one with "
-        "scripts/infra/slurm/setup_killarney.sh (login node — it needs the network), or "
-        "point COLOSSEUM_ROOT at an existing patched clone."
+        f"no Colosseum checkout at {root}. Unset COLOSSEUM_ROOT and the config's "
+        "colosseum_root to use the managed build (src/eval/misalignment/colosseum/harness.py)."
     )
     # A clone that was re-fetched loses the patch, and the failure it causes is a SILENT
     # one: every seat falls back to the sweep's single model and the study compares an arm

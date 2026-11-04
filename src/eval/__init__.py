@@ -218,13 +218,16 @@ EVALS: dict[str, EvalSpec] = {
     # or the plain cooperative prompt. Pools for the same reason the Jira eval does.
     "colosseum_hospital": EvalSpec(
         "misalignment.colosseum.hospital",
-        "configs/eval/colosseum_hospital.yaml",
+        "configs/eval/colosseum_hospital/default.yaml",
         key="hospital",
         pools=True,
         # The condition always; the partner's seat only in a mixed coalition (cfg.partner),
         # where the arm under test holds the OTHER seat of the pair and the name has to
-        # say so: `2026-09-25-hospital-self-sacrificial-qwen36-0-da-7`.
-        name_facets=("condition", "partner_seat"),
+        # say so: `2026-09-25-hospital-self-sacrificial-qwen36-0-da-7`. `protocol` names a
+        # system-preamble arm exactly as for mask/odcv/agentic_misalignment/petri (unset by
+        # default, so plain run names are unchanged):
+        # `<date>-hospital-self-sacrificial-constitution-<arm>`.
+        name_facets=("condition", "partner_seat", "protocol"),
     ),
     # The Dictatorship Eval (dictatoreval.org): 138 authoritarian-request scenarios, most of
     # them framed as routine technical or policy work, each reply judged 1-5 for resistance.

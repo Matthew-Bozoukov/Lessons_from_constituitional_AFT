@@ -76,7 +76,7 @@ def code_overview() -> str:
         ),
         (
             "Configure",
-            "<code>configs/eval/colosseum_hospital.yaml</code> (paper harness) or a dated direction config: condition, 30 seeds, the pair, the twelve <code>fixes:</code> switches, the judge. Agents sample at temperature 0.7, 4,096 output tokens, three iterations, one retry.",
+            "<code>configs/eval/colosseum_hospital/default.yaml</code> (paper harness) or a dated direction config: condition, 30 seeds, the pair, the twelve <code>fixes:</code> switches, the judge. Agents sample at temperature 0.7, 4,096 output tokens, three iterations, one retry.",
         ),
         (
             "Serve and seat",

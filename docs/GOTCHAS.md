@@ -28,6 +28,21 @@ were not. Killing it and re-running the same command with `--resume <run dir>` r
 and finished the whole corpus check in 61 seconds ($4). So: when the corpus check shows no progress
 and the account's usage is flat for more than a few minutes, kill and resume; nothing is lost.
 
+## The 2026-10-15 Hospital "constitution" cell never showed the constitution (2026-11-04)
+
+`dougalldeepmind/2026-10-15-hospital-self-sacrificial-constitution-qwen36-0-plain` is named
+as the constitution-in-the-system-prompt arm, but none of its 30 episodes has the
+constitution in any system prompt (checked in every `system_prompts.json` in its
+`-rollouts` repo), and its sweep's `fixes` carry no preamble key. Two causes, either one
+enough: the run came from `matboz/gemma4-on-main` @ 62d1c573, whose config sets no
+preamble; and even with one set, upstream Colosseum's prompt wrappers called the base
+prompt's `get_system_prompt()` with no seat, so a per-seat system prompt reached nobody.
+Since 2026-11-04 the arm runs on `src/eval/preamble.py` (`protocol=constitution
+system_preamble_file=...`), `hospital_preamble.patch` passes the seat through, the runner
+refuses a checkout without it, and `hospital/smoke.py` variant `paper_constitution` checks
+the text is in both pair seats' prompts and in none of the other seven. Read the
+published `system_prompts.json` before trusting any arm whose difference is the prompt.
+
 ## A claude.ai cloud session cannot SSH to a pod: use `runpod up --run` (2026-10-30)
 
 The cloud container's network is an HTTPS proxy: there is no `ssh` binary and raw TCP to :22
@@ -1374,34 +1389,6 @@ mixture whose trace family is not the model being trained unless
 `reasoning_backfill.model` and `tokenizer` in nosynth.yaml, rebuild (~$10 of generation +
 judge), and point the arm configs' `base_mixture:` at the new repo.
 
-## Killarney (Alliance SLURM): a non-login shell silently builds the wrong venv (2026-09-03)
-
-`module` is a shell FUNCTION sourced from the login profile, so it does not exist in the
-non-login shell that a remote one-shot command gives you. A setup script that guards its
-module loads with `command -v module` and *continues* when absent therefore builds its
-venv on `/usr/bin/python` instead of the cluster's `python/3.12.4`.
-
-Everything then works until the one thing that needs a compiler. vLLM's inductor pass
-compiles C++ at engine startup and the system interpreter's headers are incomplete:
-
-```
-/usr/include/python3.12/pyconfig.h:3:12: fatal error:
-    x86_64-linux-gnu/python3.12/pyconfig.h: No such file or directory
-```
-
-which surfaces as `RuntimeError: Engine core initialization failed` — **after** loading
-52 GiB of weights onto the GPU, i.e. after paying for the allocation. The real error is
-~150 lines above the traceback vLLM prints, so grep the vLLM log for `fatal error`
-rather than reading its tail.
-
-Two lessons, both now enforced in `scripts/infra/slurm/setup_killarney.sh`:
-
-- Run cluster setup through a LOGIN shell (`bash -lc "..."`), and make a missing `module`
-  command a hard failure rather than a fallback.
-- Verify the interpreter after creating a venv: `pyvenv.cfg`'s `home` is the bin directory
-  of whatever built it, and `/usr/bin` there means the module was not active. Checking it
-  costs nothing; the alternative is discovering it on a GPU.
-
 ## `--target` is nargs='+' and will eat your config overrides (2026-09-03)
 
 `run_eval.py` declares `--target` with `nargs="+"`, so it consumes every following token
@@ -1418,36 +1405,6 @@ Verified: the wrong order yields 4 targets and 0 overrides; the right one yields
 It costs only seconds of GPU, because run_eval resolves and names every target before it
 serves anything.
 
-## uv ignores an activated venv (2026-09-03)
-
-Activating a venv and then calling `uv run` does NOT use that venv. uv resolves the
-project environment itself — `.venv` in the project root unless `UV_PROJECT_ENVIRONMENT`
-says otherwise — and *syncs* it, which needs the network. On an offline compute node that
-is a hang or a hard failure, and the venv you carefully activated is ignored either way.
-
-Call the entry point directly (`python -m src.eval.run_eval`) and set
-`UV_PROJECT_ENVIRONMENT` + `UV_OFFLINE` so anything else reaching for uv fails loudly
-instead. Also set `UV_LINK_MODE=copy` when uv's cache and the target venv are on
-different filesystems (`/home` vs `/project` here), or every package warns as it falls
-back to a full copy — and budget for that copy: ~18GB of torch/vLLM onto NFS runs
-~850 MB/min.
-
-## Killarney: CPU count gates the GPU queue, not walltime (2026-09-03)
-
-`sbatch --test-only` estimated start times for one H100 in `gpubase_h100_b1`, same job,
-2h walltime, varying only the CPU request:
-
-| request | estimated start |
-|---|---|
-| 16 CPUs, 64G | +2h 13m |
-| 12 CPUs, 64G | +33m |
-| 8 CPUs, 96G  | immediate |
-
-Memory barely mattered; CPUs decided everything, because the free H100 nodes were mostly
-full of other jobs' cores. Ask `--test-only` before committing to a shape, and prefer the
-smallest CPU count the work actually needs — asyncio's default executor caps at
-`min(32, cpu_count + 4)`, so 8 CPUs still affords 12 worker threads.
-
 ## Dated adapters make eval names too long, in THREE places (2026-09-03)
 
 Since adapters became dated artifacts, `spec.model_key` carries its own production date.
@@ -1460,7 +1417,7 @@ tripped all three of these in one afternoon:
 |---|---|---|
 | `run_eval` out_dir | 101 chars; died naming arm 2 **after arm 1 finished** | `subject_of(model_key)` |
 | `run_eval` summary row | 109 chars; died **after** results.json was written | eval name became the directory, plus `subject_of` |
-| a published repo name | 119 chars; would die on a login node after all GPU spend | explicit short `arm_labels` in the eval config |
+| a published repo name | 119 chars; would die at publish, after all GPU spend | explicit short `arm_labels` in the eval config |
 
 The lesson is not the individual fixes but where they fire: **every one of these fails
 late**, after episodes are run and sometimes after results are on disk, because names are
@@ -1498,8 +1455,7 @@ AND one Colosseum output tree, interleaved their episodes into it, and were head
 race on `results/per_seed.json`. It was caught 31 minutes in only because an arm directory
 listed cells `[baseline cooperation]`, which no single experiment has.
 
-Stagger parallel jobs deterministically (`scripts/infra/slurm/colosseum_job.sh` offsets
-per experiment) — or give each its own working directory. And when running arms in
+Stagger parallel jobs deterministically — or give each its own working directory. And when running arms in
 parallel, check the cells each run directory actually contains before trusting any
 aggregate over them.
 
@@ -1510,7 +1466,7 @@ loop iteration, so every arm that finished is complete on disk — `results/per_
 `results/results.json`, `metadata/run_meta.json` — even though the invocation as a whole
 failed. Rerunning both arms to recover one is the expensive way out.
 
-`ARMS=control|treatment|both` on the Colosseum job script exists for this. The cost is
+Running the arms as separate invocations is the way to keep that cheap. The cost is
 that in-invocation pooling does not happen, so the contrast is assembled afterwards from
 the two run directories (`scratch/colosseum_pool_split_arms.py`) — the same computation
 over the same inputs.
@@ -1519,8 +1475,7 @@ over the same inputs.
 
 `run_eval` defaults every vLLM server to port 8000 and every server work directory to
 `output/<eval>/server`. Both are fine for one run at a time and break as soon as two run
-together — which SLURM makes easy, since it packs several one-GPU jobs onto one 8-GPU
-node.
+together on one multi-GPU box.
 
 **Port.** Only the first server binds. The loser sits with the weights loaded and its GPU
 at **0% and 123W**, which looks exactly like a slow job: no error, no crash, and the log
@@ -1535,20 +1490,11 @@ booting at the wrong moment reads a half-written file and dies. The driver then 
 only `vLLM server ... is not reachable at 127.0.0.1:<port>` — nothing in that message
 suggests a different process caused it.
 
-Both are now derived from the job: the port from `SLURM_JOB_ID`
-(`scripts/infra/slurm/colosseum_job.sh`), the work dir from the port
+Give each invocation its own `--port`; run_eval derives the work dir from the port
 (`src/eval/run_eval.py`).
 
-**Diagnosing this needs `nvidia-smi` INSIDE the allocation.** `ssh <node> nvidia-smi` is
-not in the job's cgroup and reported an idle GPU for a busy job and vice versa — it was
-worse than no information. Use:
-
-```bash
-srun --jobid=<id> --overlap -n1 nvidia-smi \
-    --query-gpu=utilization.gpu,memory.used,power.draw --format=csv,noheader
-```
-
-Sample it several times: a single reading can catch a genuine gap between decode steps.
+**Diagnosing it**: `nvidia-smi --query-gpu=utilization.gpu,memory.used,power.draw
+--format=csv,noheader` on the box. Sample it several times: a single reading can catch a genuine gap between decode steps.
 Weights loaded (~75GB) with 0% utilisation across repeated samples is the signature of a
 driver that cannot reach its server, not of a slow model.
 
@@ -1595,13 +1541,13 @@ treatment episodes with a vLLM 400 on prompt length).
 The Hospital environment writes its per-iteration inventory snapshots
 (`data_iteration_*.json`) under `/root/colosseum/logs/HospitalEnvironment/...` on the pod, not
 under the run dir, so `pull_runs.sh` never sees them. The false-claim check needs them: pull
-with `scratch/colosseum_hospital/pull_env_logs.sh <host> <label>` before tearing the pod down.
+with `scripts/eval/misalignment/colosseum/hospital/pull_env_logs.sh <host> <label>` before tearing the pod down.
 
 ## Laptop memory guard kills background watchers (2026-09-04)
 
 Long `until ... sleep` loops launched with `run_in_background` on the laptop were killed by
 the low-memory guard within an hour (four pollers at once). A session cron job
-(`CronCreate`, every 10 min, running `scratch/colosseum_hospital/poll_queues.sh`) survived;
+(`CronCreate`, every 10 min, running `scripts/eval/misalignment/colosseum/hospital/poll_queues.sh`) survived;
 prefer that for multi-hour waits.
 
 ## Timestamps: pods log UTC, the laptop shows BST (2026-09-04)
@@ -1653,20 +1599,20 @@ an unknown patient and to a repeat; `get_job_queue` returned the string "Refer t
 context."; patients had no home hospital (both hospitals' departments were handed the same
 job; unscheduled steps were charged to `hospital_names[0]`); and the judge read boards only.
 
-All of it is now switchable — `fixes:` in `configs/eval/colosseum_hospital.yaml` (twelve switches after the 2026-09-10 additions: rationale-free public action events and a coalition-only MODE SWITCH paragraph), every
+All of it is now switchable — `fixes:` in `configs/eval/colosseum_hospital/default.yaml` (twelve switches after the 2026-09-10 additions: rationale-free public action events and a coalition-only MODE SWITCH paragraph), every
 switch OFF there so the base config is still the paper's harness — through two patches in
 `src/eval/misalignment/colosseum/third_party/` (README there has the switch table):
 `terrarium_hospital_fixes.patch` goes into the terrarium-agents *site-packages* and
 `hospital_eval_fixes.patch` into the Colosseum checkout after `hospital_seating.patch`.
-Direction A (memory) and direction B (the board) are `scratch/colosseum_hospital/configs/2026-09-09_colosseum_
-hospital_carried_history.yaml` and `..._board_access.yaml` (`--config`), sharing the
+Direction A (memory) and direction B (the board) are `configs/eval/colosseum_hospital/carried-history.yaml`
+and `board-access.yaml` (`--config`), sharing the
 environment fixes. Things that bite:
 
 - **The runner refuses an unpatched package**, and the harvest refuses an episode whose
   `run_config.json` lacks `terrarium_fixes` or records a different `fixes` block. `uv sync`
   removes terrarium (it is not in the lock), so after any sync re-run
-  `scratch/colosseum_hospital/pod_bootstrap.sh`, which re-applies and verifies both patches
-  and ends with the scripted-model smoke (`fixes_smoke.py`, 97 checks, ~1 min, no GPU).
+  `scripts/eval/misalignment/colosseum/hospital/pod_bootstrap.sh`, which re-applies and verifies both patches
+  and ends with the scripted-model smoke (`hospital/smoke.py`, 97 checks, ~1 min, no GPU).
 - **Every episode now writes `prompts.jsonl`** (one record per model call, the whole
   message list minus the system prompt, which is in `system_prompts.json` by hash). A
   department call is 8–22k tokens of text; a 30-seed cell is a few hundred MB. It is the

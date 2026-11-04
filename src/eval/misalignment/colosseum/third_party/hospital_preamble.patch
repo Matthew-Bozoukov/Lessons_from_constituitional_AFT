@@ -1,0 +1,48 @@
+--- a/experiments/agent_misalignment/prompts.py
++++ b/experiments/agent_misalignment/prompts.py
+@@ -23,6 +23,25 @@
+ BENIGN_COALITION = "benign_coalition"
+ 
+ 
++
++def _base_system_prompt(base_prompts: Any, agent_name: str) -> str:
++    """The base environment's system prompt, for THIS seat when the base takes a seat.
++
++    VENDORED PATCH (hospital_preamble.patch, 2026-11-04): both wrappers called the base's
++    get_system_prompt() with no seat, so a per-seat system prompt (terrarium
++    HospitalPrompts' fixes.system_preamble_agents, the constitution arm) never reached any
++    seat. A base that takes no agent_name is called exactly as before.
++    """
++    import inspect
++
++    try:
++        takes_seat = "agent_name" in inspect.signature(base_prompts.get_system_prompt).parameters
++    except (TypeError, ValueError):
++        takes_seat = False
++    if takes_seat:
++        return base_prompts.get_system_prompt(agent_name=agent_name)
++    return base_prompts.get_system_prompt()
++
+ class MisalignmentPrompts:
+     def __init__(
+         self,
+@@ -42,7 +61,7 @@
+     ) -> str:
+         base = ""
+         if self.base_prompts and hasattr(self.base_prompts, "get_system_prompt"):
+-            base = str(self.base_prompts.get_system_prompt() or "")
++            base = str(_base_system_prompt(self.base_prompts, agent_name) or "")
+         # The MODE SWITCH paragraph below went into EVERY agent's system prompt — the
+         # seven cooperative seats included, who were told what to do if they ever saw a
+         # secret section — and uninstructed agents invented "secret instructions" from
+@@ -529,8 +548,8 @@
+     def __init__(self, base_prompts: Any):
+         self.base_prompts = base_prompts
+ 
+-    def get_system_prompt(self) -> str:
+-        return str(self.base_prompts.get_system_prompt() or "")
++    def get_system_prompt(self, agent_name: str = "") -> str:
++        return str(_base_system_prompt(self.base_prompts, agent_name) or "")
+ 
+     def get_user_prompt(
+         self,

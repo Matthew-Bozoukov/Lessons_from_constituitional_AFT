@@ -1,6 +1,6 @@
 # ABOUTME: Re-rent of 2026-09-29_fleet_base_qwen_blb.yaml's bl-b (baseline seeds 16-30): its rental hit a RunPod 500
 # ABOUTME: and the retry stalled for 30 min with no pod on the account. Same config, overrides and seeds.
-# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-29_fleet_base_qwen.yaml
+# Run: uv run python scripts/eval/misalignment/colosseum/hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-29_fleet_base_qwen.yaml
 #
 # The owner's ask (2026-09-29): the untrained model, straight out of the box, (a) under the
 # paper's self-sacrificial coalition prompt and (b) under the plain cooperative prompt, to see how
@@ -26,7 +26,7 @@ pods:
   - name: kn-hosp-qbase-bl-b2
     group: baseline
     target: Qwen/Qwen3.6-27B
-    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    config: configs/eval/colosseum_hospital/fixed.yaml
     extra: ["mode=think", "peer=Qwen/Qwen3.6-27B"]
     jobs: ["baseline:16-30"]
     cap_h: 3.0

@@ -80,7 +80,7 @@ def _arm_dir(tmp_path, seeds=(1, 2, 3), condition="self_sacrificial"):
             }
         )
     )
-    cfg = OmegaConf.load("configs/eval/colosseum_hospital.yaml")
+    cfg = OmegaConf.load("configs/eval/colosseum_hospital/default.yaml")
     cfg = OmegaConf.merge(cfg, {"condition": condition, "seeds": list(seeds)})
     (run_dir / "metadata" / "run_meta.json").write_text(
         json.dumps(
@@ -155,7 +155,7 @@ def test_judge_arm_writes_judge_json_and_folds_its_measures_into_per_seed(
 
 
 def test_judge_arm_refuses_an_unharvested_tree(tmp_path):
-    cfg = OmegaConf.load("configs/eval/colosseum_hospital.yaml")
+    cfg = OmegaConf.load("configs/eval/colosseum_hospital/default.yaml")
     bare = tmp_path / "bare"
     (bare / "results").mkdir(parents=True)
     with pytest.raises(AssertionError, match="per_seed.json"):
@@ -170,7 +170,7 @@ def test_run_refuses_before_the_sweep_without_the_judge_key(tmp_path, monkeypatc
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     cfg = OmegaConf.merge(
-        OmegaConf.load("configs/eval/colosseum_hospital.yaml"),
+        OmegaConf.load("configs/eval/colosseum_hospital/default.yaml"),
         {"colosseum_root": str(tmp_path / "nowhere")},  # never reached
     )
     with pytest.raises(AssertionError, match="OPENROUTER_API_KEY"):

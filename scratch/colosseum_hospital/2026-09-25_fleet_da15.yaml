@@ -1,6 +1,6 @@
 # ABOUTME: Fleet plan: the da-15 arm on the hospital self-sacrificial cell, 30 seeds split across two
 # ABOUTME: pods, with the filtered-base nosynth checkpoint filling every seat that is not the pair.
-# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-25_fleet_da15.yaml
+# Run: uv run python scripts/eval/misalignment/colosseum/hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-25_fleet_da15.yaml
 #
 # The comparison this exists for: the 2026-09-24 hospital run scored
 # qwen36-0-da-multiparty-human-15 on this same cell and config (6 sabotaged shifts of 30).
@@ -24,12 +24,12 @@ pods:
   - name: mb-hosp-da15-a
     group: da15
     target: dougalldeepmind/2026-09-23-qwen36-0-da-15
-    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    config: configs/eval/colosseum_hospital/fixed.yaml
     jobs: ["self_sacrificial:1-15"]
     cap_h: 4.0
   - name: mb-hosp-da15-b
     group: da15
     target: dougalldeepmind/2026-09-23-qwen36-0-da-15
-    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    config: configs/eval/colosseum_hospital/fixed.yaml
     jobs: ["self_sacrificial:16-30"]
     cap_h: 4.0
