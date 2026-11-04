@@ -11,6 +11,9 @@ Arms (seed 0, 15% of supervised tokens on the 2026-10-05 plain base):
   da       2026-10-05-qwen36-0-da-15          difficult advice written by Sonnet (A of the three draws)
   grok     2026-10-08-qwen36-0-da-grok-15     the same recipe with Grok writing every stage
   qwen     2026-10-08-qwen36-0-da-qwen-15     the same recipe with Qwen3.6-27B writing every stage
+  gpt      2026-11-04-qwen36-0-da-gpt-15      the same recipe with gpt-5.6-luna/terra writing every stage
+                                              (added 2026-11-04; evals at 69510f7c, AM on the same
+                                              agentic-action-judge-v3 protocol and judge as the other arms)
 Against the submitted Fig. 5 (2026-10-16 render) three bars changed: control and da MASK now read the
 2026-11-03 three-pass runs (42.7 -> 43.2, 83.3 -> 83.2) and the Grok agentic bar reads its published run
 (5.6; the submitted figure carried 5.2, see docs/LOG.md 2026-10-28). The two generator arms' MASK bars
@@ -33,10 +36,11 @@ from scratch.figures import _hub
 matplotlib.use("Agg")
 
 BASE_NAME = "Qwen3.6-27B"
-ARMS = ["control", "da", "grok", "qwen"]
+ARMS = ["control", "da", "grok", "qwen", "gpt"]
 ARM = {"control": "+ Control (Standard SFT)", "da": "+ Difficult Advice mix",
-       "grok": "+ Grok mix", "qwen": "+ Qwen mix"}
-COLOUR = {"control": "#5a6472", "da": "#7e22ce", "grok": "#e8762b", "qwen": "#1e3a5f"}   # the submitted figure's hues
+       "grok": "+ Grok mix", "qwen": "+ Qwen mix", "gpt": "+ GPT mix"}
+COLOUR = {"control": "#5a6472", "da": "#7e22ce", "grok": "#e8762b", "qwen": "#1e3a5f",   # the submitted figure's hues
+          "gpt": "#2a9d8f"}
 BASE_COLOUR = "#c1121f"
 
 PANELS = ["mask", "odcv", "agentic"]
@@ -44,15 +48,18 @@ RUNS = {
     "mask": {"control": ["2026-11-03-mask-qwen36-0-plain"],
              "da": ["2026-11-03-mask-qwen36-0-da-15"],
              "grok": ["2026-10-08-mask-qwen36-0-da-grok-15", "2026-10-09-mask-qwen36-0-da-grok-15"],
-             "qwen": ["2026-10-08-mask-qwen36-0-da-qwen-15", "2026-10-09-mask-qwen36-0-da-qwen-15"]},
+             "qwen": ["2026-10-08-mask-qwen36-0-da-qwen-15", "2026-10-09-mask-qwen36-0-da-qwen-15"],
+             "gpt": ["2026-11-04-mask-qwen36-0-da-gpt-15"]},
     "odcv": {"control": ["2026-10-06-odcv-qwen36-0-plain"],
              "da": ["2026-10-06-odcv-qwen36-0-da-15"],
              "grok": ["2026-10-08-odcv-qwen36-0-da-grok-15"],
-             "qwen": ["2026-10-08-odcv-qwen36-0-da-qwen-15"]},
+             "qwen": ["2026-10-08-odcv-qwen36-0-da-qwen-15"],
+             "gpt": ["2026-11-04-odcv-qwen36-0-da-gpt-15"]},
     "agentic": {"control": ["2026-10-08-am-qwen36-0-plain"],
                 "da": ["2026-10-08-am-qwen36-0-da-15"],
                 "grok": ["2026-10-16-am-qwen36-0-da-grok-15"],
-                "qwen": ["2026-10-08-am-qwen36-0-da-qwen-15"]},
+                "qwen": ["2026-10-08-am-qwen36-0-da-qwen-15"],
+                "gpt": ["2026-11-04-am-qwen36-0-da-gpt-15"]},
 }
 BASE_RUNS = {"mask": ["2026-09-22-mask-qwen36", "2026-10-02-mask-qwen36", "2026-10-03-mask-qwen36"],
              "odcv": ["2026-09-06-odcv-qwen36"], "agentic": ["2026-10-25-am-qwen36"]}
@@ -136,16 +143,16 @@ def main(out_dir: str = "output/figures") -> None:
             ax.spines[sp].set_visible(False)
     handles = [Line2D([0], [0], color=BASE_COLOUR, linestyle=(0, (2.5, 2.5)), linewidth=1.8, label=BASE_NAME)]
     handles += [Patch(facecolor=COLOUR[a], edgecolor="black", label=ARM[a]) for a in ARMS]
-    fig.legend(handles=handles, frameon=False, loc="upper center", ncol=5, bbox_to_anchor=(0.5, 1.0),
+    fig.legend(handles=handles, frameon=False, loc="upper center", ncol=len(handles), bbox_to_anchor=(0.5, 1.0),
                fontsize=18, columnspacing=1.6, handlelength=1.8, handleheight=1.0)
     fig.subplots_adjust(top=0.80, bottom=0.14, wspace=0.30)
     bands(fig, axes, PANELS)
 
-    png = figure_path(out_dir, "fig5-grok", ext="png")
+    png = figure_path(out_dir, "fig5-generators", ext="png")
     fig.savefig(png, dpi=300, bbox_inches="tight")
     artifacts = [f"{_hub.ORG}/{r}" for ev in RUNS for a in RUNS[ev] for r in RUNS[ev][a]] + \
                 [f"{_hub.ORG}/{r}" for ev in BASE_RUNS for r in BASE_RUNS[ev]]
-    save_figure_pdf(fig, png.with_suffix(".pdf"), "Fig. 5: difficult advice by generator (Sonnet, Grok, Qwen)", artifacts, "scratch/figures/fig5_grok.py")
+    save_figure_pdf(fig, png.with_suffix(".pdf"), "Fig. 5: difficult advice by generator (Sonnet, Grok, Qwen, GPT)", artifacts, "scratch/figures/fig5_grok.py")
     md = [f"# {png.stem}", "", f"Rendered {datetime.now().isoformat(timespec='seconds')} by "
           "scratch/figures/fig5_grok.py; every bar read from the Hub at render time. 95% intervals from the",
           "per-item SE (MASK: 1,000 rows x 3 passes; ODCV: 80 cells x 3 rollouts; agentic: 18 conditions x 10 trials).",
