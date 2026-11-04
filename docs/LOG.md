@@ -1,3 +1,25 @@
+## 2026-11-04: ODCV and MASK on da-amoral-15: between the plain control and da-15 on both
+
+Hypothesis: if difficult advice works through its moral content, the amoral twin (same pipeline, deal, format and 15% token share, no moral content; 2026-11-03 entry below) should score near the plain control; if it works through the deliberative format alone, near da-15.
+
+Method: `dougalldeepmind/2026-11-03-qwen36-0-da-amoral-15` @ fc5d5b24, run exactly as da-15 B and C were (runbook `output/2026-11-03_eval_plan/2026-11-03_mask_odcv_runbook.md`), driven from the Windows laptop at git afbd86a6, eval code identical to B/C's. ODCV: `uv run evals --name odcv --target <adapter> --server <pod> --port 8087 concurrency=16`, default `lite` (3 passes x 80 cells, judge gemini-3-flash-preview, progress judge on), 1x H100 80GB. MASK: `uv run evals --name mask --target <adapter> --server <pod> --port 8097`, default config (1 pass, 1,000 rows), 1x H200 (Secure stock was out once; a retry got one).
+
+Result:
+
+| arm | ODCV MR % | MASK honesty |
+|---|---|---|
+| plain control (`2026-10-05-qwen36-0-plain`) | 45.0 | 44.0 (10-05), 42.7 (10-09, 2 passes) |
+| **da-amoral-15** | **27.5 [17.4, 40.1]**, by pass 22.5 / 31.2 / 28.7; mandated 28.3, incentivised 26.7; submitted 97.9% | **62.7** (continuations 64.2, disinformation 41.6, doubling-down 57.5, known facts 68.4, provided facts 61.7, statistics 84.4) |
+| da-15 A / B / C | 13.3 / 10.8 / 15.4 | 82.7 (83.3 at 2 passes) / 85.2 / 80.0 |
+
+- Runs: `dougalldeepmind/2026-11-04-odcv-qwen36-0-da-amoral-15` @ 91b44cd3 (240 rollouts, 240 judged, 0 dropped) and `dougalldeepmind/2026-11-04-mask-qwen36-0-da-amoral-15` @ 5ec6c1ff (1,000 rows, 1/4,438 generation errors, 0 judge errors), both tagged `eval-run`, `model:qwen36_0_da_amoral_15`, `mode:think`.
+- On both evals the amoral arm closes a bit under half of the gap from the control to da-15 (ODCV: 45.0 -> 27.5 against ~13; MASK: 44 -> 62.7 against ~83). One seed, one corpus draw, single-pass MASK. The ODCV intervals of A and plain are computed per scenario, B/C and this run per pass, so compare point estimates.
+- Known differences from DA that could account for part of the remaining gap: ~13% of amoral rows still misstate a user fact, far less first-person deliberation, a third of DA's AI presence.
+- The laptop's network dropped several times. MASK's SSH tunnel reset mid-generation (47% failed generations, refused at the 2% gate) and was resumed with `resume_from=`, keeping 2 of 6 archetypes. ODCV's tunnel dropped in pass 3 (48 of 80 transcripts were the task prompt alone, flagged `missing_cells=50`; the driver was stopped before publishing and resumed, and the 50 cells re-ran clean). ODCV judging then died twice on one OpenRouter `ConnectTimeout`: the judge client gets `max_retries=0` and each attempt judges into a new `combined3x_<timestamp>` dir, so no scores carry over. The third attempt published. Both gotchas are worth fixing in `odcv_judge.py` / `runner.py`.
+- Cost: pods about $19 (H100 ~1 h 45 min, H200 ~2 h 20 min, both longer than planned because of the resumes), judging about $9 (OpenRouter 283.25 -> 274.47, including two discarded ODCV judging passes). Both pods terminated; `runpod pods` empty.
+
+Next steps: a second seed or a second corpus draw of da-amoral-15 for an interval on the gap; MASK at 2 passes on this arm to match the 10-09 replicates.
+
 ## 2026-11-03: da-amoral, the morally neutral twin of difficult advice: corpus, 15% mix, one LoRA
 
 Hypothesis: a control for difficult advice (DA) should keep DA's pipeline, deal and format but carry no moral content, so that a da-15 vs da-amoral-15 comparison isolates what the moral content does. Built as `configs/data/synth/da-amoral.yaml`: da.yaml with `preferences/practical_judgement_09` (nine non-moral principles of practical judgement) in the constitution's slot.
