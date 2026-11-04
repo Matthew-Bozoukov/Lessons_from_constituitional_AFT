@@ -130,6 +130,11 @@ serving:
   # actually fill it.
   context_window: 20480
   needs_tool_calls: false
+  # vLLM prefix caching: free on plain prompts (nothing to share) and the difference between a
+  # 95-minute and a normal pass on a constitution arm, whose ~4k-token preamble is one prefix every
+  # request would otherwise prefill from scratch (2026-11-04: 0 cache queries, 10M prompt tokens
+  # by mid-pass). Reuse of identical KV blocks; it changes no output.
+  enable_prefix_caching: true
   # Sequence slots this eval asks the server for (≤ the family's verified boot cap,
   # ModelProfile.serving.max_num_seqs; plan_serving refuses more). Matches gen_concurrency.
   concurrency: 192
