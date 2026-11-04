@@ -3,6 +3,22 @@
 
 # GOTCHAS
 
+## One network blip used to cost a whole ODCV judging pass (2026-11-04; fixed)
+
+On the da-amoral-15 ODCV run, one OpenRouter `ConnectTimeout` at verdict ~194/240 killed the
+judging step twice: `map_threaded` is fail-fast, and a budgeted judge client has the SDK's own
+retries off. Each `resume_from=` attempt then judged into a new run dir and a new
+`combined*x_*` dir, so the per-run `evaluations/scores_*.json` cache started at "0 cached, 240
+to score" every time. Now (`src/eval/misalignment/odcv/odcv_judge.py`):
+- connection errors, timeouts, 429s and 5xx are retried on `JUDGE_RETRY_DELAYS_S`, about 8
+  min in all; an answered request (400/401/402/404) still fails at once, and a retried
+  budgeted call keeps the failed attempt's reservation, so the ledger can over-count but
+  never under-count;
+- the MR and progress judges also keep verdicts in `output/odcv/judge_cache/`
+  (`ODCV_JUDGE_CACHE_DIR` overrides), keyed by the exact bytes the judge reads plus the judge
+  model and the judge module's source, so a resume reuses every verdict for an identical
+  transcript and re-judges a re-run or changed one. 'N/A' is never kept there.
+
 ## A claude.ai cloud session cannot SSH to a pod: use `runpod up --run` (2026-10-30)
 
 The cloud container's network is an HTTPS proxy: there is no `ssh` binary and raw TCP to :22
