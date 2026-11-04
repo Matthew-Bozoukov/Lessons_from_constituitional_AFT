@@ -67,6 +67,11 @@ dependencies = [
     # the preamble hook wraps inspect_petri.target._controller.Controller.stage_system, verified on
     # this version.
     "inspect-petri==3.1.0",
+    # The Colosseum evals (src/eval/misalignment/colosseum): the PyPI wheel Colosseum @ ac0b405
+    # imports, NOT the Terrarium git main (0.2.0, reorganised layout). Exact pin: the
+    # terrarium_*.patch files in colosseum/third_party/ are cut against this version, and
+    # colosseum/harness.py copies it into its cache and patches the copy, never site-packages.
+    "terrarium-agents[providers,science,plots]==0.1.1",
     "requests>=2.31.0",
     "tenacity>=9.0.0",
     # Arena-Hard computes its style-control `token_len` feature with the gpt-4o encoder.

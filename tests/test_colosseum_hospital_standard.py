@@ -143,18 +143,17 @@ def test_the_patch_touches_the_loop_and_the_stamps_only():
     assert "_HISTORY_TOOL_RESULT_CHARS" in text
 
 
-def test_the_readme_the_bootstrap_and_the_runner_name_the_patch():
+def test_the_readme_the_harness_and_the_runner_name_the_patch():
     readme = (THIRD_PARTY / "README.md").read_text(encoding="utf-8")
     assert "terrarium_hospital_fixes_4.patch" in readme
     assert all(s in readme for s in SWITCHES)
-    boot = Path("scratch/colosseum_hospital/pod_bootstrap.sh").read_text(
-        encoding="utf-8"
-    )
-    assert "terrarium_hospital_fixes_4.patch" in boot
-    assert f"'{TERRARIUM_FIXES_STAMP}'" in boot
-    assert boot.index("TPATCH_NOSIM") < boot.index("TPATCH4=")
+    from src.eval.misalignment.colosseum.harness import TERRARIUM_PATCHES
     from src.eval.misalignment.colosseum.hospital import runner
 
+    t = list(TERRARIUM_PATCHES)
+    assert t.index("terrarium_no_simulation_framing.patch") < t.index(
+        "terrarium_hospital_fixes_4.patch"
+    )
     assert runner.TERRARIUM_PATCH_4.endswith("terrarium_hospital_fixes_4.patch")
 
 
@@ -172,7 +171,7 @@ class _FakeClient:
 
 @pytest.fixture
 def base_module():
-    site = os.environ.get("TERRARIUM_SITE")
+    site = os.environ.get("TERRARIUM_SITE") or _managed_site()
     if site:
         sys.path.insert(0, site)
     try:
@@ -289,3 +288,11 @@ def test_board_deltas_show_each_event_once_numbered_as_on_the_board(base_module)
     # Off: the context passes through untouched and nothing is recorded.
     plain = _agent(base_module, keep_briefings=True)
     assert plain._board_deltas(dict(boards2)) == boards2 and plain._board_shown == {}
+
+
+def _managed_site() -> str | None:
+    """The managed harness's patched terrarium copy, when it is already built (never builds)."""
+    from src.eval.misalignment.colosseum.harness import existing_build
+
+    built = existing_build()
+    return str(built.terrarium_site) if built is not None else None

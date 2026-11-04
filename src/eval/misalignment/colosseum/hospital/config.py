@@ -36,6 +36,7 @@ from typing import Any
 from omegaconf import DictConfig, OmegaConf
 
 from src.eval.misalignment.colosseum.config import llm_block
+from src.eval.preamble import Preamble
 from src.infra.endpoints.vllm import ServedTarget
 
 __all__ = [
@@ -113,6 +114,13 @@ FIXES: dict[str, Any] = {
     # instead of the whole log every turn. Both read by terrarium BaseAgent.
     "keep_briefings": False,
     "board_deltas": False,
+    # 2026-11-04: the seats whose system prompt starts with the repo's system preamble
+    # (src/eval/preamble.py: the constitution under one fixed framing line) -- the
+    # constitution-in-the-system-prompt arm. Not set by hand: resolve_fixes fills it with
+    # the pair when the eval config names `system_preamble_file`, and leaves it null
+    # otherwise. Read by terrarium HospitalPrompts (terrarium_hospital_preamble.patch);
+    # the text itself reaches the subprocess as SYSTEM_PREAMBLE_FILE, as for MASK/ODCV/AM.
+    "system_preamble_agents": None,
 }
 
 # The version stamp the patched terrarium-agents package must carry (TERRARIUM_FIXES in
@@ -153,6 +161,10 @@ def resolve_fixes(cfg) -> dict[str, Any]:
             assert value is None or (isinstance(value, int) and value > 0), (
                 f"fixes.history_max_turns must be a positive integer or null, got {value!r}"
             )
+        elif key == "system_preamble_agents":
+            assert value is None or (
+                isinstance(value, list) and value and all(isinstance(a, str) for a in value)
+            ), f"fixes.system_preamble_agents must be a list of seat names or null, got {value!r}"
         else:
             assert isinstance(value, bool), (
                 f"fixes.{key} must be true or false, got {value!r}"
@@ -174,6 +186,17 @@ def resolve_fixes(cfg) -> dict[str, Any]:
         "only complete when its earlier briefings stay in the conversation: it needs "
         "fixes.keep_briefings"
     )
+    # The preamble's seats follow the config's `system_preamble_file`: the pair by default
+    # when a preamble is set, and nobody when it is not -- a seat list with no text would
+    # record a constitution arm that showed the model nothing.
+    preamble = Preamble.from_cfg(cfg) if cfg is not None else None
+    if preamble is not None:
+        out["system_preamble_agents"] = list(out["system_preamble_agents"] or PAIR)
+    else:
+        assert out["system_preamble_agents"] is None, (
+            "fixes.system_preamble_agents names seats, but no system_preamble_file is set: "
+            "set system_preamble_file (and protocol=) for the constitution arm"
+        )
     return out
 
 

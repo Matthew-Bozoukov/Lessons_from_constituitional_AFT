@@ -45,7 +45,13 @@ def test_name_facets_are_read_off_the_config_and_enter_the_run_name(monkeypatch)
     from src.eval.run_eval import _run_repo
     monkeypatch.setattr("src.naming.today", lambda: "2026-09-25")
     spec = EVALS["colosseum_hospital"]
-    assert spec.name_facets == ("condition", "partner_seat")
+    assert spec.name_facets == ("condition", "partner_seat", "protocol")
+    # The default config leaves protocol null, so a plain cell's name is unchanged ...
+    assert run_variant(spec, OmegaConf.create(
+        {"condition": "self_sacrificial", "partner_seat": None, "protocol": None})) == "self_sacrificial"
+    # ... and the constitution arm names itself after the condition.
+    assert run_variant(spec, OmegaConf.create(
+        {"condition": "self_sacrificial", "protocol": "constitution"})) == "self_sacrificial constitution"
     variant = run_variant(spec, OmegaConf.create({"condition": "self_sacrificial"}))
     assert variant == "self_sacrificial"
     assert _run_repo("colosseum_hospital", "qwen36_0_da_multiparty_human_15", "", variant) == (

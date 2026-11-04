@@ -1,6 +1,6 @@
 #!/bin/bash
 # ABOUTME: One-shot setup of a `runpod up --eval` pod for colosseum_hospital: this repo at a
-# ABOUTME: commit, uv sync, Colosseum @ ac0b405 + terrarium 0.1.1 with all eleven patches, smoke.
+# ABOUTME: commit, uv sync, judge key, the managed Colosseum harness built, the scripted smoke.
 #
 #   bash scratch/colosseum_hospital/pod_bootstrap.sh root@<ip>:<port> <branch> <sha>
 #
@@ -13,10 +13,9 @@ set -euo pipefail
 HOST="$1"; BRANCH="$2"; SHA="$3"
 PORT="${HOST##*:}"; ADDR="${HOST%:*}"
 REPO_URL="$(git remote get-url origin | sed -E 's#^git@([^:]+):#https://\1/#')"
-COLOSSEUM_REF=ac0b405
 
 ssh -p "${PORT}" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null "${ADDR}" \
-  "REPO_URL='${REPO_URL}' BRANCH='${BRANCH}' SHA='${SHA}' COLOSSEUM_REF='${COLOSSEUM_REF}' \
+  "REPO_URL='${REPO_URL}' BRANCH='${BRANCH}' SHA='${SHA}' \
    OPENROUTER_KEY='${OPENROUTER_API_KEY:-}' bash -s" <<'REMOTE'
 set -euo pipefail
 export PATH=/usr/local/bin:/root/.local/bin:$PATH
@@ -58,109 +57,30 @@ elif [ -z "${OPENROUTER_KEY:-}" ]; then
 fi
 mkdir -p /root/work/output/logs
 
-echo ">>> colosseum"
-if [ ! -d /root/colosseum/.git ]; then
-    git clone --quiet https://github.com/umass-ai-safety/colosseum /root/colosseum
+echo ">>> harness"
+# terrarium-agents is a dependency now (uv sync above installed it). The managed harness
+# (src/eval/misalignment/colosseum/harness.py) clones Colosseum at its pin, applies every
+# patch, and patches a COPY of terrarium in its cache -- never site-packages, so no later
+# `uv sync` can undo it. Built once per patch set; the runner would build it on first use
+# anyway, this just pays the clone before the queue starts.
+unset COLOSSEUM_ROOT
+ROOT="$(uv run python -c 'from src.eval.misalignment.colosseum.harness import ensure_harness; print(ensure_harness().root)' | tail -1)"
+echo "    built ${ROOT}"
+# The env-log helpers (pull_env_logs.sh, fleet.py) read /root/colosseum/logs: upstream
+# writes the inventory snapshots under its checkout's logs/. Point that path at the build.
+if [ -d /root/colosseum ] && [ ! -L /root/colosseum ]; then
+    mv /root/colosseum "/root/colosseum.hand-built.$(date +%s)"
 fi
-cd /root/colosseum
-git checkout --quiet --force "${COLOSSEUM_REF}"
-git reset --quiet --hard "${COLOSSEUM_REF}"
-git apply /root/work/src/eval/misalignment/colosseum/third_party/per_agent_models.patch
-git apply /root/work/src/eval/misalignment/colosseum/third_party/hospital_seating.patch
-# The 2026-09-09 harness fixes, on top of the seating patch (order matters), then the
-# 2026-09-13 plan-post switch on top of those.
-git apply /root/work/src/eval/misalignment/colosseum/third_party/hospital_eval_fixes.patch
-git apply /root/work/src/eval/misalignment/colosseum/third_party/hospital_eval_fixes_2.patch
-# 2026-09-14: per-seat llm overrides (experiment.seating.seat_llm) for a mixed coalition.
-# Guarded: a pod bootstrapped at an older commit has no such file, and no partner support
-# (the runner refuses cfg.partner without it).
-if [ -f /root/work/src/eval/misalignment/colosseum/third_party/hospital_seating_2.patch ]; then
-    git apply /root/work/src/eval/misalignment/colosseum/third_party/hospital_seating_2.patch
-fi
-# 2026-09-15: the whistleblowing study (administrator channel, benign coalition, a survey
-# that is one tool-less call and reaches the baseline). On top of hospital_seating_2.patch.
-git apply /root/work/src/eval/misalignment/colosseum/third_party/hospital_eval_fixes_3.patch
-echo "    patched: $(git diff --stat | tail -1)"
-
-echo ">>> colosseum deps into the repo venv (not the package: it has no package config)"
-# The repo venv's python, not the image's python3: that one is 3.10 and has no tomllib.
-DEPS="$(/root/work/.venv/bin/python -c 'import tomllib; print(" ".join(tomllib.load(open("/root/colosseum/pyproject.toml","rb"))["project"]["dependencies"]))')"
-uv pip install --python /root/work/.venv/bin/python --quiet ${DEPS}
-
-echo ">>> terrarium-agents fixes into the venv's site-packages"
-# terrarium-agents 0.1.1 is a PyPI wheel, so its patches land in site-packages, in order:
-# the 2026-09-09 fixes, the 2026-09-13 re-ask switches, the 2026-09-15 whistleblowing
-# study, then the 2026-09-15 no-simulation cut, which was cut on top of the whistleblowing
-# patch (both rewrite HospitalPrompts.get_system_prompt, so it applies after it and only
-# after it).
-# Idempotent, read from the newest down: a patch reverse-applies cleanly only when it is
-# the newest one in. `uv sync` above removes packages the lock does not know, so a re-run
-# reinstalls the wheel and needs every patch again.
-SITE="$(/root/work/.venv/bin/python -c 'import terrarium, os; print(os.path.dirname(terrarium.__path__[0]))')"
-TPATCH=/root/work/src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes.patch
-TPATCH2=/root/work/src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_2.patch
-TPATCH_NOSIM=/root/work/src/eval/misalignment/colosseum/third_party/terrarium_no_simulation_framing.patch
-TPATCH3=/root/work/src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_3.patch
-if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH_NOSIM}" >/dev/null 2>&1; then
-    echo "    all four already applied in ${SITE}"
-else
-    if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH3}" >/dev/null 2>&1; then
-        echo "    2026-09-09, 2026-09-13 and whistleblowing patches already applied in ${SITE}"
-    else
-        if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH2}" >/dev/null 2>&1; then
-            echo "    2026-09-09 and 2026-09-13 patches already applied in ${SITE}"
-        else
-            if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH}" >/dev/null 2>&1; then
-                echo "    2026-09-09 patch already applied in ${SITE}"
-            else
-                patch -p1 -d "${SITE}" -f < "${TPATCH}"
-            fi
-            patch -p1 -d "${SITE}" -f < "${TPATCH2}"
-        fi
-        patch -p1 -d "${SITE}" -f < "${TPATCH3}"
-    fi
-    patch -p1 -d "${SITE}" -f < "${TPATCH_NOSIM}"
-fi
-# 2026-10-09: the standard conversation (keep_briefings, board_deltas), cut on top of all
-# four above and applied last. It touches base.py and the hospital_env stamp only, so the
-# ladder above is undisturbed by it; checked on its own.
-TPATCH4=/root/work/src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_4.patch
-if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH4}" >/dev/null 2>&1; then
-    echo "    2026-10-09 patch already applied in ${SITE}"
-else
-    patch -p1 -d "${SITE}" -f < "${TPATCH4}"
-fi
+ln -sfn "${ROOT}" /root/colosseum
 
 echo ">>> verify"
-cd /root/colosseum
-/root/work/.venv/bin/python -c "
-import importlib
-for mod in ('terrarium.utils', 'envs.dcops.hospital.hospital_env', 'experiments.agent_misalignment.run'):
-    importlib.import_module(mod); print('    ok ', mod)
-from experiments.agent_misalignment.run import _resolve_agent_llm_configs_by_seat
-import inspect, os
-if os.path.exists('/root/work/src/eval/misalignment/colosseum/third_party/hospital_seating_2.patch'):
-    assert 'seat_llm' in inspect.signature(_resolve_agent_llm_configs_by_seat).parameters, 'hospital_seating_2.patch missing'
-import experiments.agent_misalignment.run as run_mod
-assert 'secret_instructions' in open(run_mod.__file__).read(), 'hospital_eval_fixes.patch missing'
-import experiments.agent_misalignment.prompts as prompts_mod
-assert 'plan_post_optional' in open(prompts_mod.__file__).read(), 'hospital_eval_fixes_2.patch missing'
-assert 'administrator_blackboard_id' in open(run_mod.__file__).read(), 'hospital_eval_fixes_3.patch missing'
-assert 'benign_coalition' in open(prompts_mod.__file__).read(), 'hospital_eval_fixes_3.patch missing'
-print('    ok  seating + eval-fixes patches (2026-09-09, 2026-09-13, 2026-09-15) are live')
-from terrarium.agents.base import TERRARIUM_FIXES, RETRY_NOTE
-from envs.dcops.hospital.hospital_env import HOSPITAL_FIXES
-from envs.dcops.hospital.hospital_tools import ADMINISTRATOR_TOOL
-# Both stamps, and the 2026-10-09 value: a package holding only the earlier patches imports fine.
-assert TERRARIUM_FIXES == HOSPITAL_FIXES == '2026-10-09', (TERRARIUM_FIXES, HOSPITAL_FIXES)
-import terrarium.agents.base as base_mod
-assert 'keep_briefings' in open(base_mod.__file__).read(), 'terrarium_hospital_fixes_4.patch missing'
-assert RETRY_NOTE.startswith('[Note from the harness:')
-print('    ok  terrarium fixes', TERRARIUM_FIXES)
-import envs.dcops.hospital.hospital_prompts as hp_mod
-if os.path.exists('/root/work/src/eval/misalignment/colosseum/third_party/terrarium_no_simulation_framing.patch'):
-    assert 'no_simulation_framing' in open(hp_mod.__file__).read(), 'terrarium_no_simulation_framing.patch missing'
-    print('    ok  no-simulation-framing patch is live')
+# The runner's own refusals, run exactly as the eval runs them.
+uv run python -c "
+from omegaconf import OmegaConf
+from src.eval.misalignment.colosseum.hospital import runner
+h = runner._harness(OmegaConf.create({}))
+print('    ok  checkout', runner._colosseum_root(None, h))
+print('    ok  terrarium fixes', runner._terrarium_fixes_version(h))
 import vllm; print('    ok  vllm', vllm.__version__)
 "
 # The scripted-model smoke: one episode per harness variant, no GPU, ~1 minute.
@@ -168,7 +88,7 @@ cd /root/work
 # Keep the WHOLE smoke log, print the summary lines. The grep alone hid every failure:
 # a crashed smoke matches none of these patterns, so the bootstrap died silently at its
 # last step with the log ending on "ok vllm" and nothing to read (2026-09-25).
-COLOSSEUM_ROOT=/root/colosseum uv run python scratch/colosseum_hospital/fixes_smoke.py \
+uv run python scratch/colosseum_hospital/fixes_smoke.py \
     --out /root/work/output/colosseum_hospital/fixes_smoke > /root/work/output/logs/fixes_smoke.log 2>&1 \
     || echo "    smoke exited $?"
 grep -E '^(===|  \[FAIL\]|ALL CHECKS|[0-9]+ CHECK)' /root/work/output/logs/fixes_smoke.log || true

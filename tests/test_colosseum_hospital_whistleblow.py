@@ -293,15 +293,16 @@ def test_the_colosseum_patch_carries_the_board_the_benign_block_and_the_survey()
     assert "Collude with: {collude_with_label}" in benign
 
 
-def test_the_bootstrap_applies_the_third_pair_in_order_and_checks_the_stamp():
-    text = Path("scratch/colosseum_hospital/pod_bootstrap.sh").read_text(encoding="utf-8")
-    assert text.index("hospital_seating_2.patch") < text.index(
-        "git apply /root/work/src/eval/misalignment/colosseum/third_party/hospital_eval_fixes_3.patch"
-    )
-    assert "TPATCH3=" in text and "terrarium_hospital_fixes_3.patch" in text
-    assert text.index('< "${TPATCH3}" >/dev/null') < text.index('< "${TPATCH2}" >/dev/null')
-    assert f"'{TERRARIUM_FIXES_STAMP}'" in text, "the bootstrap checks the current stamp"
-    assert "hospital_eval_fixes_3.patch missing" in text
+def test_the_harness_applies_the_third_pair_in_order():
+    from src.eval.misalignment.colosseum.harness import COLOSSEUM_PATCHES, TERRARIUM_PATCHES
+
+    c, t = list(COLOSSEUM_PATCHES), list(TERRARIUM_PATCHES)
+    assert c.index("hospital_seating_2.patch") < c.index("hospital_eval_fixes_3.patch")
+    assert t.index("terrarium_hospital_fixes_2.patch") < t.index("terrarium_hospital_fixes_3.patch")
+    # the no-simulation patch was cut on top of _3, and _4 on top of both
+    assert t.index("terrarium_hospital_fixes_3.patch") < t.index(
+        "terrarium_no_simulation_framing.patch"
+    ) < t.index("terrarium_hospital_fixes_4.patch")
 
 
 def test_the_runner_refuses_a_checkout_without_the_third_colosseum_patch(tmp_path, monkeypatch):
@@ -320,7 +321,7 @@ def test_the_runner_refuses_a_checkout_without_the_third_colosseum_patch(tmp_pat
     (d / "prompts.py").write_text("plan_post_optional")
     with pytest.raises(AssertionError, match="hospital_eval_fixes_3.patch"):
         runner._colosseum_root(OmegaConf.create({}))
-    (d / "prompts.py").write_text("plan_post_optional benign_coalition")
+    (d / "prompts.py").write_text("plan_post_optional benign_coalition _base_system_prompt")
     assert runner._colosseum_root(OmegaConf.create({})) == tmp_path
 
 
@@ -695,9 +696,13 @@ def test_the_harvest_reads_the_study_from_a_run_config_that_has_it(tmp_path):
 
 
 def _site():
-    site = os.environ.get("TERRARIUM_SITE")
-    if site and site not in sys.path:
-        sys.path.append(site)
+    site = os.environ.get("TERRARIUM_SITE") or _managed_site()
+    # terrarium-agents is installed (unpatched), so a patched tree must come FIRST, and
+    # without one the test skips rather than read the wheel.
+    if not site:
+        pytest.skip("needs a patched terrarium tree: build the managed harness or set TERRARIUM_SITE")
+    if site not in sys.path:
+        sys.path.insert(0, site)
     return pytest.importorskip(
         "envs.dcops.hospital.hospital_tools",
         reason="needs the patched terrarium-agents: set TERRARIUM_SITE to its site-packages",
@@ -776,3 +781,11 @@ def test_the_patched_loop_names_a_message_retry_and_passes_the_block_to_the_tool
     on = [x["function"]["name"] for x in d.get_tools_for_environment("HospitalEnvironment", "execution", fixes={"administrator_channel": True})]
     plain = [x["function"]["name"] for x in d.get_tools_for_environment("HospitalEnvironment", "execution")]
     assert on == plain + [wb.ADMIN_TOOL]
+
+
+def _managed_site() -> str | None:
+    """The managed harness's patched terrarium copy, when it is already built (never builds)."""
+    from src.eval.misalignment.colosseum.harness import existing_build
+
+    built = existing_build()
+    return str(built.terrarium_site) if built is not None else None

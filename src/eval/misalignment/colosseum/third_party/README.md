@@ -1,9 +1,20 @@
 # Colosseum patches
 
-Colosseum is not vendored into this repo — it is cloned to `/project/.../colosseum` by
-`scripts/infra/slurm/setup_killarney.sh`, pinned to a commit, and patched there. What
-lives here is the patch, so the modification is reviewable in this repo's history rather
-than hidden in a checkout on a cluster.
+Colosseum is not vendored into this repo. What lives here is the patch, so the
+modification is reviewable in this repo's history rather than hidden in a checkout.
+
+**Who applies them (since 2026-11-04): the eval itself.** `colosseum/harness.py` holds the
+one ordered list of these patches and the pins. On first use it clones Colosseum at the
+pin and `git apply`s the Colosseum patches, then copies the installed terrarium-agents
+wheel (a dependency in `pyproject.toml`) into its cache and patches the COPY. That copy
+goes first on the sweep subprocess's PYTHONPATH, so the venv's site-packages is never
+edited and `uv sync` cannot undo a patch. The cache directory is keyed by the pins and
+every patch's bytes (`~/.cache/lessons-aft/colosseum/<key>/`, or `$COLOSSEUM_CACHE`):
+editing a patch here builds a fresh harness on the next run. A checkout patched by hand
+(`$COLOSSEUM_ROOT`, the config's `colosseum_root`, Killarney's
+`scripts/infra/slurm/setup_killarney.sh`) is still accepted, and the runner refuses it if
+any patch is missing. **A new patch goes into `harness.py`'s list, in order, and gets a
+content check in `hospital/runner.py`.**
 
 **Upstream**: `github.com/umass-ai-safety/colosseum` @ `ac0b405`
 (`terrarium-agents[providers,science,plots]==0.1.1` from PyPI — *not* the Terrarium git
@@ -275,3 +286,27 @@ patch -p1 -d <site-packages> --dry-run < src/eval/misalignment/colosseum/third_p
 python -c "from terrarium.agents.base import TERRARIUM_FIXES, BOARD_DELTA_NEW; print(TERRARIUM_FIXES)"   # 2026-10-09
 uv run python scratch/colosseum_hospital/fixes_smoke.py --colosseum-root <clone> --variants standard   # no marker, every briefing kept, each board event shown once
 ```
+
+## `hospital_preamble.patch` and `terrarium_hospital_preamble.patch` (2026-11-04): the constitution arm
+
+**What they do**: put the repo's one system preamble (`src/eval/preamble.py`: "Use the
+following constitution to guide your behavior." and the constitution in `<constitution>`
+tags, the composition MASK, ODCV, agentic_misalignment and Petri use) FIRST in the system
+prompt of the seats `fixes.system_preamble_agents` names, which `resolve_fixes` fills with
+the pair when the eval config sets `system_preamble_file`. The text reaches the sweep as
+`SYSTEM_PREAMBLE_FILE` on its env; `HospitalPrompts.get_system_prompt(agent_name)` calls
+`prepend_from_env` for those seats only. Every other seat's prompt, and every prompt with
+no preamble set, is byte-identical to before. Launch with `protocol=constitution
+system_preamble_file=<file>`; run_eval refuses a preamble without `protocol=`.
+
+**Why the Colosseum half exists**: both of upstream's prompt wrappers
+(`MisalignmentPrompts.get_system_prompt` and the survey wrapper) called the base prompt's
+`get_system_prompt()` with no seat, so no per-seat system prompt could reach any seat.
+The patch passes `agent_name` through when the base accepts one, and calls it exactly as
+before when it does not. Without it the constitution arm runs stock under a
+constitution name, which is what happened to the 2026-10-15 constitution cell
+(`dougalldeepmind/2026-10-15-hospital-self-sacrificial-constitution-qwen36-0-plain`: no
+episode's system prompt contains the constitution). `fixes_smoke.py` variant
+`paper_constitution` checks both pair seats start with the composed preamble and the seven
+other seats do not carry it.
+

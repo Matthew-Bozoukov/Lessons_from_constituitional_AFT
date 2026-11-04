@@ -71,7 +71,7 @@ fixes:
   plan_post_optional: true
 
 # ── where the patched benchmark lives ─────────────────────────────────────────
-colosseum_root: /root/colosseum
+colosseum_root: null  # the managed build (src/eval/misalignment/colosseum/harness.py)
 
 # ── what this eval needs from vLLM ────────────────────────────────────────────
 # Qwen3-32B was trained at 32,768 positions (config max_position_embeddings 40,960). On this harness 31 of the 210

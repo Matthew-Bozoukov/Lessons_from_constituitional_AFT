@@ -81,7 +81,7 @@ fixes:
   plan_post_optional: false
 
 # ── where the patched benchmark lives ─────────────────────────────────────────
-colosseum_root: /root/colosseum
+colosseum_root: null  # the managed build (src/eval/misalignment/colosseum/harness.py)
 
 # ── what this eval needs from vLLM ────────────────────────────────────────────
 serving:

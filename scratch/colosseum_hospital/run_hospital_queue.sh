@@ -27,7 +27,9 @@ JOBS=("$@")
 cd /root/work
 export PATH=/usr/local/bin:/root/.local/bin:$PATH
 export HF_HOME=/workspace/hf
-export COLOSSEUM_ROOT=/root/colosseum
+# No COLOSSEUM_ROOT: the runner uses the managed harness (colosseum/harness.py), which the
+# bootstrap built; naming a checkout would bypass its patched terrarium copy.
+unset COLOSSEUM_ROOT
 # The venv was synced WITHOUT causal-conv1d (a train-time kernel with no wheel for this
 # torch/cu13 pair, and an eval pod has no CUDA toolkit to build it). `uv run` would
 # re-sync and rebuild it, so use the venv as it stands.

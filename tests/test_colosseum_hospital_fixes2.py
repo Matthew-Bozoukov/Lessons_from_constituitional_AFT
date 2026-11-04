@@ -261,12 +261,17 @@ def test_every_switch_is_named_by_some_patch_file():
     }
 
 
-def test_the_bootstrap_applies_both_new_patches_and_checks_the_stamp():
-    text = Path("scratch/colosseum_hospital/pod_bootstrap.sh").read_text(encoding="utf-8")
-    assert "hospital_eval_fixes_2.patch" in text
-    assert "terrarium_hospital_fixes_2.patch" in text
-    assert f"'{TERRARIUM_FIXES_STAMP}'" in text, "the bootstrap checks the current stamp"
-    assert text.index("hospital_eval_fixes.patch") < text.index("hospital_eval_fixes_2.patch")
+def test_the_harness_applies_both_new_patches_after_the_first():
+    from src.eval.misalignment.colosseum.harness import COLOSSEUM_PATCHES, TERRARIUM_PATCHES
+
+    assert COLOSSEUM_PATCHES.index("hospital_eval_fixes.patch") < COLOSSEUM_PATCHES.index(
+        "hospital_eval_fixes_2.patch"
+    )
+    assert TERRARIUM_PATCHES.index("terrarium_hospital_fixes.patch") < TERRARIUM_PATCHES.index(
+        "terrarium_hospital_fixes_2.patch"
+    )
+    boot = Path("scratch/colosseum_hospital/pod_bootstrap.sh").read_text(encoding="utf-8")
+    assert "ensure_harness" in boot and "_terrarium_fixes_version" in boot
 
 
 # ── the runner's guards ───────────────────────────────────────────────────────
@@ -292,7 +297,7 @@ def test_the_runner_refuses_a_checkout_without_the_second_colosseum_patch(
     (d / "run.py").write_text(
         "_resolve_agent_llm_configs_by_seat secret_instructions administrator_blackboard_id"
     )
-    (d / "prompts.py").write_text("plan_post_optional benign_coalition")
+    (d / "prompts.py").write_text("plan_post_optional benign_coalition _base_system_prompt")
     assert runner._colosseum_root(OmegaConf.create({})) == tmp_path
 
 
@@ -300,8 +305,10 @@ def test_the_runner_refuses_a_checkout_without_the_second_colosseum_patch(
 
 
 def _terrarium_base():
-    site = os.environ.get("TERRARIUM_SITE")
-    if site and site not in sys.path:
+    site = os.environ.get("TERRARIUM_SITE") or _managed_site()
+    if not site:
+        pytest.skip("needs a patched terrarium tree: build the managed harness or set TERRARIUM_SITE")
+    if site not in sys.path:
         sys.path.insert(0, site)
     return pytest.importorskip(
         "terrarium.agents.base",
@@ -400,3 +407,11 @@ def test_no_simulation_framing_is_the_default_and_the_papers_opening_is_opt_in()
     assert resolve_fixes(OmegaConf.create({}))["no_simulation_framing"] is True
     off = resolve_fixes(OmegaConf.create({"fixes": {"no_simulation_framing": False}}))
     assert off["no_simulation_framing"] is False
+
+
+def _managed_site() -> str | None:
+    """The managed harness's patched terrarium copy, when it is already built (never builds)."""
+    from src.eval.misalignment.colosseum.harness import existing_build
+
+    built = existing_build()
+    return str(built.terrarium_site) if built is not None else None

@@ -28,6 +28,21 @@ were not. Killing it and re-running the same command with `--resume <run dir>` r
 and finished the whole corpus check in 61 seconds ($4). So: when the corpus check shows no progress
 and the account's usage is flat for more than a few minutes, kill and resume; nothing is lost.
 
+## The 2026-10-15 Hospital "constitution" cell never showed the constitution (2026-11-04)
+
+`dougalldeepmind/2026-10-15-hospital-self-sacrificial-constitution-qwen36-0-plain` is named
+as the constitution-in-the-system-prompt arm, but none of its 30 episodes has the
+constitution in any system prompt (checked in every `system_prompts.json` in its
+`-rollouts` repo), and its sweep's `fixes` carry no preamble key. Two causes, either one
+enough: the run came from `matboz/gemma4-on-main` @ 62d1c573, whose config sets no
+preamble; and even with one set, upstream Colosseum's prompt wrappers called the base
+prompt's `get_system_prompt()` with no seat, so a per-seat system prompt reached nobody.
+Since 2026-11-04 the arm runs on `src/eval/preamble.py` (`protocol=constitution
+system_preamble_file=...`), `hospital_preamble.patch` passes the seat through, the runner
+refuses a checkout without it, and `fixes_smoke.py` variant `paper_constitution` checks
+the text is in both pair seats' prompts and in none of the other seven. Read the
+published `system_prompts.json` before trusting any arm whose difference is the prompt.
+
 ## A claude.ai cloud session cannot SSH to a pod: use `runpod up --run` (2026-10-30)
 
 The cloud container's network is an HTTPS proxy: there is no `ssh` binary and raw TCP to :22
