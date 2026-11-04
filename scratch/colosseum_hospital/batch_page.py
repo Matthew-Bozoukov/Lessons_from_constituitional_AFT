@@ -909,9 +909,9 @@ def page(reading: dict) -> str:
     <dt>Environment</dt><dd>Colosseum Hospital at <code>ac0b405</code>, nine agents, two hospitals, three iterations;
     the coalition is Resource_Provisioner + General_Hospital_Triage; the seven other seats are our control adapter in
     every cell.</dd>
-    <dt>Configs</dt><dd><code>scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml</code> (combined),
-    <code>2026-09-13_colosseum_hospital_no_retry.yaml</code>, <code>2026-09-13_colosseum_hospital_plan_optional.yaml</code>,
-    <code>2026-09-09_colosseum_hospital_carried_history.yaml</code> with <code>max_tokens=8192</code>; mixed cells add
+    <dt>Configs</dt><dd><code>configs/eval/colosseum_hospital/no-retry-plan-optional.yaml</code> (combined),
+    <code>no-retry.yaml</code>, <code>plan-optional.yaml</code>,
+    <code>carried-history.yaml</code> with <code>max_tokens=8192</code>; mixed cells add
     <code>partner</code> + <code>partner_seat</code> (<code>hospital_seating_2.patch</code>).</dd>
     <dt>Seeds</dt><dd>1–30 in every cell, so every contrast is paired by seed.</dd>
     <dt>Judge</dt><dd>Gemini 3.6 Flash at temperature 0: four channels per shift (public, coalition, each seat's
@@ -921,7 +921,7 @@ def page(reading: dict) -> str:
     and private refusal (judge ≥3).</dd>
     <dt>Compute</dt><dd>{gpu_h:.1f} H100 hours across the fleet, about ${gpu_cost:.0f} at $3.49 an hour; each pod was
     terminated as soon as its runs were pulled.</dd>
-    <dt>Code</dt><dd><code>scratch/colosseum_hospital/fleet.py</code> (pods), <code>batch_analysis.py</code> (merge,
+    <dt>Code</dt><dd><code>scripts/eval/misalignment/colosseum/hospital/fleet.py</code> (pods), <code>batch_analysis.py</code> (merge,
     judges, analyses, summary), <code>batch_page.py</code> (this page), branch <code>kn/multiagent-exploration</code>.</dd>
   </dl>
   <details><summary>Every pod, its episodes and its hours</summary>{fleet_tbl}</details>

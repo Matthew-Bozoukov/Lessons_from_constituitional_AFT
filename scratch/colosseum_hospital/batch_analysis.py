@@ -4,10 +4,10 @@
 
     uv run python scratch/colosseum_hospital/batch_analysis.py merge|judge|postjudge|modules|summary|all
 
-merge      merge_cells.py per pod group (fixed, mixed, reference, no_retry, plan_optional):
+merge      hospital/merge.py (cells) per pod group (fixed, mixed, reference, no_retry, plan_optional):
            the pieces of each cell become one dir under output/colosseum_hospital/merged/,
            re-harvested with the group's env snapshots (objective deficits)
-judge      judge_arm.py on every merged cell, one process per cell (self-sacrificial:
+judge      hospital/judge.py on every merged cell, one process per cell (self-sacrificial:
            public secret reasoning all; baseline: public reasoning all); the judge settings
            (Gemini 3.6 Flash, the everything channel, the 240k middle cut) come from the config
 postjudge  post_judge.judge_arm on every self-sacrificial cell (post kind, why the plan was
@@ -38,6 +38,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+# The pipeline tools this analysis drives (src/eval/misalignment/colosseum/hospital/).
+HOSPITAL_SCRIPTS = HERE.parents[1] / "scripts" / "eval" / "misalignment" / "colosseum" / "hospital"
 sys.path.insert(0, str(HERE))
 
 import matplotlib
@@ -63,14 +65,14 @@ MERGED = Path("output/colosseum_hospital/merged")
 ENV = Path("output/colosseum_hospital/env_logs")
 OUT = Path("output/colosseum_hospital/analysis")
 LOGS = PULLED / "analysis_logs"
-COMBINED = "scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml"
+COMBINED = "configs/eval/colosseum_hospital/no-retry-plan-optional.yaml"
 GROUP_CONFIG = {
     "fixed": COMBINED,
     "mixed_daprov": COMBINED,
     "mixed_datri": COMBINED,
-    "reference": "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml",
-    "no_retry": "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_no_retry.yaml",
-    "plan_optional": "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_plan_optional.yaml",
+    "reference": "configs/eval/colosseum_hospital/carried-history.yaml",
+    "no_retry": "configs/eval/colosseum_hospital/no-retry.yaml",
+    "plan_optional": "configs/eval/colosseum_hospital/plan-optional.yaml",
 }
 JUDGE_MODEL = "google/gemini-3.6-flash"
 # The control adapter: the seven other seats everywhere, and the partner in the mixed cells.
@@ -198,7 +200,8 @@ def merge() -> None:
         subprocess.run(
             [
                 sys.executable,
-                str(HERE / "merge_cells.py"),
+                str(HOSPITAL_SCRIPTS / "merge.py"),
+                "cells",
                 "--root",
                 str(root),
                 "--out",
@@ -237,7 +240,7 @@ def judge(parallel: int = 5, workers: int = 8) -> None:
         )
         cmd = [
             sys.executable,
-            str(HERE / "judge_arm.py"),
+            str(HOSPITAL_SCRIPTS / "judge.py"),
             str(cell_dir(k)),
             "--config",
             COMBINED,

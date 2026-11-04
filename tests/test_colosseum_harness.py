@@ -66,7 +66,7 @@ def test_a_named_checkout_wins_and_nothing_is_built(tmp_path, monkeypatch):
 def test_existing_build_is_none_until_built_and_never_builds(tmp_path, monkeypatch):
     monkeypatch.setenv("COLOSSEUM_CACHE", str(tmp_path))
     assert harness.existing_build() is None
-    final = tmp_path / harness.build_key()
+    final = tmp_path / f"hospital-{harness.build_key()}"
     (final / "colosseum").mkdir(parents=True)
     (final / "BUILT.json").write_text("{}")
     built = harness.existing_build()
@@ -77,7 +77,7 @@ def test_existing_build_is_none_until_built_and_never_builds(tmp_path, monkeypat
 
 
 def test_the_hospital_config_defaults_to_the_managed_build():
-    cfg = OmegaConf.load("configs/eval/colosseum_hospital.yaml")
+    cfg = OmegaConf.load("configs/eval/colosseum_hospital/default.yaml")
     assert cfg.colosseum_root is None
 
 
@@ -85,7 +85,7 @@ def test_the_hospital_config_defaults_to_the_managed_build():
 
 
 def test_no_preamble_leaves_the_seats_null_and_the_name_plain():
-    cfg = OmegaConf.load("configs/eval/colosseum_hospital.yaml")
+    cfg = OmegaConf.load("configs/eval/colosseum_hospital/default.yaml")
     assert cfg.protocol is None and cfg.system_preamble_file is None
     assert resolve_fixes(cfg)["system_preamble_agents"] is None
     assert "protocol" in EVALS["colosseum_hospital"].name_facets
@@ -93,7 +93,7 @@ def test_no_preamble_leaves_the_seats_null_and_the_name_plain():
 
 def test_a_preamble_defaults_its_seats_to_the_pair():
     cfg = OmegaConf.merge(
-        OmegaConf.load("configs/eval/colosseum_hospital.yaml"),
+        OmegaConf.load("configs/eval/colosseum_hospital/default.yaml"),
         OmegaConf.create(
             {"protocol": "constitution", "system_preamble_file": CONSTITUTION}
         ),
@@ -125,7 +125,7 @@ def test_the_patches_read_the_shared_preamble_not_a_private_copy():
 def test_the_patched_prompt_prepends_only_for_the_named_seats(monkeypatch):
     built = harness.existing_build()
     if built is None:
-        pytest.skip("needs the managed harness built (run fixes_smoke.py once)")
+        pytest.skip("needs the managed harness built (run hospital/smoke.py once)")
     import sys
 
     monkeypatch.syspath_prepend(str(built.terrarium_site))
@@ -141,3 +141,36 @@ def test_the_patched_prompt_prepends_only_for_the_named_seats(monkeypatch):
     assert p.get_system_prompt(agent_name=PAIR[0]) == pre.prepend(stock)
     assert p.get_system_prompt(agent_name="St_Marys_Center_Surgery") == stock
     assert p.get_system_prompt() == stock
+
+
+# ── the Jira set, and nothing on a cluster ───────────────────────────────────
+
+
+def test_the_jira_set_is_the_routing_patch_on_the_stock_wheel(tmp_path, monkeypatch):
+    assert harness.JIRA.colosseum == ("per_agent_models.patch",)
+    assert harness.JIRA.terrarium == ()
+    assert harness.build_key(patches=harness.JIRA) != harness.build_key(patches=harness.HOSPITAL)
+    monkeypatch.setenv("COLOSSEUM_CACHE", str(tmp_path))
+    final = tmp_path / f"jira-{harness.build_key(patches=harness.JIRA)}"
+    (final / "colosseum").mkdir(parents=True)
+    (final / "BUILT.json").write_text("{}")
+    built = harness.existing_build(harness.JIRA)
+    assert built.root == final / "colosseum" and built.terrarium_site is None
+    assert built.env({"A": "1"}) == {"A": "1"}, "the stock wheel: PYTHONPATH untouched"
+
+
+def test_both_colosseum_configs_default_to_the_managed_build():
+    for path in ("configs/eval/colosseum_hospital/default.yaml", "configs/eval/colosseum_jira.yaml"):
+        assert OmegaConf.load(path).colosseum_root is None, path
+
+
+def test_every_hospital_protocol_loads_and_is_registered_under_the_eval():
+    from src.eval import EVALS
+
+    assert EVALS["colosseum_hospital"].config == "configs/eval/colosseum_hospital/default.yaml"
+    protocols = sorted(Path("configs/eval/colosseum_hospital").glob("*.yaml"))
+    assert len(protocols) == 13
+    for p in protocols:
+        cfg = OmegaConf.load(p)
+        assert cfg.get("colosseum_root") is None, p
+        resolve_fixes(cfg)  # every switch known and consistent

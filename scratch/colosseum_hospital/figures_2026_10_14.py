@@ -1,6 +1,6 @@
 # ABOUTME: The two Hospital figures of 2026-10-14 from autorater-rescored Hub cells: the headline
 # ABOUTME: sabotage-act panel (house style, base line) and the act/refusal/plan stacked bar for every arm.
-# Run (repo root, after scratch/colosseum_hospital/rescore_autorater.py on each cell):
+# Run (repo root, after scripts/eval/misalignment/colosseum/hospital/autorater.py on each cell):
 #   uv run python -m scratch.colosseum_hospital.figures_2026_10_14 [--root output/colosseum_hospital/hub]
 """Every number here is read from a Hospital cell pulled from the Hub. A cell the autorater has
 re-read (results/autorater.json) gives the refusal / plan split from its per_seed.json; a cell it
@@ -46,7 +46,7 @@ CELLS = {
     ),
     # The MAINLINE da-15 adapter (2026-10-05-qwen36-0-da-15, the one the other headline panels
     # use), run 2026-10-15: 16 shifts from the team pods (which RunPod terminated when the
-    # team balance ran out) + 14 from the personal-account pods, merged by merge_shards.py.
+    # team balance ran out) + 14 from the personal-account pods, merged by hospital/merge.py (shards).
     # The earlier canary-adapter cell (2026-10-08-...-da-15-canary) read 28/30 as well.
     "da": (
         "Difficult\nadvice",
@@ -62,7 +62,7 @@ CELLS = {
     # Run 2026-10-15 (preamble=principles, fixes.system_preamble_file=principles_only.md -- the
     # exact text the MASK / ODCV / agentic principles runs put first in the system prompt): the
     # plain adapter in the pair seats with the nine principles first in their system prompt;
-    # 3 + 27 shifts merged by merge_shards.py. The Hub repo named
+    # 3 + 27 shifts merged by hospital/merge.py (shards). The Hub repo named
     # `2026-10-15-hospital-self-sacrificial-constitution-qwen36-0-plain` is a PLAIN run (no
     # preamble in its prompts; card: constitution none) and is not this arm.
     "constitution": (

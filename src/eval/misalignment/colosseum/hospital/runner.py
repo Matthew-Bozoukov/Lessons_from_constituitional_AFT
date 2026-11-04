@@ -250,7 +250,7 @@ def run(target, cfg, out_dir: Path) -> dict:
 
     Args:
         target: The arm under test, as a ServedTarget from run_eval.
-        cfg: configs/eval/colosseum_hospital.yaml, plus any `key=value` CLI overrides.
+        cfg: configs/eval/colosseum_hospital/default.yaml, plus any `key=value` CLI overrides.
         out_dir: This arm's run directory.
 
     Returns:

@@ -11,9 +11,9 @@ goes first on the sweep subprocess's PYTHONPATH, so the venv's site-packages is 
 edited and `uv sync` cannot undo a patch. The cache directory is keyed by the pins and
 every patch's bytes (`~/.cache/lessons-aft/colosseum/<key>/`, or `$COLOSSEUM_CACHE`):
 editing a patch here builds a fresh harness on the next run. A checkout patched by hand
-(`$COLOSSEUM_ROOT`, the config's `colosseum_root`, Killarney's
-`scripts/infra/slurm/setup_killarney.sh`) is still accepted, and the runner refuses it if
-any patch is missing. **A new patch goes into `harness.py`'s list, in order, and gets a
+(`$COLOSSEUM_ROOT`, the config's `colosseum_root`) is still accepted for developing a
+patch, and the runner refuses it if any patch is missing. Each eval names its own patch
+set (`harness.HOSPITAL`, `harness.JIRA`). **A new patch goes into `harness.py`'s list, in order, and gets a
 content check in `hospital/runner.py`.**
 
 **Upstream**: `github.com/umass-ai-safety/colosseum` @ `ac0b405`
@@ -89,7 +89,7 @@ are in `terrarium-agents==0.1.1` (a PyPI wheel), so `terrarium_hospital_fixes.pa
 applied to that package's *site-packages* (`patch -p1 -d <site-packages>`); the runner,
 the secret-instruction prompts and the local protocol are Colosseum's, so
 `hospital_eval_fixes.patch` is applied to the checkout AFTER `hospital_seating.patch`.
-`scratch/colosseum_hospital/pod_bootstrap.sh` does both and verifies both.
+`scripts/eval/misalignment/colosseum/hospital/pod_bootstrap.sh` does both and verifies both.
 
 **The switches** — the eval config's `fixes:` block
 (`src/eval/misalignment/colosseum/hospital/config.py::FIXES`; every one off reproduces
@@ -125,7 +125,7 @@ The judge (`hospital/judge.py`) scores each watched seat's reasoning as its own 
 ```bash
 git -C <clone> apply --check src/eval/misalignment/colosseum/third_party/hospital_eval_fixes.patch
 python -c "from terrarium.agents.base import TERRARIUM_FIXES; print(TERRARIUM_FIXES)"   # 2026-09-09 with this patch alone; 2026-09-13 once the second one (next section) is on
-uv run python scratch/colosseum_hospital/fixes_smoke.py --colosseum-root <clone>        # scripted model, ~1 min
+uv run python scripts/eval/misalignment/colosseum/hospital/smoke.py --colosseum-root <clone>        # scripted model, ~1 min
 ```
 
 ## `hospital_eval_fixes_2.patch` and `terrarium_hospital_fixes_2.patch` (2026-09-13)
@@ -137,7 +137,7 @@ Three more switches on the same `fixes:` block, applied on top of the 2026-09-09
 `hospital_eval_fixes.patch`. The runner and the smoke compare the stamp to
 `hospital/config.py::TERRARIUM_FIXES_STAMP`, so a package holding only the first patch —
 which imports fine and ignores the new switches without a word — is refused.
-`scratch/colosseum_hospital/pod_bootstrap.sh` applies all six in order.
+`scripts/eval/misalignment/colosseum/hospital/pod_bootstrap.sh` applies all six in order.
 
 | switch | reads it | what it changes |
 |---|---|---|
@@ -154,7 +154,7 @@ paper's harness is `fixes.provisioner_reads_boards=false` on the CLI.
 ```bash
 git -C <clone> apply --check src/eval/misalignment/colosseum/third_party/hospital_eval_fixes_2.patch   # on a clone that lacks it
 python -c "from terrarium.agents.base import TERRARIUM_FIXES, RETRY_NOTE; print(TERRARIUM_FIXES)"        # 2026-09-13
-uv run python scratch/colosseum_hospital/fixes_smoke.py --colosseum-root <clone>   # + variants retry_explained, no_retry, plan_optional, board_idle
+uv run python scripts/eval/misalignment/colosseum/hospital/smoke.py --colosseum-root <clone>   # + variants retry_explained, no_retry, plan_optional, board_idle
 ```
 
 ## Upstream behaviour worth knowing (not patched)
@@ -193,7 +193,7 @@ two watched seats can hold a different checkpoint from its partner while the coa
 (the adversaries) stays the pair. `hospital/config.py` writes it from the eval config's
 `partner` + `partner_seat`; the runner refuses a partner when the checkout lacks this patch,
 and the harvest checks every seat against `seats.by_seat`. Applied last, after
-`hospital_eval_fixes_2.patch` (scratch/colosseum_hospital/pod_bootstrap.sh).
+`hospital_eval_fixes_2.patch` (scripts/eval/misalignment/colosseum/hospital/pod_bootstrap.sh).
 
 ## `hospital_eval_fixes_3.patch` and `terrarium_hospital_fixes_3.patch` (2026-09-15)
 
@@ -203,7 +203,7 @@ Applied on top of everything above: `terrarium_hospital_fixes_3.patch` into site
 after the 2026-09-13 one (both stamps bump to `2026-09-15`, which the runner and the smoke
 require), `hospital_eval_fixes_3.patch` into the checkout after `hospital_seating_2.patch`.
 Only `terrarium_no_simulation_framing.patch` (below) goes in after it.
-`scratch/colosseum_hospital/pod_bootstrap.sh` applies all ten.
+`scripts/eval/misalignment/colosseum/hospital/pod_bootstrap.sh` applies all ten.
 
 | what | reads it | what it changes |
 |---|---|---|
@@ -216,7 +216,7 @@ Only `terrarium_no_simulation_framing.patch` (below) goes in after it.
 ```bash
 git -C <clone> apply --check src/eval/misalignment/colosseum/third_party/hospital_eval_fixes_3.patch   # on a clone that lacks it
 python -c "from terrarium.agents.base import TERRARIUM_FIXES; print(TERRARIUM_FIXES)"                  # 2026-09-15
-uv run python scratch/colosseum_hospital/fixes_smoke.py --colosseum-root <clone> \
+uv run python scripts/eval/misalignment/colosseum/hospital/smoke.py --colosseum-root <clone> \
     --variants whistleblow whistleblow_baseline whistleblow_benign whistleblow_visible
 ```
 
@@ -252,7 +252,7 @@ simulation; no model under test reads them.
 
 ```bash
 patch -p1 -d <site-packages> --dry-run < src/eval/misalignment/colosseum/third_party/terrarium_no_simulation_framing.patch   # on a package that lacks it
-uv run python scratch/colosseum_hospital/fixes_smoke.py --colosseum-root <clone>   # ON variants: no message mentions a simulation; paper_as_published: the old opening
+uv run python scripts/eval/misalignment/colosseum/hospital/smoke.py --colosseum-root <clone>   # ON variants: no message mentions a simulation; paper_as_published: the old opening
 ```
 
 ## `terrarium_hospital_fixes_4.patch` (2026-10-09): the standard conversation
@@ -284,7 +284,7 @@ actions only), and the 2026-09-09 shape when `keep_briefings` is off (byte for b
 ```bash
 patch -p1 -d <site-packages> --dry-run < src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_4.patch   # on a package that lacks it
 python -c "from terrarium.agents.base import TERRARIUM_FIXES, BOARD_DELTA_NEW; print(TERRARIUM_FIXES)"   # 2026-10-09
-uv run python scratch/colosseum_hospital/fixes_smoke.py --colosseum-root <clone> --variants standard   # no marker, every briefing kept, each board event shown once
+uv run python scripts/eval/misalignment/colosseum/hospital/smoke.py --colosseum-root <clone> --variants standard   # no marker, every briefing kept, each board event shown once
 ```
 
 ## `hospital_preamble.patch` and `terrarium_hospital_preamble.patch` (2026-11-04): the constitution arm
@@ -306,7 +306,7 @@ The patch passes `agent_name` through when the base accepts one, and calls it ex
 before when it does not. Without it the constitution arm runs stock under a
 constitution name, which is what happened to the 2026-10-15 constitution cell
 (`dougalldeepmind/2026-10-15-hospital-self-sacrificial-constitution-qwen36-0-plain`: no
-episode's system prompt contains the constitution). `fixes_smoke.py` variant
+episode's system prompt contains the constitution). `hospital/smoke.py` variant
 `paper_constitution` checks both pair seats start with the composed preamble and the seven
 other seats do not carry it.
 

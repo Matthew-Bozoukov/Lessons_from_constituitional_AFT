@@ -70,7 +70,7 @@ def push_snapshots(date: str) -> str:
         "...}. `hospital/actions.py::find_snapshots` indexes them by episode name and seed; "
         "`sabotage_kinds.py` and the harvest read the start-of-iteration stock from them.",
         "provenance": "pulled from each pod's /root/colosseum/logs by "
-        "scratch/colosseum_hospital/fleet.py after its runs; pushed by "
+        "scripts/eval/misalignment/colosseum/hospital/fleet.py after its runs; pushed by "
         f"`uv run python scratch/colosseum_hospital/push_side_data.py --what snapshots` "
         f"@ {git_sha()}",
     }

@@ -81,7 +81,7 @@ class FakeTarget:
 
 @pytest.fixture
 def cfg():
-    return OmegaConf.load("configs/eval/colosseum_hospital.yaml")
+    return OmegaConf.load("configs/eval/colosseum_hospital/default.yaml")
 
 
 @pytest.fixture
@@ -638,8 +638,8 @@ def test_checkout_carries_the_seating_patch():
 # ── the 2026-09-09 harness fixes ──────────────────────────────────────────────
 
 THIRD_PARTY = Path("src/eval/misalignment/colosseum/third_party")
-DIRECTION_A = "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml"
-DIRECTION_B = "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_board_access.yaml"
+DIRECTION_A = "configs/eval/colosseum_hospital/carried-history.yaml"
+DIRECTION_B = "configs/eval/colosseum_hospital/board-access.yaml"
 
 
 def test_base_config_is_the_papers_harness_and_the_sweep_carries_the_switches(

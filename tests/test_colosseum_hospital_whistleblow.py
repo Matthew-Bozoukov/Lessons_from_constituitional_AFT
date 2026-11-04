@@ -4,7 +4,7 @@
 """No network, no GPU.
 
 The patched terrarium package is exercised end to end by scratch/colosseum_hospital/
-fixes_smoke.py (variants whistleblow*). Here it is imported only when TERRARIUM_SITE points
+hospital/smoke.py (variants whistleblow*). Here it is imported only when TERRARIUM_SITE points
 at a patched site-packages; the patch files are always checked as text.
 """
 
@@ -48,10 +48,10 @@ from src.eval.stats import mcnemar_exact, wilson
 from src.infra.huggingface import gate_push
 
 THIRD_PARTY = Path("src/eval/misalignment/colosseum/third_party")
-BASE = "configs/eval/colosseum_hospital.yaml"
-PARENT = "scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml"
-WHISTLEBLOW = "scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow.yaml"
-VISIBLE = "scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow_rationale_visible.yaml"
+BASE = "configs/eval/colosseum_hospital/default.yaml"
+PARENT = "configs/eval/colosseum_hospital/no-retry-plan-optional.yaml"
+WHISTLEBLOW = "configs/eval/colosseum_hospital/whistleblow.yaml"
+VISIBLE = "configs/eval/colosseum_hospital/whistleblow-rationale-visible.yaml"
 PROV, TRIAGE = PAIR
 AGENTS = [PROV] + [
     f"{h}_{r}"

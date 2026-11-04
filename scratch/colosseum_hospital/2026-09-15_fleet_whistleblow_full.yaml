@@ -1,6 +1,6 @@
 # ABOUTME: Fleet plan, the full whistleblowing study: per arm, baseline 1-60 + benign coalition 1-30 +
 # ABOUTME: self-sacrificial 1-30 (rationales stripped) + self-sacrificial 1-60 (rationales visible).
-# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-15_fleet_whistleblow_full.yaml
+# Run: uv run python scripts/eval/misalignment/colosseum/hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-15_fleet_whistleblow_full.yaml
 #
 # Only after the pilot has been read. The memo's sample sizes: 60 seeds for the two cells the
 # calibration leans on most (the baseline's false alarms, the visible self-sacrificial cell's
@@ -24,37 +24,37 @@ pods:
   - name: kunwar-wb-full-ctrl-a
     group: stripped
     target: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
-    config: scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow.yaml
+    config: configs/eval/colosseum_hospital/whistleblow.yaml
     jobs: ["baseline:1-30", "benign_coalition:1-30"]
     cap_h: 6.5
   - name: kunwar-wb-full-ctrl-b
     group: stripped
     target: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
-    config: scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow.yaml
+    config: configs/eval/colosseum_hospital/whistleblow.yaml
     jobs: ["self_sacrificial:1-30", "baseline:31-60"]
     cap_h: 6.5
   - name: kunwar-wb-full-ctrl-v
     group: visible
     target: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
-    config: scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow_rationale_visible.yaml
+    config: configs/eval/colosseum_hospital/whistleblow-rationale-visible.yaml
     jobs: ["self_sacrificial:1-30", "self_sacrificial:31-60"]
     cap_h: 6.5
   # ── difficult-advice arm ────────────────────────────────────────────────────
   - name: kunwar-wb-full-da-a
     group: stripped
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow.yaml
+    config: configs/eval/colosseum_hospital/whistleblow.yaml
     jobs: ["baseline:1-30", "benign_coalition:1-30"]
     cap_h: 6.5
   - name: kunwar-wb-full-da-b
     group: stripped
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow.yaml
+    config: configs/eval/colosseum_hospital/whistleblow.yaml
     jobs: ["self_sacrificial:1-30", "baseline:31-60"]
     cap_h: 6.5
   - name: kunwar-wb-full-da-v
     group: visible
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow_rationale_visible.yaml
+    config: configs/eval/colosseum_hospital/whistleblow-rationale-visible.yaml
     jobs: ["self_sacrificial:1-30", "self_sacrificial:31-60"]
     cap_h: 6.5

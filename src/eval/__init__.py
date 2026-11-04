@@ -218,7 +218,7 @@ EVALS: dict[str, EvalSpec] = {
     # or the plain cooperative prompt. Pools for the same reason the Jira eval does.
     "colosseum_hospital": EvalSpec(
         "misalignment.colosseum.hospital",
-        "configs/eval/colosseum_hospital.yaml",
+        "configs/eval/colosseum_hospital/default.yaml",
         key="hospital",
         pools=True,
         # The condition always; the partner's seat only in a mixed coalition (cfg.partner),

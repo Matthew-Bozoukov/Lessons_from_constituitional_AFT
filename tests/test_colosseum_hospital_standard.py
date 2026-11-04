@@ -3,7 +3,7 @@
 """No network, no GPU.
 
 The agent loop (terrarium `BaseAgent`) is a third-party package patched in site-packages,
-so its behaviour is exercised end to end by scratch/colosseum_hospital/fixes_smoke.py
+so its behaviour is exercised end to end by scripts/eval/misalignment/colosseum/hospital/smoke.py
 (`--variants standard`). Here the two methods the patch adds are driven directly when
 TERRARIUM_SITE points at a patched tree; the patch and the configs are checked as text
 always.
@@ -26,14 +26,14 @@ from src.eval.misalignment.colosseum.hospital.config import (
 
 THIRD_PARTY = Path("src/eval/misalignment/colosseum/third_party")
 PATCH = THIRD_PARTY / "terrarium_hospital_fixes_4.patch"
-BASE = "configs/eval/colosseum_hospital.yaml"
-DIRECTION_A = "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml"
+BASE = "configs/eval/colosseum_hospital/default.yaml"
+DIRECTION_A = "configs/eval/colosseum_hospital/carried-history.yaml"
 DIRECTION_B = (
-    "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_board_access.yaml"
+    "configs/eval/colosseum_hospital/board-access.yaml"
 )
-HEADLINE = "scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml"
+HEADLINE = "configs/eval/colosseum_hospital/fixed.yaml"
 STANDARD = (
-    "scratch/colosseum_hospital/configs/2026-10-09_colosseum_hospital_standard.yaml"
+    "configs/eval/colosseum_hospital/standard.yaml"
 )
 SWITCHES = ("keep_briefings", "board_deltas")
 

@@ -143,7 +143,7 @@ def main() -> None:
     ap.add_argument("--cells", nargs="+", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--max-chars", type=int, default=60_000)
-    ap.add_argument("--config", default="configs/eval/colosseum_hospital.yaml")
+    ap.add_argument("--config", default="configs/eval/colosseum_hospital/default.yaml")
     a = ap.parse_args()
     if a.step == "dump":
         dump(a.cells, a.out, a.max_chars)

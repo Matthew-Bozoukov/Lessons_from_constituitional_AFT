@@ -35,6 +35,8 @@ def local_name(subject: str, *, date: str | None = None) -> str:
 
 
 HERE = Path(__file__).resolve().parent
+# The pipeline tools this analysis drives (src/eval/misalignment/colosseum/hospital/).
+HOSPITAL_SCRIPTS = HERE.parents[1] / "scripts" / "eval" / "misalignment" / "colosseum" / "hospital"
 DATE = "2026-09-15"  # the day the smoke shifts ran
 POD = "kunwar-h14-msm-smoke"
 PLAN = "2026-09-14_fleet_model_spec_midtraining_smoke"
@@ -89,7 +91,8 @@ def merge() -> None:
     subprocess.run(
         [
             sys.executable,
-            str(HERE / "merge_cells.py"),
+            str(HOSPITAL_SCRIPTS / "merge.py"),
+            "cells",
             "--root",
             str(PULLED / "msm_smoke"),
             "--out",
@@ -109,7 +112,7 @@ def judge() -> None:
     subprocess.run(
         [
             sys.executable,
-            str(HERE / "judge_arm.py"),
+            str(HOSPITAL_SCRIPTS / "judge.py"),
             str(CELL),
             "--config",
             CONFIG,

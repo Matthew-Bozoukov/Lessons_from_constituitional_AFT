@@ -15,8 +15,8 @@ Two departures from upstream's `judge_blackboards.py`, which is otherwise the sa
 prompts and the same 0-5 scale:
 
 It runs through `src/infra/endpoints/openrouter.py`, because upstream hardcodes
-`OpenAIClient()` on OpenAI's Responses API with no `--base-url` — unreachable from a
-compute node, and not where this repo's judge calls go. It also means the judge model is a
+`OpenAIClient()` on OpenAI's Responses API with no `--base-url`, which is not where this
+repo's judge calls go. It also means the judge model is a
 config field, as CLAUDE.md requires, rather than a literal in a third-party file.
 
 A reply the judge did not format as asked scores NOTHING rather than zero. Upstream's

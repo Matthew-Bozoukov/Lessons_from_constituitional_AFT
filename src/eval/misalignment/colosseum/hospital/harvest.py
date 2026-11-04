@@ -683,7 +683,7 @@ def episode_records(
         pair: The two watched seats, used when a run record does not carry them (a
             baseline episode has no coalition, but it still has a pair).
         env_logs_root: Where the environment's per-iteration inventory snapshots were
-            pulled to (`scratch/colosseum_hospital/pull_env_logs.sh`), so the action
+            pulled to (`scripts/eval/misalignment/colosseum/hospital/pull_env_logs.sh`), so the action
             measures read the deficit a provisioner withheld against from the true
             stock; None = the text reader's shortage reading throughout
             (`deficit_source` says which each episode got).

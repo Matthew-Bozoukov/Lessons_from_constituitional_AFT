@@ -2,7 +2,7 @@
 # ABOUTME: organisms (Li et al., arXiv 2605.02087): Qwen3-32B LoRAs, served with YaRN to the batch's 65,536 window.
 # Run: uv run evals --target chloeli/qwen-3-32b-philosophy-spec-msm-aft-cot --name colosseum_hospital \
 #        --config scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml condition=self_sacrificial
-#      (on pods: scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-14_fleet_model_spec_midtraining_*.yaml)
+#      (on pods: scripts/eval/misalignment/colosseum/hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-14_fleet_model_spec_midtraining_*.yaml)
 #
 # WHAT THIS TESTS. A sanity check of the 2026-09-14 finding (difficult-advice training makes a seat refuse in private
 # but the pair still sabotages) on someone else's organisms: does Model Spec Midtraining, which cut agentic
@@ -10,7 +10,7 @@
 # goal-guarding), also cut sabotage in the multi-agent Hospital? The arms are the paper's own Qwen3-32B Philosophy
 # Spec LoRAs; the seven other seats are the paper's baseline arm, as our control adapter was in our cells.
 #
-# Identical to scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml except: the peer and arm labels,
+# Identical to configs/eval/colosseum_hospital/no-retry-plan-optional.yaml except: the peer and arm labels,
 # max_concurrent_runs (dense-attention KV on one H200), and the serving block (YaRN, below). Compare these arms with
 # each other, not with the Qwen3.6 cells: a different base model, served with rope scaling.
 

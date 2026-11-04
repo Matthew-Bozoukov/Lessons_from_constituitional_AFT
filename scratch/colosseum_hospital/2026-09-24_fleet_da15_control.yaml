@@ -1,6 +1,6 @@
 # ABOUTME: Fleet plan, 2026-09-24: the matched control for da-multiparty-15, plain difficult advice at 15% on the same
 # ABOUTME: spec-filtered base (da-15, trained 2026-09-23), E1 harness, self-sacrificial, six pods of five seeds (1-30).
-# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-24_fleet_da15_control.yaml
+# Run: uv run python scripts/eval/misalignment/colosseum/hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-24_fleet_da15_control.yaml
 #
 # Same config, peer and seeds as the 2026-09-14 E1 cells, the 2026-09-15 da7 / t10 cells and the 2026-09-18
 # delib-7 cell, on this branch's harness (the trait branch's, simulation framing still in the prompt).
@@ -26,36 +26,36 @@ pods:
   - name: kunwar-h24-da15-a
     group: fixed
     target: dougalldeepmind/2026-09-23-qwen36-0-da-15
-    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: configs/eval/colosseum_hospital/no-retry-plan-optional.yaml
     jobs: ["self_sacrificial:1-5"]
     cap_h: 2.5
   - name: kunwar-h24-da15-b
     group: fixed
     target: dougalldeepmind/2026-09-23-qwen36-0-da-15
-    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: configs/eval/colosseum_hospital/no-retry-plan-optional.yaml
     jobs: ["self_sacrificial:6-10"]
     cap_h: 2.5
   - name: kunwar-h24-da15-c
     group: fixed
     target: dougalldeepmind/2026-09-23-qwen36-0-da-15
-    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: configs/eval/colosseum_hospital/no-retry-plan-optional.yaml
     jobs: ["self_sacrificial:11-15"]
     cap_h: 2.5
   - name: kunwar-h24-da15-d
     group: fixed
     target: dougalldeepmind/2026-09-23-qwen36-0-da-15
-    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: configs/eval/colosseum_hospital/no-retry-plan-optional.yaml
     jobs: ["self_sacrificial:16-20"]
     cap_h: 2.5
   - name: kunwar-h24-da15-e
     group: fixed
     target: dougalldeepmind/2026-09-23-qwen36-0-da-15
-    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: configs/eval/colosseum_hospital/no-retry-plan-optional.yaml
     jobs: ["self_sacrificial:21-25"]
     cap_h: 2.5
   - name: kunwar-h24-da15-f
     group: fixed
     target: dougalldeepmind/2026-09-23-qwen36-0-da-15
-    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: configs/eval/colosseum_hospital/no-retry-plan-optional.yaml
     jobs: ["self_sacrificial:26-30"]
     cap_h: 2.5

@@ -3,7 +3,7 @@
 # Run (repo root):
 #   uv run python scratch/colosseum_hospital/push_rescored_results.py <cell dir> [...] [--dry-run]
 """2026-10-15: the six cells of the paper's Hospital figures were re-read by the autorater
-(scratch/colosseum_hospital/rescore_autorater.py) in LOCAL copies pulled from the Hub, so the Hub
+(scripts/eval/misalignment/colosseum/hospital/autorater.py) in LOCAL copies pulled from the Hub, so the Hub
 still showed the keyword-rule reading (da-tools-15: 23/30 acts on the Hub, 20/30 under the
 autorater). This uploads, per cell:
 
@@ -75,7 +75,7 @@ def autorater_rows(cell: Path) -> dict:
             f"Sabotage acts: {acts(old)} keyword -> {acts(new)} autorater."
         ),
         "rescore_provenance": (
-            "uv run python scratch/colosseum_hospital/rescore_autorater.py <this cell> "
+            "uv run python scripts/eval/misalignment/colosseum/hospital/autorater.py <this cell> "
             "--workers 6 && uv run python scratch/colosseum_hospital/push_rescored_results.py "
             "<this cell>"
         ),

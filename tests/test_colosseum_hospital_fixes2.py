@@ -4,7 +4,7 @@
 """No network, no GPU.
 
 The agent loop (terrarium `BaseAgent`) is a third-party package patched in site-packages,
-so its behaviour is exercised end to end by scratch/colosseum_hospital/fixes_smoke.py
+so its behaviour is exercised end to end by scripts/eval/misalignment/colosseum/hospital/smoke.py
 against a real checkout. Here it is imported only when TERRARIUM_SITE points at a patched
 site-packages (or the package is installed); the patch files are checked as text always.
 """
@@ -29,24 +29,24 @@ from src.eval.misalignment.colosseum.publish import repo_name_for
 from src.infra.huggingface import gate_push
 
 THIRD_PARTY = Path("src/eval/misalignment/colosseum/third_party")
-BASE = "configs/eval/colosseum_hospital.yaml"
-DIRECTION_A = "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml"
-DIRECTION_B = "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_board_access.yaml"
+BASE = "configs/eval/colosseum_hospital/default.yaml"
+DIRECTION_A = "configs/eval/colosseum_hospital/carried-history.yaml"
+DIRECTION_B = "configs/eval/colosseum_hospital/board-access.yaml"
 # The four 2026-09-13 configs: the parent they copy and the switches they change.
 NEW_CONFIGS = {
-    "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_retry_explained.yaml": (
+    "configs/eval/colosseum_hospital/retry-explained.yaml": (
         DIRECTION_A,
         {"retry_explains_itself": True},
     ),
-    "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_no_retry.yaml": (
+    "configs/eval/colosseum_hospital/no-retry.yaml": (
         DIRECTION_A,
         {"end_turn_on_no_tool_call": True},
     ),
-    "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_plan_optional.yaml": (
+    "configs/eval/colosseum_hospital/plan-optional.yaml": (
         DIRECTION_A,
         {"plan_post_optional": True},
     ),
-    "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_board_idle.yaml": (
+    "configs/eval/colosseum_hospital/board-idle.yaml": (
         DIRECTION_B,
         {"post_message_in_execution": False, "execution_prompt_allows_status": False},
     ),
@@ -270,7 +270,7 @@ def test_the_harness_applies_both_new_patches_after_the_first():
     assert TERRARIUM_PATCHES.index("terrarium_hospital_fixes.patch") < TERRARIUM_PATCHES.index(
         "terrarium_hospital_fixes_2.patch"
     )
-    boot = Path("scratch/colosseum_hospital/pod_bootstrap.sh").read_text(encoding="utf-8")
+    boot = Path("scripts/eval/misalignment/colosseum/hospital/pod_bootstrap.sh").read_text(encoding="utf-8")
     assert "ensure_harness" in boot and "_terrarium_fixes_version" in boot
 
 
@@ -353,10 +353,10 @@ def test_the_runner_accepts_the_stamped_package_and_names_the_second_patch_other
 
 # ── 2026-09-15: no "distributed simulation" opening ───────────────────────────
 
-HOSPITAL_CONFIGS = [
-    BASE,
-    *sorted(str(p) for p in Path("scratch/colosseum_hospital/configs").glob("*.yaml")),
-]
+HOSPITAL_CONFIGS = sorted(
+    {BASE, *(str(p) for p in Path("configs/eval/colosseum_hospital").glob("*.yaml")),
+     *(str(p) for p in Path("scratch/colosseum_hospital/configs").glob("*.yaml"))}
+)
 
 
 @pytest.mark.parametrize("path", HOSPITAL_CONFIGS)

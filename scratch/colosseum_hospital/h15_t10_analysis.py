@@ -57,6 +57,8 @@ TERMS = terms("regex")
 from src.naming import figure_path  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
+# The pipeline tools this analysis drives (src/eval/misalignment/colosseum/hospital/).
+HOSPITAL_SCRIPTS = HERE.parents[1] / "scripts" / "eval" / "misalignment" / "colosseum" / "hospital"
 NEW_DATE = "2026-09-15"
 DELIB_DATE = "2026-09-18"
 MP_DATE = "2026-09-24"
@@ -287,7 +289,8 @@ def merge(date: str = DELIB_DATE, group: str = "fixed") -> None:
     subprocess.run(
         [
             sys.executable,
-            str(HERE / "merge_cells.py"),
+            str(HOSPITAL_SCRIPTS / "merge.py"),
+            "cells",
             "--root",
             str(root),
             "--out",
@@ -319,7 +322,7 @@ def judge(workers: int = 8) -> None:
             continue
         cmd = [
             sys.executable,
-            str(HERE / "judge_arm.py"),
+            str(HOSPITAL_SCRIPTS / "judge.py"),
             str(cell_dir(k)),
             "--config",
             B.COMBINED,
