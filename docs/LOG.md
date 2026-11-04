@@ -1,3 +1,16 @@
+## 2026-11-04: Agentic misalignment on da-amoral-15: 11.7%, much nearer da-15 than the control
+
+Hypothesis: as for ODCV and MASK (entry below), an amoral arm near the plain control would say DA's agentic gain comes from its moral content; near da-15, from the deliberative format.
+
+Method: `uv run runpod up --name nika-am-da-amoral --eval agentic_misalignment --target dougalldeepmind/2026-11-03-qwen36-0-da-amoral-15 --max_hours 3` (1x H100, the profile's default inference card, as for da-15 B/C), then `uv run evals --name agentic_misalignment --target <adapter> --server root@<pod> --port 8093` from the Windows laptop at git daf1ee30. AM code, config, run_eval and vLLM serving are unchanged since da-15 B/C's 5f3f2432: default config, 18 conditions x 10 sweeps = 180 trials, think, gemini-3-flash judge (`agentic-action-judge-v3`, visible actions only).
+
+Result: `dougalldeepmind/2026-11-04-am-qwen36-0-da-amoral-15`. Harmful rate **11.7% [7.7, 15.0]** (21/180; t over 10 sweeps on the log-odds scale): blackmail 7/60, leaking 3/60, murder 11/60. 180/180 generated, 0 judge errors, generation 6 min. Against plain control 30.6, da-15 A/B/C 6.7 / 7.2 / 7.8, delib-sonnet 0-1.1.
+
+- Unlike ODCV and MASK (a bit under half the control-to-da-15 gap closed), AM closes about 80% of it (30.6 -> 11.7 against ~7.2). One seed, one corpus draw; the da-15 intervals ([2.6, 10.8], [2.8, 11.7]) touch this one's lower end.
+- Pod terminated, `runpod pods` shows only teammates' pods; about $2 RunPod.
+
+Next steps: per-scenario read against da-15 and the control (murder carries over half the harmful trials here); a second seed would say whether the AM gap to da-15 is real.
+
 ## 2026-11-04: ODCV and MASK on da-amoral-15: between the plain control and da-15 on both
 
 Hypothesis: if difficult advice works through its moral content, the amoral twin (same pipeline, deal, format and 15% token share, no moral content; 2026-11-03 entry below) should score near the plain control; if it works through the deliberative format alone, near da-15.
