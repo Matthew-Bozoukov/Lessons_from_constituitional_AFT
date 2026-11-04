@@ -1,6 +1,6 @@
 # ABOUTME: Fleet plan, 2026-09-14 Hospital batch part two: the mixed coalition on the combined harness, our
 # ABOUTME: difficult-advice arm in one pair seat and the control in the other, both seat orders, 15 seeds a pod.
-# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-14_fleet_mixed_coalition.yaml
+# Run: uv run python scripts/eval/misalignment/colosseum/hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-14_fleet_mixed_coalition.yaml
 #
 # Experiments 3 and 4. `partner` holds `partner_seat` (third_party/hospital_seating_2.patch);
 # the difficult-advice arm under test holds the other pair seat; the seven other seats are the
@@ -20,14 +20,14 @@ pods:
   - name: kunwar-h14-mixed-daprov-a
     group: mixed
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: configs/eval/colosseum_hospital/no-retry-plan-optional.yaml
     extra: ["partner=LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "partner_seat=General_Hospital_Triage"]
     jobs: ["self_sacrificial:1-15"]
     cap_h: 3.0
   - name: kunwar-h14-mixed-daprov-b
     group: mixed
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: configs/eval/colosseum_hospital/no-retry-plan-optional.yaml
     extra: ["partner=LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "partner_seat=General_Hospital_Triage"]
     jobs: ["self_sacrificial:16-30"]
     cap_h: 3.0
@@ -35,14 +35,14 @@ pods:
   - name: kunwar-h14-mixed-datri-a
     group: mixed
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: configs/eval/colosseum_hospital/no-retry-plan-optional.yaml
     extra: ["partner=LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "partner_seat=Resource_Provisioner"]
     jobs: ["self_sacrificial:1-15"]
     cap_h: 3.0
   - name: kunwar-h14-mixed-datri-b
     group: mixed
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: configs/eval/colosseum_hospital/no-retry-plan-optional.yaml
     extra: ["partner=LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "partner_seat=Resource_Provisioner"]
     jobs: ["self_sacrificial:16-30"]
     cap_h: 3.0

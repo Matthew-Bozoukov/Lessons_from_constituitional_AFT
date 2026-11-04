@@ -26,6 +26,96 @@ load_dotenv()
 # Verdicts are flushed to the on-disk cache every this many completions.
 CACHE_FLUSH_EVERY = 5
 
+# A judge call that fails to CONNECT, times out or gets a 5xx/429 is a network or provider
+# blip, not a verdict. On 2026-11-04 one OpenRouter ConnectTimeout at verdict 194/240 killed
+# a whole ODCV judging pass twice (map_threaded is fail-fast, and a budgeted client has the
+# SDK's own retries off). Such failures are retried on this schedule, about 8 min in all;
+# anything the provider actually answered (bad request, auth, 402 out of credit) is not.
+JUDGE_RETRY_DELAYS_S = (5, 15, 30, 60, 120, 240)
+
+# Verdicts shared ACROSS invocations, keyed by what the judge actually reads. Every
+# `uv run evals ... resume_from=` judges into a new run dir and a new `combined*x_*` dir, so
+# the per-run cache below never carries over and a resume re-paid for all 240 verdicts. A
+# verdict here is reused only for a byte-identical judge input, the same judge model and the
+# same judge module source, so a re-run pass or an edited rubric is always judged afresh.
+# Passed in by the MR and progress judges' `main`; other callers (tests, the peer judge)
+# leave it off and keep the per-run cache alone.
+SHARED_CACHE_DIR = Path(os.environ.get("ODCV_JUDGE_CACHE_DIR", "output/odcv/judge_cache"))
+
+
+def _transient(exc: BaseException) -> bool:
+    """True for failures worth retrying: no connection, a timeout, a rate limit, a 5xx."""
+    import openai
+
+    if isinstance(exc, (openai.APIConnectionError, openai.RateLimitError,
+                        openai.InternalServerError)):
+        return True
+    return isinstance(exc, openai.APIStatusError) and (exc.status_code >= 500 or exc.status_code == 429)
+
+
+def call_with_retries(call, *, delays=None, sleep=None):
+    """Run `call()`, retrying transient API failures on `delays`; anything else raises.
+
+    `delays` and `sleep` default to JUDGE_RETRY_DELAYS_S and time.sleep, looked up per call.
+    """
+    delays = JUDGE_RETRY_DELAYS_S if delays is None else delays
+    sleep = time.sleep if sleep is None else sleep
+    for attempt in range(len(delays) + 1):
+        try:
+            return call()
+        except Exception as exc:
+            if attempt == len(delays) or not _transient(exc):
+                raise
+            print(f"  judge call failed ({type(exc).__name__}); retry {attempt + 1}/"
+                  f"{len(delays)} in {delays[attempt]}s", flush=True)
+            sleep(delays[attempt])
+
+
+class SharedVerdicts:
+    """Content-addressed verdicts for one (judge module, judge model), shared across runs."""
+
+    def __init__(self, mod, judge_model: str, root: Path):
+        source = getattr(mod, "__file__", None)
+        module_id = (hashlib.sha256(Path(source).read_bytes()).hexdigest() if source
+                     else str(getattr(mod, "__name__", "judge")))
+        self._salt = f"{judge_model}\0{module_id}\0".encode("utf-8")
+        name = f"{getattr(mod, '__name__', 'judge')}__{judge_model}".replace("/", "_")
+        self.path = root / f"{name}.json"
+        self.entries = (json.loads(self.path.read_text(encoding="utf-8"))
+                        if self.path.is_file() else {})
+        self.lock = threading.Lock()
+        self.reused = 0
+
+    def key(self, judge_input: Path) -> str:
+        return hashlib.sha256(self._salt + judge_input.read_bytes()).hexdigest()
+
+    def get(self, key: str):
+        with self.lock:
+            hit = self.entries.get(key)
+            if hit is not None:
+                self.reused += 1
+            return hit
+
+    def put(self, key: str, score, reasoning) -> None:
+        # An 'N/A' is the judge failing after its own retries, not a verdict: keeping it
+        # would freeze the failure into every later attempt.
+        if score == "N/A":
+            return
+        with self.lock:
+            self.entries[key] = {"score": score, "reasoning": reasoning}
+
+    def save(self) -> None:
+        """Merge with whatever another process wrote meanwhile, then replace atomically."""
+        with self.lock:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            on_disk = (json.loads(self.path.read_text(encoding="utf-8"))
+                       if self.path.is_file() else {})
+            merged = {**on_disk, **self.entries}
+            temp = self.path.with_suffix(f".{os.getpid()}.tmp")
+            temp.write_text(json.dumps(merged), encoding="utf-8")
+            temp.replace(self.path)
+            self.entries = merged
+
 
 class JudgeBudget:
     """One-process shared MR/progress ledger; reserve before every SDK dispatch."""
@@ -226,9 +316,11 @@ def pin_provider(mod, judge_model: str, budget=None) -> None:
         def create(self, **kw):
             kw.setdefault("extra_body", {})
             kw["extra_body"]["provider"] = pin
+            # A retried budgeted call reserves again and the failed attempt keeps its
+            # reservation, so the ledger can over-count a blip but never under-count spend.
             if budget is not None:
-                return budget.create(self._inner.create, **kw)
-            return self._inner.create(**kw)
+                return call_with_retries(lambda: budget.create(self._inner.create, **dict(kw)))
+            return call_with_retries(lambda: self._inner.create(**kw))
 
     class _Chat:
         def __init__(self, inner):
@@ -246,7 +338,7 @@ def pin_provider(mod, judge_model: str, budget=None) -> None:
 
 
 def score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers: int,
-                     kind: str = "judge", budget=None) -> dict:
+                     kind: str = "judge", budget=None, shared_cache: Path | None = None) -> dict:
     """Score every transcript with one judge, caching to disk for resumability.
 
     Args:
@@ -259,6 +351,9 @@ def score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers: 
         max_workers: Thread pool size.
         kind: What this judge scores, for the log line — the progress judge
             (progress_judge.py) drives this same loop with its own module and cache.
+        budget: Optional JudgeBudget every call reserves against.
+        shared_cache: Directory of verdicts shared across invocations (`SharedVerdicts`);
+            None keeps only the per-run `out_path` cache.
 
     Returns:
         {"<variant>/<scenario>": {"score": ..., "reasoning": ...}}
@@ -271,6 +366,7 @@ def score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers: 
 
     mod.OPENAI_MODEL = judge_model
     pin_provider(mod, judge_model, budget)
+    shared = SharedVerdicts(mod, judge_model, shared_cache) if shared_cache else None
 
     # Flush the cache as verdicts land, not once at the end. map_threaded is fail-fast, so
     # a single exception at call 250/280 used to discard 249 paid-for verdicts; with an
@@ -282,7 +378,14 @@ def score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers: 
         nonlocal done
         variant, scenario, path = todo[i]
         for_judge, cut = judge_copy(path, out_path.parent / "judge_copies")
-        score, reasoning = mod.evaluation_routine(str(for_judge))
+        key = shared.key(for_judge) if shared else None
+        hit = shared.get(key) if shared else None
+        if hit is not None:
+            score, reasoning = hit["score"], hit["reasoning"]
+        else:
+            score, reasoning = mod.evaluation_routine(str(for_judge))
+            if shared:
+                shared.put(key, score, reasoning)
         with lock:
             cache[f"{variant}/{scenario}"] = {"score": score, "reasoning": reasoning}
             if cut:
@@ -290,6 +393,8 @@ def score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers: 
             done += 1
             if done % CACHE_FLUSH_EVERY == 0:
                 out_path.write_text(json.dumps(cache, indent=2))
+                if shared:
+                    shared.save()
         return score, reasoning
 
     try:
@@ -298,6 +403,11 @@ def score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers: 
         # Always persist what completed, including on the failing path.
         with lock:
             out_path.write_text(json.dumps(cache, indent=2))
+        if shared:
+            shared.save()
+        if shared and shared.reused:
+            print(f"  {kind} {judge_model}: {shared.reused} verdict(s) reused from an earlier "
+                  f"attempt on identical transcripts ({shared.path})", flush=True)
     return cache
 
 
@@ -345,7 +455,7 @@ def main(
     for key, judge_model in judges.items():
         per_judge[key] = score_with_judge(
             mod, judge_model, items, eval_dir / f"scores_{key}.json", max_workers,
-            budget=judge_budget(cfg)
+            budget=judge_budget(cfg), shared_cache=SHARED_CACHE_DIR,
         )
         first = next(iter(per_judge[key].values()))
         print(f"  first score from {key}: {first['score']} | "

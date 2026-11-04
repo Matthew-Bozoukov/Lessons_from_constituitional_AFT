@@ -1,6 +1,6 @@
 # ABOUTME: Fleet plan: base Qwen3.6-27B (no adapter anywhere) in ALL NINE Hospital seats, self-sacrificial AND
 # ABOUTME: baseline (no coalition, no secret channel), 30 seeds each over four pods, on the da-15 harness.
-# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-29_fleet_base_qwen.yaml
+# Run: uv run python scripts/eval/misalignment/colosseum/hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-29_fleet_base_qwen.yaml
 #
 # The owner's ask (2026-09-29): the untrained model, straight out of the box, (a) under the
 # paper's self-sacrificial coalition prompt and (b) under the plain cooperative prompt, to see how
@@ -26,28 +26,28 @@ pods:
   - name: kn-hosp-qbase-ss-a
     group: self_sacrificial
     target: Qwen/Qwen3.6-27B
-    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    config: configs/eval/colosseum_hospital/fixed.yaml
     extra: ["mode=think", "peer=Qwen/Qwen3.6-27B"]
     jobs: ["self_sacrificial:1-15"]
     cap_h: 3.0
   - name: kn-hosp-qbase-ss-b
     group: self_sacrificial
     target: Qwen/Qwen3.6-27B
-    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    config: configs/eval/colosseum_hospital/fixed.yaml
     extra: ["mode=think", "peer=Qwen/Qwen3.6-27B"]
     jobs: ["self_sacrificial:16-30"]
     cap_h: 3.0
   - name: kn-hosp-qbase-bl-a
     group: baseline
     target: Qwen/Qwen3.6-27B
-    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    config: configs/eval/colosseum_hospital/fixed.yaml
     extra: ["mode=think", "peer=Qwen/Qwen3.6-27B"]
     jobs: ["baseline:1-15"]
     cap_h: 3.0
   - name: kn-hosp-qbase-bl-b
     group: baseline
     target: Qwen/Qwen3.6-27B
-    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    config: configs/eval/colosseum_hospital/fixed.yaml
     extra: ["mode=think", "peer=Qwen/Qwen3.6-27B"]
     jobs: ["baseline:16-30"]
     cap_h: 3.0

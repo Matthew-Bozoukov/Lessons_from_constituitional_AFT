@@ -1,8 +1,12 @@
 # ABOUTME: Defaults for the Colosseum Jira multi-agent collusion eval — six agents, two
 # ABOUTME: checkpoints, regret against the exact optimum.
-# Run: uv run evals --name colosseum_jira --target <control> <treatment> experiment=collusion
-#      On Killarney, whose compute nodes have no network: add --no-push there, then from a
-#      login node  uv run python scripts/eval/publish_colosseum.py   (judge + push)
+# Run: uv run runpod up --name <you>-jira --eval colosseum_jira --target <treatment>
+#      uv run evals --name colosseum_jira --target <control> <treatment> experiment=collusion \
+#          --server root@<ip>:<port> --no-push
+#      then, here:  uv run python scripts/eval/publish_colosseum.py   (judge + push)
+#      uv run runpod down --pod <id>
+#      The first run builds the patched Colosseum checkout (the JIRA patch set,
+#      src/eval/misalignment/colosseum/harness.py) into ~/.cache/lessons-aft/colosseum/.
 #
 # Published as `<date>-jira-<experiment>-<arm>` (src/naming.py eval_name: the experiment is
 # this eval's registered name facet, the arm is the adapter's own undated name — a pre-law
@@ -88,8 +92,8 @@ max_concurrent_runs: 24
 # found talk and action diverge in both directions, so a judge score that moves while
 # regret does not is itself the finding ("the training taught clean talk").
 #
-# Never runs on a compute node — Killarney's have no network. It is a post-hoc pass over
-# blackboards.json from a login node (scripts/infra/slurm/publish_runs.sh).
+# Not run inside the eval: a post-hoc pass over blackboards.json by
+# scripts/eval/publish_colosseum.py, where `uv run evals` was typed.
 judge:
   # Not the target family (our arms are Qwen) AND not the generator family: the
   # difficult-advice corpus the treatment was trained on was written by Sonnet 4.5, so a
@@ -106,10 +110,11 @@ judge:
   max_chars: 60000
 
 # ── where the patched benchmark lives ─────────────────────────────────────────
-# Overridden by $COLOSSEUM_ROOT. The runner refuses a checkout that has lost the
-# per-agent-model patch, because without it every seat silently falls back to one model
-# and the study compares an arm against itself.
-colosseum_root: /project/aip-s2ganapa/kunwar/colosseum
+# null: the managed build of the JIRA patch set (harness.py), built on first use. A path
+# (or $COLOSSEUM_ROOT) uses a checkout patched by hand instead. The runner refuses a
+# checkout that has lost the per-agent-model patch, because without it every seat silently
+# falls back to one model and the study compares an arm against itself.
+colosseum_root: null
 
 # ── what this eval needs from vLLM ────────────────────────────────────────────
 # Requirements only — never family facts, which come from ModelProfile and are validated

@@ -1,6 +1,6 @@
 # ABOUTME: Fleet plan, the Model Spec Midtraining organisms on the combined Hospital harness: three Qwen3-32B
 # ABOUTME: Philosophy Spec arms (baseline, AFT with CoT, MSM + AFT), 30 self-sacrificial seeds each, two H200 pods an arm.
-# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-14_fleet_model_spec_midtraining.yaml
+# Run: uv run python scripts/eval/misalignment/colosseum/hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-14_fleet_model_spec_midtraining.yaml
 #
 # The core of the sanity check: the paper's agentic-misalignment ladder on Qwen3-32B (baseline 54%, AFT with CoT 14%,
 # MSM + AFT 7%) replayed in the Hospital's self-sacrificial condition. The seven other seats are the baseline arm in

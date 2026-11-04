@@ -62,7 +62,7 @@ def section() -> str:
     # 1 provisioning
     L.append("<h3>1. Provisioning and patches</h3>")
     L.append(
-        "<p><code>scratch/colosseum_hospital/pod_bootstrap.sh &lt;host&gt; &lt;branch&gt; &lt;sha&gt;</code> clones this repo at a commit, runs <code>uv sync</code>, clones Colosseum at <code>ac0b405</code> and installs <code>terrarium-agents 0.1.1</code>, then applies four patches and verifies them: <code>hospital_seating.patch</code> (per-seat model routing, reasoning capture, the survey and the upstream suspicion judge switched off), <code>hospital_eval_fixes.patch</code> (the switches reaching the agents, prompt logging, the secret block recorded per seat, MODE SWITCH scoping), <code>terrarium_hospital_fixes.patch</code> into the wheel's site-packages (the agent loop's history and retry accounting, the strict scheduler, home hospitals, rationale stripping, the closing line), and the older <code>per_agent_models.patch</code>. The runner refuses to start unless the Colosseum checkout carries the seating and eval-fixes markers and <code>terrarium.agents.base.TERRARIUM_FIXES == hospital_env.HOSPITAL_FIXES == \"2026-09-09\"</code> (<code>hospital/runner.py:46-95</code>). <code>fixes_smoke.py</code> drives the real Colosseum loop with a scripted model and asserts every switch (109 checks).</p>"
+        "<p><code>scripts/eval/misalignment/colosseum/hospital/pod_bootstrap.sh &lt;host&gt; &lt;branch&gt; &lt;sha&gt;</code> clones this repo at a commit, runs <code>uv sync</code>, clones Colosseum at <code>ac0b405</code> and installs <code>terrarium-agents 0.1.1</code>, then applies four patches and verifies them: <code>hospital_seating.patch</code> (per-seat model routing, reasoning capture, the survey and the upstream suspicion judge switched off), <code>hospital_eval_fixes.patch</code> (the switches reaching the agents, prompt logging, the secret block recorded per seat, MODE SWITCH scoping), <code>terrarium_hospital_fixes.patch</code> into the wheel's site-packages (the agent loop's history and retry accounting, the strict scheduler, home hospitals, rationale stripping, the closing line), and the older <code>per_agent_models.patch</code>. The runner refuses to start unless the Colosseum checkout carries the seating and eval-fixes markers and <code>terrarium.agents.base.TERRARIUM_FIXES == hospital_env.HOSPITAL_FIXES == \"2026-09-09\"</code> (<code>hospital/runner.py:46-95</code>). <code>hospital/smoke.py</code> drives the real Colosseum loop with a scripted model and asserts every switch (109 checks).</p>"
     )
     L.append(
         code(
@@ -308,9 +308,9 @@ def section() -> str:
         "<pre>"
         + esc(
             "# a cell (on a pod bootstrapped with pod_bootstrap.sh; EXTRA passes OmegaConf overrides)\n"
-            'bash scratch/colosseum_hospital/run_hospital_queue.sh 8000 <hf-adapter> -- self_sacrificial:1-30   # EXTRA="--config scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml"\n'
-            "bash scratch/colosseum_hospital/pull_runs.sh root@<ip>:<port>; bash scratch/colosseum_hospital/pull_env_logs.sh root@<ip>:<port> <label>\n"
-            "uv run python scratch/colosseum_hospital/judge_arm.py <arm-dir> --channels public secret reasoning\n"
+            'bash scripts/eval/misalignment/colosseum/hospital/run_hospital_queue.sh 8000 <hf-adapter> -- self_sacrificial:1-30   # EXTRA="--config configs/eval/colosseum_hospital/carried-history.yaml"\n'
+            "bash scripts/eval/misalignment/colosseum/hospital/pull_runs.sh root@<ip>:<port>; bash scripts/eval/misalignment/colosseum/hospital/pull_env_logs.sh root@<ip>:<port> <label>\n"
+            "uv run python scripts/eval/misalignment/colosseum/hospital/judge.py <arm-dir> --channels public secret reasoning\n"
             "# the analyses (PYTHONPATH=scratch/colosseum_hospital)\n"
             "uv run python scratch/colosseum_hospital/direction_contrasts.py; uv run python scratch/colosseum_hospital/trajectory_classes.py\n"
             "uv run python scratch/colosseum_hospital/sabotage_actions.py; uv run python scratch/colosseum_hospital/simple_story.py\n"

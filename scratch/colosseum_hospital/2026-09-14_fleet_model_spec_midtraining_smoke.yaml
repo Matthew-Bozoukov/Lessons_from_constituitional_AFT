@@ -1,6 +1,6 @@
 # ABOUTME: Fleet plan, smoke for the Model Spec Midtraining organisms: one H200 pod, the MSM + AFT arm beside the
 # ABOUTME: paper's baseline, three self-sacrificial seeds; proves YaRN boots at 65,536, tool calls parse, and times a shift.
-# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-14_fleet_model_spec_midtraining_smoke.yaml
+# Run: uv run python scripts/eval/misalignment/colosseum/hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-14_fleet_model_spec_midtraining_smoke.yaml
 #
 # What to read before the full run: the boot log (the YaRN warning, no startup error), the harvest's tool_errors and
 # turns_without_tools (Hermes parsing), the reasoning channel (the qwen3 parser split the think block), and the

@@ -231,7 +231,7 @@ def main(
         per_judge[key] = odcv_judge.score_with_judge(
             sys.modules[__name__], judge_model, items,
             eval_dir / f"progress_{key}.json", max_workers, kind="progress judge",
-            budget=odcv_judge.judge_budget(cfg),
+            budget=odcv_judge.judge_budget(cfg), shared_cache=odcv_judge.SHARED_CACHE_DIR,
         )
         first = next(iter(per_judge[key].values()))
         print(f"  first progress score from {key}: {first['score']} | "

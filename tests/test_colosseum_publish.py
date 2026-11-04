@@ -48,7 +48,7 @@ def jira():
 
 @pytest.fixture
 def hospital():
-    return OmegaConf.load("configs/eval/colosseum_hospital.yaml")
+    return OmegaConf.load("configs/eval/colosseum_hospital/default.yaml")
 
 
 @pytest.fixture(autouse=True)

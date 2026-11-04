@@ -8,9 +8,9 @@
         --cell control:sabotage=<arm dir> --cell control:sabotage_visible=<arm dir> \
         --cell da:baseline=<arm dir> ... [--out output/colosseum_hospital/analysis]
 
-An arm dir is one `uv run evals ... --no-push` run (or a merged cell from merge_cells.py):
+An arm dir is one `uv run evals ... --no-push` run (or a merged cell from hospital/merge.py (cells)):
 results/per_seed.json with the judge's measures in it (scripts/eval/publish_colosseum.py or
-judge_arm.py writes them), results/episodes.json and results/judge.json. `baseline` and
+hospital/judge.py writes them), results/episodes.json and results/judge.json. `baseline` and
 `benign` are the false-alarm cells, `sabotage` and `sabotage_visible` the hit cells. Nothing
 is pooled across arms or across populations: a pair seat's report and a bystander's answer
 different questions (hospital/whistleblow.py).

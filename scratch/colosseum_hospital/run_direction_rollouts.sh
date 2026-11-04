@@ -15,15 +15,17 @@ PORT="$1"; SEED="$2"; CONDITION="$3"; TARGET="$4"; shift 4
 CONFIGS=("$@")
 if [ "${#CONFIGS[@]}" -eq 0 ]; then
     CONFIGS=(
-        scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml
-        scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_board_access.yaml
+        configs/eval/colosseum_hospital/carried-history.yaml
+        configs/eval/colosseum_hospital/board-access.yaml
     )
 fi
 
 cd /root/work
 export PATH=/usr/local/bin:/root/.local/bin:$PATH
 export HF_HOME=/workspace/hf
-export COLOSSEUM_ROOT=/root/colosseum
+# No COLOSSEUM_ROOT: the runner uses the managed harness (colosseum/harness.py), which the
+# bootstrap built; naming a checkout would bypass its patched terrarium copy.
+unset COLOSSEUM_ROOT
 export VLLM_USE_FLASHINFER_SAMPLER=0
 mkdir -p output/logs
 SLOG="output/logs/directions_${PORT}.log"

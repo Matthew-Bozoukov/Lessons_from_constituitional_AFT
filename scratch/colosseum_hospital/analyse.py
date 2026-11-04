@@ -725,7 +725,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", default="output/colosseum_hospital")
     ap.add_argument("--out", default="output/colosseum_hospital/analysis")
-    ap.add_argument("--config", default="configs/eval/colosseum_hospital.yaml")
+    ap.add_argument("--config", default="configs/eval/colosseum_hospital/default.yaml")
     args = ap.parse_args()
     cfg = OmegaConf.load(args.config)
     out = Path(args.out)

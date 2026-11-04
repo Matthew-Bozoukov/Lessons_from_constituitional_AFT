@@ -5,9 +5,9 @@
 
 `uv run evals --name colosseum_hospital ...` is the whole eval: the runner judges its own
 episodes (hospital/runner.py) and run_eval names, tags and pushes the arm. This module is
-for a run dir that invocation left unfinished — `--no-push` on a host with no route to the
-Hub (Killarney's compute nodes, the Jira eval's home, where the judge cannot run either), a
-merged cell assembled from several pods' pieces (scratch/colosseum_hospital/merge_cells.py),
+for a run dir that invocation left unfinished — a Jira run given `--no-push` (its judge is
+this post-hoc pass, run where `uv run evals` was typed), a
+merged cell assembled from several pods' pieces (scripts/eval/misalignment/colosseum/hospital/merge.py cells),
 a run whose push died — and it is held to the same contract. The NAME is
 `src.naming.eval_name` over the run's own `model_key` and the eval's registered name facets
 (`src.eval.run_variant`, read off the config in `metadata/run_meta.json`); the tags are

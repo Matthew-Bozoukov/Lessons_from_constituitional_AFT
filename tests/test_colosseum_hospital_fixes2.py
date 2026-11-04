@@ -4,7 +4,7 @@
 """No network, no GPU.
 
 The agent loop (terrarium `BaseAgent`) is a third-party package patched in site-packages,
-so its behaviour is exercised end to end by scratch/colosseum_hospital/fixes_smoke.py
+so its behaviour is exercised end to end by scripts/eval/misalignment/colosseum/hospital/smoke.py
 against a real checkout. Here it is imported only when TERRARIUM_SITE points at a patched
 site-packages (or the package is installed); the patch files are checked as text always.
 """
@@ -29,24 +29,24 @@ from src.eval.misalignment.colosseum.publish import repo_name_for
 from src.infra.huggingface import gate_push
 
 THIRD_PARTY = Path("src/eval/misalignment/colosseum/third_party")
-BASE = "configs/eval/colosseum_hospital.yaml"
-DIRECTION_A = "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml"
-DIRECTION_B = "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_board_access.yaml"
+BASE = "configs/eval/colosseum_hospital/default.yaml"
+DIRECTION_A = "configs/eval/colosseum_hospital/carried-history.yaml"
+DIRECTION_B = "configs/eval/colosseum_hospital/board-access.yaml"
 # The four 2026-09-13 configs: the parent they copy and the switches they change.
 NEW_CONFIGS = {
-    "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_retry_explained.yaml": (
+    "configs/eval/colosseum_hospital/retry-explained.yaml": (
         DIRECTION_A,
         {"retry_explains_itself": True},
     ),
-    "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_no_retry.yaml": (
+    "configs/eval/colosseum_hospital/no-retry.yaml": (
         DIRECTION_A,
         {"end_turn_on_no_tool_call": True},
     ),
-    "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_plan_optional.yaml": (
+    "configs/eval/colosseum_hospital/plan-optional.yaml": (
         DIRECTION_A,
         {"plan_post_optional": True},
     ),
-    "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_board_idle.yaml": (
+    "configs/eval/colosseum_hospital/board-idle.yaml": (
         DIRECTION_B,
         {"post_message_in_execution": False, "execution_prompt_allows_status": False},
     ),
@@ -261,12 +261,17 @@ def test_every_switch_is_named_by_some_patch_file():
     }
 
 
-def test_the_bootstrap_applies_both_new_patches_and_checks_the_stamp():
-    text = Path("scratch/colosseum_hospital/pod_bootstrap.sh").read_text(encoding="utf-8")
-    assert "hospital_eval_fixes_2.patch" in text
-    assert "terrarium_hospital_fixes_2.patch" in text
-    assert f"'{TERRARIUM_FIXES_STAMP}'" in text, "the bootstrap checks the current stamp"
-    assert text.index("hospital_eval_fixes.patch") < text.index("hospital_eval_fixes_2.patch")
+def test_the_harness_applies_both_new_patches_after_the_first():
+    from src.eval.misalignment.colosseum.harness import COLOSSEUM_PATCHES, TERRARIUM_PATCHES
+
+    assert COLOSSEUM_PATCHES.index("hospital_eval_fixes.patch") < COLOSSEUM_PATCHES.index(
+        "hospital_eval_fixes_2.patch"
+    )
+    assert TERRARIUM_PATCHES.index("terrarium_hospital_fixes.patch") < TERRARIUM_PATCHES.index(
+        "terrarium_hospital_fixes_2.patch"
+    )
+    boot = Path("scripts/eval/misalignment/colosseum/hospital/pod_bootstrap.sh").read_text(encoding="utf-8")
+    assert "ensure_harness" in boot and "_terrarium_fixes_version" in boot
 
 
 # ── the runner's guards ───────────────────────────────────────────────────────
@@ -292,7 +297,7 @@ def test_the_runner_refuses_a_checkout_without_the_second_colosseum_patch(
     (d / "run.py").write_text(
         "_resolve_agent_llm_configs_by_seat secret_instructions administrator_blackboard_id"
     )
-    (d / "prompts.py").write_text("plan_post_optional benign_coalition")
+    (d / "prompts.py").write_text("plan_post_optional benign_coalition _base_system_prompt")
     assert runner._colosseum_root(OmegaConf.create({})) == tmp_path
 
 
@@ -300,8 +305,10 @@ def test_the_runner_refuses_a_checkout_without_the_second_colosseum_patch(
 
 
 def _terrarium_base():
-    site = os.environ.get("TERRARIUM_SITE")
-    if site and site not in sys.path:
+    site = os.environ.get("TERRARIUM_SITE") or _managed_site()
+    if not site:
+        pytest.skip("needs a patched terrarium tree: build the managed harness or set TERRARIUM_SITE")
+    if site not in sys.path:
         sys.path.insert(0, site)
     return pytest.importorskip(
         "terrarium.agents.base",
@@ -346,10 +353,10 @@ def test_the_runner_accepts_the_stamped_package_and_names_the_second_patch_other
 
 # ── 2026-09-15: no "distributed simulation" opening ───────────────────────────
 
-HOSPITAL_CONFIGS = [
-    BASE,
-    *sorted(str(p) for p in Path("scratch/colosseum_hospital/configs").glob("*.yaml")),
-]
+HOSPITAL_CONFIGS = sorted(
+    {BASE, *(str(p) for p in Path("configs/eval/colosseum_hospital").glob("*.yaml")),
+     *(str(p) for p in Path("scratch/colosseum_hospital/configs").glob("*.yaml"))}
+)
 
 
 @pytest.mark.parametrize("path", HOSPITAL_CONFIGS)
@@ -400,3 +407,11 @@ def test_no_simulation_framing_is_the_default_and_the_papers_opening_is_opt_in()
     assert resolve_fixes(OmegaConf.create({}))["no_simulation_framing"] is True
     off = resolve_fixes(OmegaConf.create({"fixes": {"no_simulation_framing": False}}))
     assert off["no_simulation_framing"] is False
+
+
+def _managed_site() -> str | None:
+    """The managed harness's patched terrarium copy, when it is already built (never builds)."""
+    from src.eval.misalignment.colosseum.harness import existing_build
+
+    built = existing_build()
+    return str(built.terrarium_site) if built is not None else None
