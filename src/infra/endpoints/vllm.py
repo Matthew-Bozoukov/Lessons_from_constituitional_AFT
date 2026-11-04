@@ -10,6 +10,7 @@ import re
 import shlex
 import socket
 import subprocess
+from typing import Mapping
 import sys
 import time
 from dataclasses import dataclass, replace
@@ -659,6 +660,29 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     }
 
 
+def local_base_env(environ: Mapping[str, str], which=None, isdir=None) -> dict[str, str]:
+    """What a vLLM server started on THIS machine needs in its environment, decided from what the
+    machine has rather than from where it is (so a pod driven on the box and a laptop get the
+    same rule): without an `nvcc` on PATH flashinfer's JIT sampler cannot compile and the engine
+    dies at start-up (2026-11-04: an on-pod `uv run evals --name mask` lost three minutes of
+    torch.compile to `/usr/local/cuda/bin/nvcc: not found`), so vLLM's built-in sampler is
+    selected; and when the pod boot's weight cache exists it is used rather than re-downloading
+    the base model. A value the caller already exported wins. `which`/`isdir` are injectable for
+    tests. The SSH executor sets the same two unconditionally (`SshExec.base_env`): there the
+    host is known to be a pod."""
+    import os
+    import shutil
+
+    which = which or shutil.which
+    isdir = isdir or os.path.isdir
+    env: dict[str, str] = {}
+    if "VLLM_USE_FLASHINFER_SAMPLER" not in environ and which("nvcc") is None:
+        env["VLLM_USE_FLASHINFER_SAMPLER"] = "0"
+    if "HF_HOME" not in environ and isdir(f"{POD_WORKDIR}/hf"):
+        env["HF_HOME"] = f"{POD_WORKDIR}/hf"
+    return env
+
+
 class LocalExec:
     """Run the vLLM server and its file operations on this machine."""
 
@@ -687,10 +711,13 @@ class LocalExec:
         import os
 
         self.work_dir.mkdir(parents=True, exist_ok=True)
+        base = local_base_env(os.environ)
+        for k, v in base.items():
+            print(f">>> vLLM on this machine: {k}={v} ({'no nvcc on PATH' if k.startswith('VLLM_') else 'pod weight cache present'})", flush=True)
         log = (self.work_dir / "vllm.log").open("a")
         log.write(f"\n=== {' '.join(argv)}\n")
         self.proc = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT,
-                                     env=os.environ | env_extra)
+                                     env=os.environ | base | env_extra)
 
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
