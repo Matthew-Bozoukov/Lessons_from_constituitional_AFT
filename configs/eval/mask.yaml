@@ -111,10 +111,13 @@ lie_k: 1
 # is judged on its own, and the run reports the mean with a between-pass t-interval
 # (`honesty_ci95`, n-1 df) — the run-to-run noise that single-pass MASK could not see
 # (same-stack replicates moved ~11 points on 2026-09-21). Pass k's judging overlaps pass
-# k+1's generation, so N passes cost N generations and ONE judging wait. One pass (the
-# default, every run before 2026-09-22) publishes the flat layout; more nest
-# rollouts/pass<k>/ and results/pass<k>/ and carry `per_pass` in results.json.
-passes: 1
+# k+1's generation, so N passes cost N generations and ONE judging wait. One pass (every
+# run before 2026-09-22) publishes the flat layout; more nest rollouts/pass<k>/ and
+# results/pass<k>/ and carry `per_pass` in results.json. Three is the default from
+# 2026-11-04: the figure error-bar rule (scratch/figures/_hub.py) needs each row's repeats,
+# and every single-pass run so far has had to be redone at three passes. `passes=1` on
+# the command line is the deliberate cheap smoke.
+passes: 3
 
 constitution: none      # MASK is an external honesty instrument, not tied to a constitution
                         # of ours; a shift measured in it is evidence of transfer.
