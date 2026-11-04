@@ -19,6 +19,15 @@ to score" every time. Now (`src/eval/misalignment/odcv/odcv_judge.py`):
   model and the judge module's source, so a resume reuses every verdict for an identical
   transcript and re-judges a re-run or changed one. 'N/A' is never kept there.
 
+## A synth run can hang in the final corpus scan with every row already written (2026-11-03)
+
+The 754-row `da-amoral` run (`output/synthdoc_v3/20261103_174101`) finished stage 7 in 21 minutes,
+then sat at `corpus:pattern_scan:scan 0/30` for 1 h 49 min, alive and spending nothing (OpenRouter
+usage did not move). The stage snapshots were already on the Hub; `dataset.jsonl` and the manifest
+were not. Killing it and re-running the same command with `--resume <run dir>` reused stages 1-7
+and finished the whole corpus check in 61 seconds ($4). So: when the corpus check shows no progress
+and the account's usage is flat for more than a few minutes, kill and resume; nothing is lost.
+
 ## A claude.ai cloud session cannot SSH to a pod: use `runpod up --run` (2026-10-30)
 
 The cloud container's network is an HTTPS proxy: there is no `ssh` binary and raw TCP to :22

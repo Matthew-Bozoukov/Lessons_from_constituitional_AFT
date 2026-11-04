@@ -1,0 +1,334 @@
+<title>Advice vs Action in DA Data</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Literata:opsz,wght@7..72,400;7..72,600&display=swap">
+<style>
+/* Layout: a 2 x 3 case grid (stakes x where the ask turned) that selects one real row, traced below through all seven stages. */
+:root {
+  --bg: #f6f5f8; --surface: #ffffff; --ink: #1f1c26; --muted: #6b6578; --rule: #dedbe5;
+  --da: #7a4fc4; --da-soft: #efe8fa; --low: #12857a; --low-soft: #e2f3f0;
+  --act: #c2410c; --act-soft: #fdebe1; --ok: #3f7d4e; --ok-soft: #e4f1e7;
+  --ins: #dcf2e3; --ins-ink: #136b36; --del: #fbe2e2; --del-ink: #9b1c1c; --focus: #2f6fe0;
+  --del-bg: #ffebe9; --del-strong: #ffc1bc; --ins-bg: #e6ffec; --ins-strong: #abf2bc;
+  --display: "Literata", Georgia, "Times New Roman", serif;
+  --ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15131a; --surface: #1d1a24; --ink: #e9e6f0; --muted: #a39dae; --rule: #34303d;
+    --da: #b293ec; --da-soft: #2c2340; --low: #4cc6b8; --low-soft: #17322f;
+    --act: #fb8a52; --act-soft: #3a2116; --ok: #7fc791; --ok-soft: #1a2e20;
+    --ins: #173a24; --ins-ink: #8fe0ad; --del: #3d1c1c; --del-ink: #f4a6a6; --focus: #7aa7ff;
+    --del-bg: #3a1d20; --del-strong: #7a2e33; --ins-bg: #16301f; --ins-strong: #23633a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15131a; --surface: #1d1a24; --ink: #e9e6f0; --muted: #a39dae; --rule: #34303d;
+  --da: #b293ec; --da-soft: #2c2340; --low: #4cc6b8; --low-soft: #17322f;
+  --act: #fb8a52; --act-soft: #3a2116; --ok: #7fc791; --ok-soft: #1a2e20;
+  --ins: #173a24; --ins-ink: #8fe0ad; --del: #3d1c1c; --del-ink: #f4a6a6; --focus: #7aa7ff;
+  --del-bg: #3a1d20; --del-strong: #7a2e33; --ins-bg: #16301f; --ins-strong: #23633a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--ui); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+a { color: inherit; }
+header { padding-block: 34px 18px; }
+.eyebrow { font: 500 12px var(--mono); color: var(--muted); margin-bottom: 10px; }
+h1 { font-family: var(--display); font-weight: 600; font-size: clamp(28px, 4vw, 38px); line-height: 1.12; margin: 0 0 10px; text-wrap: balance; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 22px; margin: 0; text-wrap: balance; }
+p { margin: 0 0 0.8em; max-width: 72ch; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--mono); font-size: 12px; }
+
+header p { font-size: 16px; }
+header p.muted { font-size: 14.5px; }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 4px 0 16px; max-width: 820px; }
+.stat { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; min-width: 0; }
+.stat .who { display: flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.stat .who i { width: 10px; height: 10px; border-radius: 2px; }
+.stat .bar { display: flex; height: 10px; border-radius: 3px; overflow: hidden; background: var(--rule); }
+.stat .bar .a { background: var(--ok); opacity: .55; }
+.stat .bar .x { background: var(--act); }
+.stat .bar .m { background: var(--act); opacity: .5; }
+.stat .nums { font: 12px var(--mono); color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+@media (max-width: 820px) { .stats { grid-template-columns: minmax(0, 1fr); } }
+.keys { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--muted); margin-top: 6px; }
+.keys b { color: var(--ink); font-weight: 600; }
+
+.grid { display: grid; grid-template-columns: 140px repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 22px; }
+.corner { }
+.colh { font-size: 13px; font-weight: 600; padding: 4px 2px; }
+.colh span { display: block; font-weight: 400; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.rowh { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; padding-right: 6px; }
+.rowh i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.cell { text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; cursor: pointer; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.cell:hover { border-color: var(--muted); }
+.cell[aria-pressed="true"] { border-color: currentColor; box-shadow: 0 0 0 1px currentColor inset; }
+.cell.low { color: var(--low); }
+.cell.da { color: var(--da); }
+.cell .id { font: 500 11px var(--mono); }
+.cell .dom { color: var(--ink); font-size: 13px; font-weight: 600; }
+.cell .q { color: var(--ink); font-family: var(--display); font-size: 13.5px; line-height: 1.45; }
+.flow { display: flex; align-items: center; gap: 6px; font: 500 11px var(--mono); color: var(--muted); }
+.lab { padding: 1px 7px; border-radius: 999px; font: 500 11px var(--mono); }
+.lab.ADVICE { background: var(--ok-soft); color: var(--ok); }
+.lab.ACT { background: var(--act-soft); color: var(--act); }
+.lab.MIXED { background: var(--act-soft); color: var(--act); opacity: .8; }
+
+section.trace { border-top: 1px solid var(--rule); margin-top: 30px; padding-block: 26px 40px; }
+.thead { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; margin-bottom: 6px; }
+.verdict { margin: 10px 0 18px; padding: 12px 14px; border-radius: 6px; font-size: 14.5px; max-width: 86ch; }
+.verdict.clean { background: var(--ok-soft); }
+.verdict.turn { background: var(--act-soft); }
+.timeline { display: grid; }
+.step { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 14px; }
+.rail { display: flex; flex-direction: column; align-items: center; }
+.dot { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--muted); display: grid; place-items: center; font: 600 12px var(--mono); background: var(--bg); color: var(--muted); flex: none; }
+.step.hot .dot { border-color: var(--act); color: var(--act); background: var(--act-soft); }
+.line { width: 2px; flex: 1; background: var(--rule); min-height: 16px; }
+.body { padding-bottom: 24px; min-width: 0; }
+.head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin-bottom: 8px; padding-top: 3px; }
+.head b { font-size: 15px; }
+.head .mono { color: var(--muted); }
+.flag { font: 600 11px var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--act); }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; min-width: 0; }
+.card + .card { margin-top: 8px; }
+.step.hot .card.focus { border-color: var(--act); }
+.cap { font: 600 11px var(--ui); letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.txt { font-family: var(--display); font-size: 14.5px; line-height: 1.62; overflow-wrap: anywhere; }
+.txt p { margin: 0 0 .7em; max-width: none; }
+.txt ul { margin: 0 0 .7em; padding-left: 1.3em; }
+.kv { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 4px 12px; font-size: 14px; }
+.kv dt { font: 600 11px var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding-top: 3px; }
+.kv dd { margin: 0; min-width: 0; font-family: var(--display); }
+.note { font-size: 13.5px; margin-top: 8px; padding: 8px 10px; border-radius: 5px; background: var(--bg); }
+.note b { font-weight: 600; }
+.dealt { font: 12.5px var(--mono); white-space: pre-wrap; color: var(--muted); }
+.audit { font: 12.5px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+.audit .inv { color: var(--act); font-weight: 500; }
+.split { border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: var(--surface); }
+.step.hot .split { border-color: var(--act); }
+.split .hdr, .split .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.split .hdr > div { font: 600 11px var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--rule); background: var(--bg); }
+.split .hdr > div + div, .split .row > div + div { border-left: 1px solid var(--rule); }
+.split .row > div { padding: 3px 12px 3px 30px; position: relative; font-family: var(--display); font-size: 14.5px; line-height: 1.6; overflow-wrap: anywhere; min-width: 0; }
+.split .row > div > span { display: block; padding-block: 2px; }
+.split .row > div::before { position: absolute; left: 10px; top: 5px; font: 500 12px var(--mono); }
+.split .row > .rm { background: var(--del-bg); }
+.split .row > .rm::before { content: "−"; color: var(--del-ink); }
+.split .row > .ad { background: var(--ins-bg); }
+.split .row > .ad::before { content: "+"; color: var(--ins-ink); }
+.split .row > .gap { background: repeating-linear-gradient(135deg, transparent 0 6px, var(--rule) 6px 7px); opacity: .55; }
+.split .row > .eq { color: var(--ink); }
+.split .row.para > div { padding-block: 0; height: 10px; }
+.split del { background: var(--del-strong); color: var(--ink); text-decoration: none; border-radius: 2px; }
+.split ins { background: var(--ins-strong); color: var(--ink); text-decoration: none; border-radius: 2px; }
+.rated { font-size: 13.5px; margin-top: 8px; }
+.rated q { font-family: var(--display); }
+@media (max-width: 820px) { .split .row > div { font-size: 13.5px; padding-left: 24px; } .split .row > div::before { left: 7px; } }
+ins { background: var(--ins); color: var(--ins-ink); text-decoration: none; border-radius: 2px; }
+del { background: var(--del); color: var(--del-ink); border-radius: 2px; }
+details > summary { cursor: pointer; font-size: 13px; color: var(--muted); margin: 6px 0; }
+footer { color: var(--muted); font-size: 12.5px; padding-block: 18px 36px; border-top: 1px solid var(--rule); }
+footer p { max-width: 96ch; }
+footer b { color: var(--ink); font-weight: 600; }
+
+@media (max-width: 820px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .corner, .colh { display: none; }
+  .rowh { padding-top: 10px; }
+  .cell::before { content: attr(data-case); font: 600 11px var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">2026-10-04-da-low-synth vs 2026-10-30-da-synth · all 2,895 rows · 2 Nov 2026</div>
+  <h1>Advice vs action in DA data</h1>
+  <p>About 5% of rows in both corpora are not advice requests. The user asks the assistant to produce or do the loaded thing itself (draft the reassuring note, play a parent who has died, mark a record as submitted), so the assistant is declining a task, not advising.</p>
+  <div class="stats">
+    <div class="stat"><div class="who"><i style="background:var(--low)"></i>Low-stakes DA</div><div class="bar"><span class="a" style="width:94.6%"></span><span class="x" style="width:3.1%"></span><span class="m" style="width:2.3%"></span></div><div class="nums">94.6% advice · 3.1% act · 2.2% both · 894 rows</div></div>
+    <div class="stat"><div class="who"><i style="background:var(--da)"></i>Difficult advice</div><div class="bar"><span class="a" style="width:93.3%"></span><span class="x" style="width:4.3%"></span><span class="m" style="width:2.4%"></span></div><div class="nums">93.3% advice · 4.3% act · 2.4% both · 2,001 rows</div></div>
+  </div>
+  <p>Low stakes is no worse than DA. Most action rows come from the "assistant itself" AI line: 28% of those rows in low stakes and 33% in DA, against under 7% for every other AI line. Haiku's first draft already asks the assistant to act in most of them. In the rest, Sonnet's prompt revision introduces it: 23 of 48 in low stakes and 21 of 135 in DA.</p>
+  <p class="muted">One real row per case and corpus. Click a cell to trace it through all seven stages; orange marks where the ask turns.</p>
+  <div class="keys"><span><b>ADVICE</b> the user asks what they should do, and they carry it out</span><span><b>ACT</b> the user asks the assistant to produce or do the loaded thing</span><span><b>Both</b> a substantial request for each, counted separately above</span></div>
+  <div class="grid" id="grid"></div>
+</header>
+<section class="trace" id="trace"></section>
+<footer id="foot"></footer>
+</div>
+
+<script>
+const DATA = /*DATA*/null;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const COLS = [
+  ["clean", "Clean advice row", "advice in the draft and in the final"],
+  ["draft", "ACT from the first draft", "Haiku drafted it as a request to act"],
+  ["revised", "ACT after Sonnet's revision", "advice as drafted, act after stage 4"],
+];
+const ROWS = [["low", "Low stakes", "var(--low)"], ["da", "Difficult advice (high stakes)", "var(--da)"]];
+const AI_LINE = { none: "no AI in the situation", open: "AI line left open", other: "another AI system", self: "the assistant itself" };
+function md(src) {
+  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  return String(src || "").replace(/\r/g, "").split(/\n{2,}/).map((b) => {
+    const lines = b.split("\n");
+    if (lines.every((l) => /^\s*([-*•]|\d+[.)])\s+/.test(l)))
+      return `<ul>${lines.map((l) => `<li>${inline(l.replace(/^\s*([-*•]|\d+[.)])\s+/, ""))}</li>`).join("")}</ul>`;
+    return `<p>${lines.map(inline).join("<br>")}</p>`;
+  }).join("");
+}
+function wdiff(a, b) {
+  const A = String(a || "").split(/(\s+)/), B = String(b || "").split(/(\s+)/), n = A.length, m = B.length;
+  const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  let i = 0, j = 0, out = "";
+  while (i < n && j < m) {
+    if (A[i] === B[j]) { out += esc(A[i]); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out += `<del>${esc(A[i])}</del>`; i++; }
+    else { out += `<ins>${esc(B[j])}</ins>`; j++; }
+  }
+  while (i < n) out += `<del>${esc(A[i++])}</del>`;
+  while (j < m) out += `<ins>${esc(B[j++])}</ins>`;
+  return `<div style="white-space:pre-wrap">${out}</div>`;
+}
+// GitHub-style split diff with sentences as lines: unchanged sentences side by side, removed ones red on the left,
+// added ones green on the right. A removed and an added sentence that share most of their words are paired on one row,
+// with the changed words shaded darker inside them.
+function lcsOps(A, B, eq) {
+  const n = A.length, m = B.length, dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = eq(A[i], B[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const ops = []; let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (eq(A[i], B[j])) { ops.push(["=", A[i++], B[j++]]); }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) ops.push(["-", A[i++]]);
+    else ops.push(["+", B[j++]]);
+  }
+  while (i < n) ops.push(["-", A[i++]]);
+  while (j < m) ops.push(["+", B[j++]]);
+  return ops;
+}
+function sentences(text) {
+  const out = [];
+  String(text || "").replace(/\r/g, "").split(/\n\s*\n/).forEach((para, p) => {
+    if (p) out.push("¶");
+    for (const s of para.replace(/\n/g, " ").match(/[^.!?]+(?:[.!?]+["'”’)\]]*|$)\s*/g) || []) if (s.trim()) out.push(s.trim());
+  });
+  return out;
+}
+const norm = (s) => s.toLowerCase().replace(/[^a-z0-9' ]+/g, " ").replace(/\s+/g, " ").trim();
+const words = (s) => new Set(norm(s).split(" ").filter(Boolean));
+function overlap(a, b) { const A = words(a), B = words(b); let k = 0; for (const w of A) if (B.has(w)) k++; return k / Math.max(1, Math.min(A.size, B.size)); }
+function inner(a, b) {
+  let L = "", R = "";
+  for (const [op, x, y] of lcsOps(a.split(/(\s+)/), b.split(/(\s+)/), (p, q) => p === q)) {
+    if (op === "=") { L += esc(x); R += esc(y); }
+    else if (op === "-") L += /^\s+$/.test(x) ? x : `<del>${esc(x)}</del>`;
+    else R += /^\s+$/.test(x) ? x : `<ins>${esc(x)}</ins>`;
+  }
+  return [L, R];
+}
+function split(a, b, headL, headR) {
+  const ops = lcsOps(sentences(a), sentences(b), (x, y) => norm(x) === norm(y));
+  const rows = []; let hunk = { del: [], ins: [] };
+  const flush = () => {
+    if (!hunk.del.length && !hunk.ins.length) return;
+    // Pairs only move forward through the additions, so both sides keep their own order.
+    let next = 0;
+    for (const d of hunk.del) {
+      let best = -1, score = 0.5;
+      for (let j = next; j < hunk.ins.length; j++) { const o = overlap(d, hunk.ins[j]); if (o >= score) { best = j; score = o; } }
+      if (best < 0) { rows.push([esc(d), "", "rm", "gap"]); continue; }
+      for (; next < best; next++) rows.push(["", esc(hunk.ins[next]), "gap", "ad"]);
+      const [L, R] = inner(d, hunk.ins[best]); rows.push([L, R, "rm", "ad"]); next = best + 1;
+    }
+    for (; next < hunk.ins.length; next++) rows.push(["", esc(hunk.ins[next]), "gap", "ad"]);
+    hunk = { del: [], ins: [] };
+  };
+  for (const [op, x, y] of ops) {
+    if (op === "=") { flush(); rows.push(x === "¶" ? null : [esc(x), esc(y), "eq", "eq"]); }
+    else if (x === "¶") continue;
+    else hunk[op === "-" ? "del" : "ins"].push(x);
+  }
+  flush();
+  return `<div class="split"><div class="hdr"><div>${esc(headL)}</div><div>${esc(headR)}</div></div>${rows.map((r) => r
+    ? `<div class="row"><div class="${r[2]}"><span>${r[0]}</span></div><div class="${r[3]}"><span>${r[1]}</span></div></div>`
+    : `<div class="row para"><div></div><div></div></div>`).join("")}</div>`;
+}
+const find = (col, row) => DATA.cases.find((c) => c.case === col && c.corpus === row);
+let cur = DATA.cases[0];
+
+function grid() {
+  let h = `<div class="corner"></div>` + COLS.map(([, t, s]) => `<div class="colh">${t}<span>${s}</span></div>`).join("");
+  for (const [row, label, col] of ROWS) {
+    h += `<div class="rowh"><i style="background:${col}"></i>${label}</div>`;
+    for (const [c, t] of COLS) {
+      const k = find(c, row);
+      h += `<button type="button" class="cell ${row}" data-case="${esc(t)}" data-c="${c}" data-r="${row}" aria-pressed="${k === cur}">
+        <span class="id">${esc(k.id)} · ${esc(k.rec.trait_id)} · ${AI_LINE[k.rec.ai]}</span>
+        <span class="dom">${esc(k.rec.domain)}</span>
+        <span class="q">“${esc(k.ask)}”</span>
+        <span class="flow">drafted <span class="lab ${k.draft_label}">${k.draft_label}</span> → final <span class="lab ${k.final_label}">${k.final_label}</span></span>
+      </button>`;
+    }
+  }
+  $("grid").innerHTML = h;
+}
+$("grid").addEventListener("click", (e) => {
+  const b = e.target.closest(".cell"); if (!b) return;
+  cur = find(b.dataset.c, b.dataset.r); grid(); trace();
+  $("trace").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+});
+
+function trace() {
+  const k = cur, r = k.rec, rowLabel = ROWS.find(([x]) => x === k.corpus)[1], colLabel = COLS.find(([x]) => x === k.case)[1];
+  const hot3 = k.case === "draft", hot4 = k.case === "revised";
+  const verdict = {
+    clean: `Advice at every stage: the user asks what they should do and carries it out.`,
+    draft: `Already a request to act in Haiku's first draft (stage 3). The reviser kept it.`,
+    revised: `Advice in Haiku's draft. Sonnet 5 moved the act onto the assistant at stage 4, against its instruction “do not make the assistant the actor.”`,
+  }[k.case];
+  const step = (n, title, meta, html, hot = false, last = false, flag = "") => `<div class="step ${hot ? "hot" : ""}"><div class="rail"><div class="dot">${n}</div>${last ? "" : '<div class="line"></div>'}</div><div class="body"><div class="head"><b>${title}</b><span class="mono">${meta}</span>${flag ? `<span class="flag">${flag}</span>` : ""}</div>${html}</div></div>`;
+  const audit = esc(r.rewrite_audit).split("\n").map((l) => /INVENTED/.test(l) ? `<span class="inv">${l}</span>` : l).join("\n");
+  $("trace").innerHTML = `<div class="wrap">
+    <div class="thead"><h2>${rowLabel} · ${colLabel}</h2><span class="mono muted">${esc(k.id)} · ${esc(r.trait_name)}</span></div>
+    <div class="verdict ${k.case === "clean" ? "clean" : "turn"}">${verdict}</div>
+    <div class="timeline">
+    ${step(1, "Dealt to the writer call", `${r.trait_id} · sector ${r.sector} · AI line: ${AI_LINE[r.ai]}`,
+      `<div class="card"><div class="dealt">${esc((r.sector_text + r.ai_text).trim()) || "(no sector or AI line text: both left open)"}</div></div>`)}
+    ${step(2, "The writer's scenario", "Haiku 4.5 · temperature 1.1 · 4 situations per call",
+      `<div class="card"><dl class="kv"><dt>Domain</dt><dd>${esc(r.writer_domain)}</dd><dt>Situation</dt><dd>${esc(r.writer_situation)}</dd><dt>Shortcut</dt><dd>${esc(r.writer_shortcut)}</dd></dl></div>`)}
+    ${step(3, "Haiku drafts the prompt", `Haiku 4.5 · rated ${k.draft_label}`,
+      `<div class="card focus"><div class="cap">User message, as drafted</div><div class="txt">${md(r.draft_user)}</div></div>
+       <details><summary>Drafted system prompt</summary><div class="card txt">${md(r.draft_system)}</div></details>`, hot3, false, hot3 ? "the ask to act starts here" : "")}
+    ${step(4, "Sonnet 5 revises the prompt", `Sonnet 5 · rated ${k.final_label}`,
+      `${split(r.draft_user, r.user, `User message as Haiku drafted it · ${k.draft_label}`, `After Sonnet's revision · ${k.final_label}`)}
+       <div class="rated muted">Rated ask in the final message: <q>${esc(k.ask)}</q></div>
+       <div class="note"><b>Reviser's own note:</b> ${esc(r.refine_changes)}</div>
+       <details><summary>System prompt, before and after</summary>${split(r.draft_system, r.system, "System prompt as drafted", "After revision")}</details>
+       <details><summary>Scenario as re-described by the reviser</summary><div class="card"><dl class="kv"><dt>Domain</dt><dd>${esc(r.domain)}</dd><dt>Situation</dt><dd>${esc(r.situation)}</dd><dt>Shortcut</dt><dd>${esc(r.shortcut)}</dd></dl></div></details>`,
+      hot4, false, hot4 ? "the ask to act starts here" : "")}
+    ${step(5, "Haiku writes a first reply", "Haiku 4.5 · principle and style guide in its system prompt",
+      `<details><summary>First-draft reasoning</summary><div class="card txt">${md(r.draft_reasoning)}</div></details>
+       <div class="card"><div class="cap">First-draft reply</div><div class="txt">${md(r.draft_response)}</div></div>`)}
+    ${step(6, "Sonnet 5 audits and rewrites the reply", "every particular marked PROMPT or INVENTED first",
+      `<details><summary>Grounding audit</summary><div class="card audit">${audit}</div></details>
+       <div class="note"><b>Rewriter's note:</b> ${esc(r.rewrite_changes)}</div>`)}
+    ${step(7, "What the model trains on", "system · user · assistant reasoning + reply",
+      `<div class="card"><div class="cap">Final user message</div><div class="txt">${md(r.user)}</div></div>
+       <details><summary>Final reasoning</summary><div class="card txt">${md(r.reasoning)}</div></details>
+       <div class="card"><div class="cap">Final reply</div><div class="txt">${md(r.response)}</div></div>`, false, true)}
+    </div></div>`;
+}
+grid(); trace();
+const hf = (r, v) => `<a href="https://huggingface.co/datasets/dougalldeepmind/${r}/tree/${v}">${r}</a>`;
+$("foot").innerHTML = `<div class="wrap"><p><b>Data.</b> Low-stakes rows from ${hf("2026-10-04-da-low-synth", "c8a61e2661be8d564b27bfb513ba3f31eec27897")}; difficult-advice rows from ${hf("2026-10-30-da-synth", "8fadea6299915605d0b270feddfd85d91344e58f")}. The two DA rows shown were generated on 2 Oct 2026, and their stage-by-stage history comes from ${hf("2026-10-02-da-unclear-synth", "80ad379319762731a4410b212eb019f777949bb1")}. Their recipe differs from the low-stakes one only in the three stakes sentences.</p>
+<p><b>Labels.</b> Every row's final user prompt was classified as advice, act or both by an LLM audit: Sonnet 5 for 2,665 rows and Claude subagents for the other 230. The first drafts of the action rows were classified the same way. The six rows on this page were also read in full to confirm their labels.</p>
+<p><b>Code.</b> Recipes: <code>configs/data/synth/da-low.yaml</code> and <code>configs/data/synth/da.yaml</code>. This page: <code>scratch/da_ask_shape_cases_20261102.py</code>.</p></div>`;
+</script>

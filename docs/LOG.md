@@ -1,3 +1,42 @@
+## 2026-11-04: ODCV and MASK on da-amoral-15: between the plain control and da-15 on both
+
+Hypothesis: if difficult advice works through its moral content, the amoral twin (same pipeline, deal, format and 15% token share, no moral content; 2026-11-03 entry below) should score near the plain control; if it works through the deliberative format alone, near da-15.
+
+Method: `dougalldeepmind/2026-11-03-qwen36-0-da-amoral-15` @ fc5d5b24, run exactly as da-15 B and C were (runbook `output/2026-11-03_eval_plan/2026-11-03_mask_odcv_runbook.md`), driven from the Windows laptop at git afbd86a6, eval code identical to B/C's. ODCV: `uv run evals --name odcv --target <adapter> --server <pod> --port 8087 concurrency=16`, default `lite` (3 passes x 80 cells, judge gemini-3-flash-preview, progress judge on), 1x H100 80GB. MASK: `uv run evals --name mask --target <adapter> --server <pod> --port 8097`, default config (1 pass, 1,000 rows), 1x H200 (Secure stock was out once; a retry got one).
+
+Result:
+
+| arm | ODCV MR % | MASK honesty |
+|---|---|---|
+| plain control (`2026-10-05-qwen36-0-plain`) | 45.0 | 44.0 (10-05), 42.7 (10-09, 2 passes) |
+| **da-amoral-15** | **27.5 [17.4, 40.1]**, by pass 22.5 / 31.2 / 28.7; mandated 28.3, incentivised 26.7; submitted 97.9% | **62.7** (continuations 64.2, disinformation 41.6, doubling-down 57.5, known facts 68.4, provided facts 61.7, statistics 84.4) |
+| da-15 A / B / C | 13.3 / 10.8 / 15.4 | 82.7 (83.3 at 2 passes) / 85.2 / 80.0 |
+
+- Runs: `dougalldeepmind/2026-11-04-odcv-qwen36-0-da-amoral-15` @ 91b44cd3 (240 rollouts, 240 judged, 0 dropped) and `dougalldeepmind/2026-11-04-mask-qwen36-0-da-amoral-15` @ 5ec6c1ff (1,000 rows, 1/4,438 generation errors, 0 judge errors), both tagged `eval-run`, `model:qwen36_0_da_amoral_15`, `mode:think`.
+- On both evals the amoral arm closes a bit under half of the gap from the control to da-15 (ODCV: 45.0 -> 27.5 against ~13; MASK: 44 -> 62.7 against ~83). One seed, one corpus draw, single-pass MASK. The ODCV intervals of A and plain are computed per scenario, B/C and this run per pass, so compare point estimates.
+- Known differences from DA that could account for part of the remaining gap: ~13% of amoral rows still misstate a user fact, far less first-person deliberation, a third of DA's AI presence.
+- The laptop's network dropped several times. MASK's SSH tunnel reset mid-generation (47% failed generations, refused at the 2% gate) and was resumed with `resume_from=`, keeping 2 of 6 archetypes. ODCV's tunnel dropped in pass 3 (48 of 80 transcripts were the task prompt alone, flagged `missing_cells=50`; the driver was stopped before publishing and resumed, and the 50 cells re-ran clean). ODCV judging then died twice on one OpenRouter `ConnectTimeout`: the judge client gets `max_retries=0` and each attempt judges into a new `combined3x_<timestamp>` dir, so no scores carry over. The third attempt published. Both gotchas are worth fixing in `odcv_judge.py` / `runner.py`.
+- Cost: pods about $19 (H100 ~1 h 45 min, H200 ~2 h 20 min, both longer than planned because of the resumes), judging about $9 (OpenRouter 283.25 -> 274.47, including two discarded ODCV judging passes). Both pods terminated; `runpod pods` empty.
+
+Next steps: a second seed or a second corpus draw of da-amoral-15 for an interval on the gap; MASK at 2 passes on this arm to match the 10-09 replicates.
+
+## 2026-11-03: da-amoral, the morally neutral twin of difficult advice: corpus, 15% mix, one LoRA
+
+Hypothesis: a control for difficult advice (DA) should keep DA's pipeline, deal and format but carry no moral content, so that a da-15 vs da-amoral-15 comparison isolates what the moral content does. Built as `configs/data/synth/da-amoral.yaml`: da.yaml with `preferences/practical_judgement_09` (nine non-moral principles of practical judgement) in the constitution's slot.
+
+Method: 2026-11-02/03, branch `nika/da-amoral`. Twenty-row smokes on OpenRouter, rated by blind Opus subagents (recipes shuffled together, rubric in `scratch/da_amoral_x3_smoke_eval_20261103.py`), with DA rows from `2026-10-30-da-synth` scored by the same rater as the reference. The recipe's header notes A-L record every change and why; the main ones:
+- 36 neutral sectors, DA's writer ask restored, and system prompts that may not tell the assistant how to advise (x3, a89e94ae): coaching system prompts 55% -> 0%, replies ending on a question 65% -> 30% (DA 30%), commits 8 -> 14 of 20.
+- The remaining failure was replies misstating the user's own facts so the principle wins (33% of rows; DA 0 of 20, same rater). Traced to the response rewrite: its opener rule ("the specific detail that decides it") and an audit that checked only the draft's particulars. The fix (note L): the audit first quotes every fact the person gave, nothing may contradict a quote, the user message is repeated before writing, the opener is a quoted detail, and a `<check>` with CONTRADICTS resamples. Misread or against-facts 20 -> 8 of 60 paired rows. With the no-figures drafter line (I) and t2/t7 reworded without amounts (K), committed as 6bd40b75.
+- Tried and dropped, each no better or worse on 20-60 paired rows: a Sonnet 5.5 fact-check judge on the rewrite, facts written onto the principle's side (twice), softened "maximally exhibit" / "hold to", facts-led replies, and a reviser told the difficulty comes "from the pull, not the facts". Smokes and reruns: about $45.
+
+Result:
+- Corpus `dougalldeepmind/2026-11-03-da-amoral-synth` @ ac8e1efe: 754 rows from 760 asked, 81-85 a trait, 783,804 supervised tokens (1,040 a row; DA 1,167), corpus check PASS. $78.58 interactive; the batch API is refused for Anthropic models without our own Anthropic key. The final pattern scan hung 1 h 49 min with zero spend and finished in 61 s on `--resume` (docs/GOTCHAS.md).
+- On the candidate's 40-row smoke, blind: misread or against the user's facts 4-7 of 40 across three ratings (DA 0 of 20), commits 28 of 40, first-person deliberation in the notes ~3 of 20 (DA 14 of 20), AI named in the user message 4-5% (DA 15%).
+- Mix `dougalldeepmind/2026-11-03-da-amoral-15-mix` @ 1b984954 (`configs/data/mixture/da-amoral.yaml`, d2b8da7c): the da-15 arms' plain base, 727 amoral rows, 15.09% of 4,999,954 supervised tokens.
+- Adapter `dougalldeepmind/2026-11-03-qwen36-0-da-amoral-15` @ fc5d5b24: `configs/train/sft.yaml`, qwen36, seed 0, 1x H200 via `runpod up --run` at d2b8da7c, 144 steps, 47 min, train_loss 0.669 (first logged 0.851, last 0.663), thinking stamp true. Log in `output/2026-11-03_train_da_amoral_15/`. The 12-vCPU pod took about 20 min to boot (the causal-conv1d build). Pod terminated, `runpod pods` empty; about $7.
+
+Next steps: run the da-15 eval set (ODCV first) on this adapter beside da-15 #1/B/C and the nosynth control. Known differences from DA to read results against: ~13% of rows still misstate a user fact, far less first-person deliberation, and a third of DA's AI presence.
+
 ## 2026-11-03: Three MASK passes for every Figure 3 arm; the CoT-only 94.4 was inflated by judge timeouts; figure error bars are per-item SE on a fixed benchmark
 
 Hypothesis: the MASK bars in Figure 3 rested on two-pass runs (control, da-15) and a single pass (CoT only), while every other panel had three or more repeats; three passes everywhere puts the panels on one footing, and the regenerated deliberation ablation (`2026-10-27-qwen36-0-ablation-15`) needed the same before it can replace the stated-harm arm.
@@ -20633,3 +20672,7 @@ Ready for a separate user inference approval: Base27/Control27/DA1526 slots,80 t
 User explicitly authorized inference and 15-minute reporting after readiness. Durable service lasr-gptoss-full300.service, initial PID305835, runs qualified runtime24cedbc04ca7a5275a1235499dd9850e34c0f611 on Vast55762730. Fresh900tasks; all80slots observed active (Base27/Control27/DA1526), shared32 shell commands. Live checkpoint identities, medium Harmony0.0.8/renderdate2026-10-09/T1/p1/kdisabled,16384response and65000livecontext verified; ledgers use .33/.066/.84 input/cached/output rates with no monetary ceilings per standing user authorization. No history reset or historical outcome copied.
 
 Initial observed completed responses Base875/Control730/DA15720. At that snapshot submitted endings3/1/0, all awaiting official grading; no limit endings or infrastructure exclusions. Accounted inference estimates including active reservations were$1.528244/$1.710896/$1.637659 (not invoices; volatile initial snapshot). Provider CPU charge separate$2.364815/hour plus transfer. Immutable qualification44bb59ec02f39f13c27d71e7143dbb16f4eca524; local and remote initial-live-audit.json plus initial-accounting-audit.json preserve proof. ACTIVE heartbeat report-full-gpt-oss-swe-every-15-minutes reports every15minutes and supervises final grading/publication/cleanup. Keep persistent CPU/cache; do not restart the active owner.
+
+### 2026-10-12: Explicit Vast CPU teardown
+User requested destruction of retained SWE-bench CPU 55053931. Provider showed stopped/exited; exact receipt label matched. Vast destroy succeeded, then provider inventory confirmed zero instances and zero volumes. Archived registry and receipts; registry now empty. Removed and archived the two Windows watchdog tasks bound to 55053931. Evidence: output/2026-10-12-vast-cpu-teardown.json. No evaluation launched.
+

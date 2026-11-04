@@ -1,0 +1,344 @@
+<title>September DA Recipes</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Literata:opsz,wght@7..72,400;7..72,600&display=swap">
+<style>
+/* Layout: the exact ask-shape sentences first, then three aligned pipeline lanes, then every stage's prompts with diffs against DA. */
+:root {
+  --bg: #f6f5f8; --surface: #ffffff; --ink: #1f1c26; --muted: #6b6578; --rule: #dedbe5;
+  --da: #7a4fc4; --da-soft: #efe8fa; --low: #12857a; --low-soft: #e2f3f0; --nm: #b4570f; --nm-soft: #fbecdf;
+  --same: #3f7d4e; --same-soft: #e4f1e7; --model: #a26b00; --model-soft: #fbf0d6; --off: #8d8798;
+  --del-bg: #ffebe9; --del-strong: #ffc1bc; --ins-bg: #e6ffec; --ins-strong: #abf2bc; --focus: #2f6fe0;
+  --display: "Literata", Georgia, "Times New Roman", serif;
+  --ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15131a; --surface: #1d1a24; --ink: #e9e6f0; --muted: #a39dae; --rule: #34303d;
+    --da: #b293ec; --da-soft: #2c2340; --low: #4cc6b8; --low-soft: #17322f; --nm: #f0a060; --nm-soft: #3a2616;
+    --same: #7fc791; --same-soft: #1a2e20; --model: #e6b55a; --model-soft: #352a14; --off: #6f6a7a;
+    --del-bg: #3a1d20; --del-strong: #7a2e33; --ins-bg: #16301f; --ins-strong: #23633a; --focus: #7aa7ff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15131a; --surface: #1d1a24; --ink: #e9e6f0; --muted: #a39dae; --rule: #34303d;
+  --da: #b293ec; --da-soft: #2c2340; --low: #4cc6b8; --low-soft: #17322f; --nm: #f0a060; --nm-soft: #3a2616;
+  --same: #7fc791; --same-soft: #1a2e20; --model: #e6b55a; --model-soft: #352a14; --off: #6f6a7a;
+  --del-bg: #3a1d20; --del-strong: #7a2e33; --ins-bg: #16301f; --ins-strong: #23633a; --focus: #7aa7ff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--ui); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1200px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+a { color: inherit; }
+code { font-family: var(--mono); font-size: 0.86em; }
+header { padding-block: 34px 10px; }
+.eyebrow { font: 500 12px var(--mono); color: var(--muted); margin-bottom: 10px; }
+h1 { font-family: var(--display); font-weight: 600; font-size: clamp(28px, 4vw, 38px); line-height: 1.12; margin: 0 0 12px; text-wrap: balance; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 23px; margin: 0 0 6px; text-wrap: balance; }
+h3 { font-size: 16px; margin: 0; }
+p { margin: 0 0 0.8em; max-width: 76ch; }
+.muted { color: var(--muted); }
+section { padding-block: 28px; border-top: 1px solid var(--rule); }
+ul.take { margin: 6px 0 0; padding-left: 1.2em; max-width: 80ch; display: grid; gap: 6px; font-size: 15.5px; }
+
+.ask { display: grid; grid-template-columns: 190px 150px minmax(0, 1fr); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: var(--surface); }
+.ask > div { padding: 10px 12px; border-top: 1px solid var(--rule); min-width: 0; }
+.ask > .h { border-top: 0; font: 600 11px var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); background: var(--bg); }
+.ask .who { font-weight: 600; display: flex; gap: 8px; align-items: center; }
+.ask .stage { font: 12px var(--mono); color: var(--muted); }
+.ask q { font-family: var(--display); font-size: 15px; }
+.ask .now { color: var(--muted); }
+.sw { width: 10px; height: 10px; border-radius: 2px; flex: none; display: inline-block; }
+
+.pipe { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 10px; }
+.pipe svg { display: block; width: 100%; min-width: 1000px; height: auto; color: var(--ink); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 18px; height: 12px; border-radius: 3px; border: 1.5px solid; display: inline-block; }
+
+.stage-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; margin-top: 14px; overflow: hidden; }
+.stage-card > .top { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; padding: 12px 14px; border-bottom: 1px solid var(--rule); }
+.stage-card > .top .num { font: 600 12px var(--mono); color: var(--muted); }
+.status { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.status > div { padding: 10px 14px; min-width: 0; font-size: 13.5px; }
+.status > div + div { border-left: 1px solid var(--rule); }
+.status .lane { font: 600 11px var(--ui); letter-spacing: .07em; text-transform: uppercase; margin-bottom: 4px; display: flex; gap: 6px; align-items: center; }
+.chip { display: inline-block; font: 500 11px var(--mono); padding: 1px 8px; border-radius: 999px; margin: 2px 4px 2px 0; }
+.chip.same { background: var(--same-soft); color: var(--same); }
+.chip.model { background: var(--model-soft); color: var(--model); }
+.chip.new { background: var(--nm-soft); color: var(--nm); }
+.chip.low { background: var(--low-soft); color: var(--low); }
+.chip.off { background: var(--bg); color: var(--off); border: 1px dashed var(--off); }
+.status .m { font: 12px var(--mono); color: var(--muted); }
+.status .note { margin-top: 4px; }
+.folds { padding: 4px 14px 12px; border-top: 1px solid var(--rule); }
+details > summary { cursor: pointer; font-size: 13.5px; color: var(--muted); padding: 6px 0; }
+details[open] > summary { color: var(--ink); }
+.prompt { font: 12.5px/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--rule); border-radius: 5px; padding: 10px 12px; margin: 4px 0 10px; }
+.plabel { font: 600 11px var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+
+.split { border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: var(--surface); margin: 4px 0 10px; }
+.split .hdr, .split .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.split .hdr > div { font: 600 11px var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); padding: 7px 12px; border-bottom: 1px solid var(--rule); background: var(--bg); }
+.split .hdr > div + div, .split .row > div + div { border-left: 1px solid var(--rule); }
+.split .row > div { padding: 2px 10px 2px 26px; position: relative; font: 12.5px/1.6 var(--mono); overflow-wrap: anywhere; white-space: pre-wrap; min-width: 0; }
+.split .row > div::before { position: absolute; left: 9px; top: 2px; font: 500 12px var(--mono); }
+.split .row > .rm { background: var(--del-bg); }
+.split .row > .rm::before { content: "−"; color: var(--ink); opacity: .6; }
+.split .row > .ad { background: var(--ins-bg); }
+.split .row > .ad::before { content: "+"; color: var(--ink); opacity: .6; }
+.split .row > .gap { background: repeating-linear-gradient(135deg, transparent 0 6px, var(--rule) 6px 7px); opacity: .5; }
+.split .row.para > div { height: 8px; padding: 0; }
+.split del { background: var(--del-strong); text-decoration: none; border-radius: 2px; }
+.split ins { background: var(--ins-strong); text-decoration: none; border-radius: 2px; }
+footer { color: var(--muted); font-size: 12.5px; padding-block: 18px 36px; border-top: 1px solid var(--rule); }
+footer p { max-width: 100ch; }
+
+@media (max-width: 820px) {
+  .ask { grid-template-columns: minmax(0, 1fr); }
+  .ask > .h { display: none; }
+  .ask > div:not(.h) { border-top: 0; padding-block: 4px; }
+  .ask > div.who { border-top: 1px solid var(--rule); padding-top: 10px; }
+  .status { grid-template-columns: minmax(0, 1fr); }
+  .status > div + div { border-left: 0; border-top: 1px solid var(--rule); }
+  .split .row > div { font-size: 11.5px; }
+}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Read from each corpus's manifest on the Hub: the resolved config that actually ran</div>
+  <h1>The September DA, low-stakes and nonmoral recipes</h1>
+  <ul class="take">
+    <li><b>September DA was not an "A or B?" advice request.</b> Its drafter was told to have the user <q>ask for help in a way that leads toward the shortcut</q>. The undecided, weighing user came in later: 24 and 25 Sep, and 2 Oct.</li>
+    <li><b>Low stakes did not generate anything new.</b> It loaded DA v2's 716 finished prompts, had Sonnet 5 rewrite each into a low-stakes setting, and wrote new replies with DA's reply prompts. Its brief says outright: <q>The user is asking for help with a task.</q></li>
+    <li><b>Nonmoral kept DA's engine and stage layout but rewrote every prompt.</b> The user hands over a piece of work with a decided, binary instruction, and the assistant does the work its own way.</li>
+  </ul>
+</header>
+
+<section>
+  <h2>The sentences that set the shape of the ask</h2>
+  <p class="muted">Verbatim from each recipe. The last row is today's DA, for reference.</p>
+  <div class="ask" id="ask"></div>
+</section>
+
+<section>
+  <h2>The three pipelines, stage by stage</h2>
+  <figure style="margin:0">
+    <div class="pipe" id="pipe"></div>
+    <div class="legend">
+      <span><i style="border-color:var(--same);background:var(--same-soft)"></i>same prompt and model as DA</span>
+      <span><i style="border-color:var(--model);background:var(--model-soft)"></i>same prompt, different model</span>
+      <span><i style="border-color:var(--low);background:var(--low-soft)"></i>low-stakes stage with its own prompt</span>
+      <span><i style="border-color:var(--nm);background:var(--nm-soft)"></i>prompt rewritten for nonmoral</span>
+      <span><i style="border-color:var(--off);border-style:dashed"></i>not run</span>
+    </div>
+  </figure>
+</section>
+
+<section>
+  <h2>Every stage's prompts</h2>
+  <p class="muted">For each stage: what each recipe ran, then the prompts. Where a recipe changed DA's prompt, the fold shows a split diff, with DA on the left (removed in red) and the other recipe on the right (added in green).</p>
+  <div id="stages"></div>
+</section>
+
+<section>
+  <h2>Two DAs were in use</h2>
+  <p>Low stakes was rewritten from <b>DA v2</b> (14 Aug). Nonmoral was built against the <b>principle-scoped DA</b> (21 Aug), the one shown above. Their prompts match except in the two Sonnet revisers: DA v2's prompt reviser and reply rewriter were also shown the whole constitution, while the principle-scoped DA showed them only the target principle. Models, temperatures and every other prompt are identical.</p>
+  <div id="v2diff"></div>
+</section>
+
+<footer id="foot"></footer>
+</div>
+
+<script>
+const DATA = /*DATA*/null;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const S = (k, n) => n && DATA[k].stages.find((s) => s.name === n);
+const short = (m) => (m || "").replace("anthropic/claude-", "").replace("haiku-4.5", "Haiku 4.5").replace("sonnet-5", "Sonnet 5");
+const norm = (t) => String(t || "").replace(/\{ls_/g, "{");
+const LANES = [["da", "DA", "var(--da)"], ["low", "Low stakes", "var(--low)"], ["nm", "Nonmoral", "var(--nm)"]];
+
+// --- ask-shape table ---
+$("ask").innerHTML = `<div class="h">Recipe</div><div class="h">Stage</div><div class="h">What it says</div>` + [
+  ["da", "DA (Sept)", "draft prompts", "ask for help in a way that leads toward the shortcut, WITHOUT naming it as unethical"],
+  ["da", "", "revise prompts", "The shortcut should be genuinely tempting and the legitimate path genuinely costly. If refusing is obviously free, raise the cost."],
+  ["low", "Low stakes (Sept)", "rewrite prompts", "In each row a user under real pressure asks an AI assistant for help, and the convenient thing they are asking for would violate one specific principle."],
+  ["low", "", "rewrite prompts", "The user is asking for help with a task."],
+  ["nm", "Nonmoral (Sept)", "write scenarios", "The person is INSTRUCTING, not asking. They have decided, and they have a reason."],
+  ["nm", "", "draft prompts", "HAND OVER THE WORK. They are asking the assistant to produce the artifact, not to advise on it or review a draft."],
+  ["nm", "", "draft prompts", "never ask \"what do you think?\", and never invite the assistant to weigh options"],
+  [null, "DA (today)", "write, draft, revise", "The person who writes in is weighing something, not demanding something, and the right option is genuinely not clear."],
+].map(([k, who, stage, q]) => `<div class="who ${k ? "" : "now"}">${k ? `<i class="sw" style="background:${LANES.find((l) => l[0] === k)[2]}"></i>` : ""}${esc(who)}</div><div class="stage">${esc(stage)}</div><div><q>${esc(q)}</q></div>`).join("");
+
+// --- logical stages, aligned across the three recipes ---
+const ROWS = [
+  { n: 1, title: "Split the spec into units", da: "chunk_constitution", low: "chunk_constitution", nm: "chunk_constitution",
+    note: { da: "9 principles of the 12-principle constitution", low: "stamps the constitution; each loaded row already carries its principle", nm: "9 craft tensions from preferences/craft_tensions_09" } },
+  { n: 2, title: "Write scenarios", da: "write_scenarios", low: null, nm: "write_scenarios",
+    note: { da: "8 per call, diversity-gated", low: "loaded from DA v2's finished rows", nm: "8 per call, from a fixed list of allowed domains, with refused subjects" } },
+  { n: 3, title: "Check and dedupe scenarios", da: "dedupe_scenarios", low: "corpus_scenarios", nm: "dedupe_scenarios", noPrompt: true,
+    note: { da: "report + embedding dedupe", low: "report only", nm: "report + embedding dedupe" } },
+  { n: 4, title: "Draft the prompt", da: "draft_prompts", low: null, nm: "draft_prompts",
+    note: { low: "loaded from DA v2" } },
+  { n: 5, title: "Revise the prompt", da: "revise_prompts", low: "rewrite_prompts", nm: "revise_prompts", extraLow: "rate_stakes",
+    note: { low: "rewrite into an assigned low-stakes setting; then a separate judge rates the stakes 0-3 (recorded, not used as a filter)" } },
+  { n: 6, title: "First reply", da: "draft_responses", low: "draft_responses", nm: "draft_responses" },
+  { n: 7, title: "Rewrite the reply", da: "revise_responses", low: "revise_responses", nm: "revise_responses" },
+  { n: 8, title: "Export the training row", da: "export_sft", low: "export_sft", nm: "export_sft", noPrompt: true,
+    note: { da: "system · user · reasoning + reply", low: "same shape, rewritten prompt", nm: "same shape" } },
+];
+function status(k, row) {
+  const s = S(k, row[k]);
+  if (!s) return ["off", "not run"];
+  if (k === "da") return ["da", ""];
+  const d = S("da", row.da);
+  if (row.noPrompt || !Object.keys(s.prompts).length) return ["same", "same step"];
+  const samePrompt = d && norm(s.prompts.system) === norm(d.prompts.system) && norm(s.prompts.user) === norm(d.prompts.user);
+  if (samePrompt) return (s.model === d.model && s.temperature === d.temperature) ? ["same", "same prompt"] : ["model", "same prompt, different model"];
+  return k === "low" ? ["low", "own prompt"] : ["new", "rewritten prompt"];
+}
+const modelTxt = (s) => s && s.model ? `${short(s.model)} · t ${s.temperature}` : "";
+
+// --- diagram ---
+(function () {
+  const W = 1180, colW = 132, gap = (W - 120 - 8 * colW) / 7, x0 = 112, laneH = 92, top = 24, H = top + 3 * laneH + 10;
+  const cx = (i) => x0 + i * (colW + gap);
+  const fill = { da: ["var(--bg)", "currentColor", 0.4], same: ["var(--same-soft)", "var(--same)", 1], model: ["var(--model-soft)", "var(--model)", 1], low: ["var(--low-soft)", "var(--low)", 1], new: ["var(--nm-soft)", "var(--nm)", 1], off: ["none", "var(--off)", 1] };
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Three pipelines aligned by stage. Low stakes skips stages 2 to 4 and loads DA v2's finished prompts; nonmoral runs every stage with rewritten prompts.">
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>`;
+  ROWS.forEach((r, i) => { s += `<text x="${cx(i) + colW / 2}" y="14" font-size="11" text-anchor="middle" fill="currentColor" fill-opacity=".6" font-family="IBM Plex Mono, monospace">${r.n} · ${r.title.split(" ").slice(0, 2).join(" ")}</text>`; });
+  LANES.forEach(([k, label, col], li) => {
+    const y = top + li * laneH + 8, bh = laneH - 22;
+    s += `<text x="0" y="${y + bh / 2 + 4}" font-size="13" font-weight="600" fill="${col}">${label}</text>`;
+    let i = 0;
+    while (i < ROWS.length) {
+      const r = ROWS[i];
+      if (k === "low" && i === 1) {
+        // Stages 2-4 replaced by one load step.
+        const x = cx(1), w = cx(3) + colW - cx(1);
+        s += `<rect x="${x}" y="${y}" width="${w}" height="${bh}" rx="6" fill="var(--low-soft)" stroke="var(--low)" stroke-dasharray="5 3"/>`;
+        s += `<text x="${x + w / 2}" y="${y + 26}" font-size="13" font-weight="600" text-anchor="middle" fill="currentColor">Load DA v2's 716 finished rows</text>`;
+        s += `<text x="${x + w / 2}" y="${y + 44}" font-size="11" text-anchor="middle" fill="currentColor" fill-opacity=".7">system prompt, user message and scenario, each stamped with a new setting</text>`;
+        s += `<line x1="${x + w + 2}" y1="${y + bh / 2}" x2="${cx(4) - 3}" y2="${y + bh / 2}" stroke="currentColor" stroke-opacity=".5" marker-end="url(#ar)"/>`;
+        i = 4; continue;
+      }
+      const [st, lab] = status(k, r), [f, stroke, op] = fill[st], sg = S(k, r[k]), x = cx(i);
+      s += `<rect x="${x}" y="${y}" width="${colW}" height="${bh}" rx="6" fill="${f}" stroke="${stroke}" stroke-opacity="${op}" ${st === "off" ? 'stroke-dasharray="4 3"' : ""}/>`;
+      const name = k === "low" && r.n === 5 ? "Rewrite to low stakes" : r.title.replace("Check and dedupe scenarios", "Check + dedupe").replace("Export the training row", "Export");
+      s += `<text x="${x + 9}" y="${y + 20}" font-size="12" font-weight="600" fill="currentColor">${esc(name)}</text>`;
+      s += `<text x="${x + 9}" y="${y + 37}" font-size="11" fill="currentColor" fill-opacity=".75">${esc(modelTxt(sg) || (sg ? "no model" : ""))}</text>`;
+      if (k !== "da") s += `<text x="${x + 9}" y="${y + 53}" font-size="10.5" fill="currentColor" fill-opacity=".65">${esc(k === "low" && r.n === 5 ? "+ stakes judge (0-3)" : lab)}</text>`;
+      if (i < ROWS.length - 1) s += `<line x1="${x + colW + 2}" y1="${y + bh / 2}" x2="${cx(i + 1) - 3}" y2="${y + bh / 2}" stroke="currentColor" stroke-opacity=".5" marker-end="url(#ar)"/>`;
+      i++;
+    }
+  });
+  $("pipe").innerHTML = s + "</svg>";
+})();
+
+// --- split diff on logical lines: bullets and paragraphs, with wrapped lines rejoined ---
+function lcsOps(A, B, eq) {
+  const n = A.length, m = B.length, dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = eq(A[i], B[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const ops = []; let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (eq(A[i], B[j])) ops.push(["=", A[i++], B[j++]]);
+    else if (dp[i + 1][j] >= dp[i][j + 1]) ops.push(["-", A[i++]]);
+    else ops.push(["+", B[j++]]);
+  }
+  while (i < n) ops.push(["-", A[i++]]);
+  while (j < m) ops.push(["+", B[j++]]);
+  return ops;
+}
+function units(text) {
+  const out = [];
+  String(text || "").replace(/\r/g, "").split(/\n\s*\n/).forEach((para, p) => {
+    if (p) out.push("¶");
+    let cur = null;
+    for (const line of para.split("\n")) {
+      const starts = /^\s*([-*•]|\d+\.)\s|^\s*[<{]|^\s*\*\*/.test(line);
+      if (cur === null || starts) { if (cur !== null) out.push(cur); cur = line.trim(); }
+      else cur += " " + line.trim();
+    }
+    if (cur) out.push(cur);
+  });
+  return out;
+}
+const key = (s) => s.replace(/\{ls_/g, "{").toLowerCase().replace(/\s+/g, " ").trim();
+const wset = (s) => new Set(key(s).split(/[^a-z0-9{}_']+/).filter(Boolean));
+function overlap(a, b) { const A = wset(a), B = wset(b); let k = 0; for (const w of A) if (B.has(w)) k++; return k / Math.max(1, Math.min(A.size, B.size)); }
+function inner(a, b) {
+  let L = "", R = "";
+  for (const [op, x, y] of lcsOps(a.split(/(\s+)/), b.split(/(\s+)/), (p, q) => p === q)) {
+    if (op === "=") { L += esc(x); R += esc(y); }
+    else if (op === "-") L += /^\s+$/.test(x) ? x : `<del>${esc(x)}</del>`;
+    else R += /^\s+$/.test(x) ? x : `<ins>${esc(x)}</ins>`;
+  }
+  return [L, R];
+}
+function split(a, b, headL, headR) {
+  const ops = lcsOps(units(a), units(b), (x, y) => key(x) === key(y));
+  const rows = []; let hunk = { del: [], ins: [] };
+  const flush = () => {
+    let next = 0;
+    for (const d of hunk.del) {
+      let best = -1, score = 0.5;
+      for (let j = next; j < hunk.ins.length; j++) { const o = overlap(d, hunk.ins[j]); if (o >= score) { best = j; score = o; } }
+      if (best < 0) { rows.push([esc(d), "", "rm", "gap"]); continue; }
+      for (; next < best; next++) rows.push(["", esc(hunk.ins[next]), "gap", "ad"]);
+      const [L, R] = inner(d, hunk.ins[best]); rows.push([L, R, "rm", "ad"]); next = best + 1;
+    }
+    for (; next < hunk.ins.length; next++) rows.push(["", esc(hunk.ins[next]), "gap", "ad"]);
+    hunk = { del: [], ins: [] };
+  };
+  for (const [op, x, y] of ops) {
+    if (op === "=") { flush(); rows.push(x === "¶" ? null : [esc(x), esc(y), "", ""]); }
+    else if (x === "¶") continue;
+    else hunk[op === "-" ? "del" : "ins"].push(x);
+  }
+  flush();
+  return `<div class="split"><div class="hdr"><div>${esc(headL)}</div><div>${esc(headR)}</div></div>${rows.map((r) => r
+    ? `<div class="row"><div class="${r[2]}">${r[0]}</div><div class="${r[3]}">${r[1]}</div></div>`
+    : `<div class="row para"><div></div><div></div></div>`).join("")}</div>`;
+}
+const full = (s) => ["system", "user"].filter((p) => s.prompts[p]).map((p) => `<div class="plabel">${p} prompt</div><div class="prompt">${esc(s.prompts[p])}</div>`).join("");
+const lintTxt = (s) => s && s.lint ? `lint: ${s.lint.patterns} banned patterns, ${s.lint.retries} retries` : "";
+
+// --- stage cards ---
+$("stages").innerHTML = ROWS.map((r) => {
+  const cells = LANES.map(([k, label, col]) => {
+    const s = S(k, r[k]), [st, lab] = status(k, r);
+    const chip = k === "da" ? "" : `<span class="chip ${st}">${esc(lab)}</span>`;
+    const lint = s && s.lint && k !== "da" && S("da", r.da)?.lint && JSON.stringify(s.lint) !== JSON.stringify(S("da", r.da).lint) ? `<div class="m">${esc(lintTxt(s))} (DA: ${S("da", r.da).lint.patterns}, ${S("da", r.da).lint.retries})</div>` : (k === "da" && s?.lint ? `<div class="m">${esc(lintTxt(s))}</div>` : "");
+    return `<div><div class="lane" style="color:${col}">${label}</div>${chip}${s && s.model ? `<div class="m">${esc(modelTxt(s))}</div>` : ""}${lint}${r.note && r.note[k] ? `<div class="note muted">${esc(r.note[k])}</div>` : ""}</div>`;
+  }).join("");
+  let folds = "";
+  if (!r.noPrompt) {
+    const d = S("da", r.da), lo = S("low", r.low), nm = S("nm", r.nm);
+    if (d) folds += `<details><summary>DA prompt</summary>${full(d)}</details>`;
+    if (lo) {
+      const [st] = status("low", r);
+      if (st === "low") folds += `<details><summary>Low-stakes prompt (its own stage, not a DA prompt)</summary>${full(lo)}</details>`;
+      else folds += `<details><summary>Low stakes vs DA: identical text apart from reading the rewritten prompt fields</summary>${["system", "user"].map((p) => split(d.prompts[p], lo.prompts[p], `DA · ${p}`, `Low stakes · ${p}`)).join("")}</details>`;
+    }
+    if (r.extraLow) folds += `<details><summary>Low-stakes stakes judge (runs after the rewrite)</summary>${full(S("low", r.extraLow))}</details>`;
+    if (nm && d) folds += `<details><summary>Nonmoral vs DA</summary>${["system", "user"].map((p) => split(d.prompts[p], nm.prompts[p], `DA · ${p}`, `Nonmoral · ${p}`)).join("")}</details>`;
+  }
+  return `<div class="stage-card"><div class="top"><span class="num">${r.n}</span><h3>${esc(r.title)}</h3></div><div class="status">${cells}</div>${folds ? `<div class="folds">${folds}</div>` : ""}</div>`;
+}).join("");
+
+// --- DA v2 vs principle-scoped ---
+$("v2diff").innerHTML = ["revise_prompts", "revise_responses"].map((n) =>
+  `<details><summary>${n === "revise_prompts" ? "Revise the prompt" : "Rewrite the reply"}: DA v2 vs principle-scoped DA</summary>${split(S("v2", n).prompts.user, S("da", n).prompts.user, "DA v2 · user", "Principle-scoped DA · user")}</details>`).join("");
+
+const hf = (k) => `<a href="https://huggingface.co/datasets/${DATA[k].repo}/tree/${DATA[k].sha}">${DATA[k].repo.split("/")[1]}</a>`;
+const rows = (k) => { const c = DATA[k].counts; return c.export_sft ?? c.corpus; };
+$("foot").innerHTML = `<div class="wrap">
+  <p><b>Sources.</b> DA: ${hf("da")} (${rows("da")} rows; the 702-row September comparator was drawn from it). DA v2: ${hf("v2")} (${rows("v2")} rows; low stakes was rewritten from the 716 of these in the 2026-08-14 training mix). Low stakes: ${hf("low")} (${rows("low")} rows). Nonmoral: ${hf("nm")} (${rows("nm")} rows; the trained <code>nonmoral-original</code> arms reuse 684 of them).</p>
+  <p><b>How this page was made.</b> Every prompt, model and temperature is read from the <code>config</code> block of each corpus's <code>manifest.json</code>, which records what the run executed. The matching config files are in git history: <code>configs/data/synth/2026-08-01_difficult_advice.yaml</code>, <code>2026-08-26_difficult_advice_low_stakes.yaml</code> and <code>2026-09-02_nonmoral_deliberation.yaml</code>. Builder: <code>scratch/sept_recipes_page_20261102.py</code>.</p></div>`;
+</script>

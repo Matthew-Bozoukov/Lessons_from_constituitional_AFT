@@ -1,0 +1,40 @@
+# ABOUTME: The amoral twin of the difficult-advice arm: da.yaml with its synthetic share drawn from the da-amoral
+# ABOUTME: corpus instead of DA's. Publishes as `<date>-da-amoral-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-amoral.yaml [synthetic_pct=15]
+#
+# Everything but `sources` is da.yaml's, so a da-amoral-15 arm differs from a da-15 arm only in which corpus fills
+# the synthetic 15%: the same plain base at the same revision, the same token-share swap, the same trait balancing.
+# The corpus comes from configs/data/synth/da-amoral.yaml @ 6bd40b75 (nine non-moral principles of practical
+# judgement in the constitution's slot; preferences/practical_judgement_09/).
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  # The base every da arm since 2026-10-05 is built on (da.yaml has its history).
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+
+# A share of SUPERVISED TOKENS, taken exactly as in da.yaml (`plan_swap`, build_mixture.py).
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-amoral:
+    # 2026-11-03: 754 rows, t1 85 ... t6 81 ... t9 84, 783,804 supervised tokens (Qwen3.6), so a 15% share
+    # (~750k of the base's 5,000,005) takes about 720 of them.
+    dataset: "${oc.env:HF_ORG}/2026-11-03-da-amoral-synth"
+    revision: "ac8e1efe10611b1f43c8d58110b7a53b670fae52"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_amoral"
+
+hf:
+  experiment: "amoral twin of the difficult-advice arm: the plain base blend (2026-10-05-plain-mix) scaled around a synthetic share of morally neutral difficult advice"
+  # The corpus's spec is preferences/practical_judgement_09, which is deliberately not an alignment target.
+  constitution: "none"
+  private: false

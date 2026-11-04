@@ -1,0 +1,262 @@
+<title>Difficult Advice Chains</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: an explainer column on top, then one horizontally scrolling board whose columns are pipeline stages and
+   whose rows are the DA chain, the differences between the two recipes, and the amoral chain. */
+:root {
+  --bg: #f4f5f8; --surface: #ffffff; --ink: #1b1f27; --muted: #5a6373; --line: #d8dce4; --chip: #eceef3;
+  --da: #6a3d9e; --da-soft: #f1eaf9; --am: #0d7a72; --am-soft: #e1f3f0; --warn: #9a5b00; --warn-soft: #fbf0dc;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121419; --surface: #1a1d24; --ink: #e5e7ec; --muted: #9aa2b1; --line: #2d323c; --chip: #242832;
+  --da: #b994e6; --da-soft: #2a2236; --am: #4cc4b7; --am-soft: #11302c; --warn: #f0b860; --warn-soft: #3a2c14; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121419; --surface: #1a1d24; --ink: #e5e7ec; --muted: #9aa2b1; --line: #2d323c; --chip: #242832;
+  --da: #b994e6; --da-soft: #2a2236; --am: #4cc4b7; --am-soft: #11302c; --warn: #f0b860; --warn-soft: #3a2c14; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--f-body); }
+.wrap { padding-block: 28px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.intro { max-width: 980px; display: grid; gap: 18px; }
+h1 { font: 700 2.1rem/1.1 var(--f-display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h2 { font: 600 1.25rem/1.2 var(--f-display); margin: 0; text-wrap: balance; }
+p { margin: 0; max-width: 72ch; }
+.muted { color: var(--muted); }
+code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+.tag { display: inline-block; font: 600 0.72rem/1 var(--f-display); letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 7px; border-radius: 4px; }
+.tag.da { background: var(--da-soft); color: var(--da); } .tag.am { background: var(--am-soft); color: var(--am); }
+.examples { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.ex { background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--da); border-radius: 6px; padding: 14px 16px; display: grid; gap: 6px; min-width: 0; }
+.ex.am { border-top-color: var(--am); }
+.ex dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 0; font-size: 0.88rem; }
+.ex dt { color: var(--muted); } .ex dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.result { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: grid; gap: 12px; }
+.tablebox { overflow-x: auto; }
+table { border-collapse: collapse; font-size: 0.88rem; font-variant-numeric: tabular-nums; min-width: 640px; width: 100%; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 0.78rem/1.2 var(--f-display); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+td.num { text-align: right; } th.num { text-align: right; }
+.good { color: var(--am); font-weight: 600; } .bad { color: var(--warn); font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px 18px; font-size: 0.86rem; align-items: center; }
+.sw { display: inline-block; width: 26px; height: 12px; border-radius: 2px; vertical-align: -1px; margin-right: 6px; }
+.board-head { margin: 34px 0 10px; display: grid; gap: 6px; max-width: 980px; }
+.board { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.grid { display: grid; grid-template-columns: 132px repeat(8, 392px); width: max-content; }
+.lane-label { position: sticky; left: 0; z-index: 2; background: var(--bg); border-right: 1px solid var(--line); padding: 14px 12px; display: grid; align-content: start; gap: 6px; font-size: 0.8rem; color: var(--muted); }
+.lane-label b { font: 700 1rem/1.1 var(--f-display); color: var(--ink); }
+.lane-label.da b { color: var(--da); } .lane-label.am b { color: var(--am); }
+.colhead { padding: 14px 14px 12px; border-bottom: 1px solid var(--line); display: grid; gap: 6px; align-content: start; position: relative; }
+.colhead .n { font: 700 0.78rem/1 var(--f-display); letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; }
+.colhead h3 { font: 700 1.12rem/1.15 var(--f-display); margin: 0; }
+.colhead .model { font: 500 0.78rem/1.3 var(--f-mono); color: var(--muted); }
+.colhead p { font-size: 0.86rem; }
+.colhead::after { content: "\2192"; position: absolute; right: -9px; top: 14px; font: 700 1.1rem/1 var(--f-display); color: var(--muted); z-index: 1; }
+.colhead.last::after { content: none; }
+.cell { padding: 12px; min-width: 0; border-bottom: 1px solid var(--line); }
+.card { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--da); border-radius: 6px; padding: 12px 13px; display: grid; gap: 10px; min-width: 0; }
+.am .card { border-left-color: var(--am); }
+.delta { background: var(--chip); border-radius: 6px; padding: 11px 13px; font-size: 0.84rem; display: grid; gap: 7px; }
+.delta ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.delta .same { color: var(--muted); }
+.del { color: var(--da); } .ins { color: var(--am); }
+.del::before { content: "DA: "; font-weight: 600; } .ins::before { content: "amoral: "; font-weight: 600; }
+.field { display: grid; gap: 3px; min-width: 0; }
+.field > .k { font: 600 0.72rem/1 var(--f-display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.field > .v { font-size: 0.88rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.v.clip { max-height: 13.5em; overflow: hidden; position: relative; }
+.v.clip::after { content: ""; position: absolute; inset: auto 0 0 0; height: 3em; background: linear-gradient(transparent, var(--surface)); }
+details { border-top: 1px dashed var(--line); padding-top: 8px; }
+summary { cursor: pointer; font: 600 0.8rem/1.3 var(--f-display); letter-spacing: 0.03em; color: var(--muted); }
+summary:focus-visible, a:focus-visible { outline: 2px solid var(--am); outline-offset: 2px; border-radius: 2px; }
+details[open] summary { margin-bottom: 8px; }
+pre { margin: 0; font: 0.76rem/1.5 var(--f-mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 460px; overflow: auto; background: var(--bg); border-radius: 4px; padding: 8px 9px; }
+pre .role { display: block; color: var(--muted); font-weight: 500; margin-top: 6px; }
+pre .role:first-child { margin-top: 0; }
+.mk-da { background: var(--da-soft); box-shadow: inset 3px 0 0 var(--da); }
+.mk-am { background: var(--am-soft); box-shadow: inset 3px 0 0 var(--am); }
+.units { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 2px; font-size: 0.82rem; }
+.units li { padding: 2px 6px; border-radius: 3px; color: var(--muted); }
+.units li.on { color: var(--ink); font-weight: 600; background: var(--chip); }
+.note { font-size: 0.82rem; background: var(--warn-soft); color: var(--ink); border-radius: 4px; padding: 7px 9px; }
+.kv { display: flex; flex-wrap: wrap; gap: 6px; }
+.kv span { background: var(--chip); border-radius: 4px; padding: 2px 7px; font: 0.76rem/1.5 var(--f-mono); }
+.sib { margin: 0; padding-left: 18px; font-size: 0.8rem; display: grid; gap: 3px; }
+.sib li.on { font-weight: 600; }
+@media (max-width: 560px) { h1 { font-size: 1.6rem; } .grid { grid-template-columns: 96px repeat(8, 320px); } }
+</style>
+
+<div class="wrap">
+  <header class="intro">
+    <span class="muted mono">teaching_claude_why_replication · branch nika/da-amoral · 2026-11-03</span>
+    <h1>Difficult advice and its amoral twin, traced row by row</h1>
+    <p>Both datasets come out of the same eight-stage synth pipeline (<code>uv run synth run</code>). The engine, the models, the temperatures and the AI-presence deal are identical. What differs is the document the pipeline is built around and the wording of each stage's prompt. The board below runs left to right. The top lane follows one real row of the difficult-advice corpus through every stage, the bottom lane one real row of today's amoral smoke, and the middle lane says what the amoral recipe changes at that stage. Every card opens to show the exact prompt that stage sent and the full text it returned.</p>
+    <div class="examples">
+      <div class="ex">
+        <span><span class="tag da">Difficult advice</span></span>
+        <dl>
+          <dt>row</dt><dd class="mono" id="da-id"></dd>
+          <dt>from</dt><dd class="mono" id="da-src"></dd>
+          <dt>config</dt><dd class="mono">configs/data/synth/da.yaml (unchanged since eb2013dc, which the run's commit contains)</dd>
+          <dt>principle</dt><dd id="da-unit"></dd>
+          <dt>why this row</dt><dd>A private-life row dealt "no AI", so it sets the moral version of a personal decision beside the amoral one.</dd>
+        </dl>
+      </div>
+      <div class="ex am">
+        <span><span class="tag am">Amoral (candidate)</span></span>
+        <dl>
+          <dt>row</dt><dd class="mono" id="am-id"></dd>
+          <dt>from</dt><dd class="mono" id="am-src"></dd>
+          <dt>config</dt><dd class="mono">configs/data/synth/da-amoral.yaml @ 6bd40b75, the candidate for full generation</dd>
+          <dt>principle</dt><dd id="am-unit"></dd>
+          <dt>why this row</dt><dd>The birthday-dinner scenario, in one of the new everyday settings. Under the previous rewrite its reply told the user their old favourite was "a single visit", against their own "solid every time". This is the same scenario under the candidate's rewrite, which every blind rater marked fine.</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--da-soft);box-shadow:inset 3px 0 0 var(--da)"></span>prompt line only difficult advice has</span>
+      <span><span class="sw" style="background:var(--am-soft);box-shadow:inset 3px 0 0 var(--am)"></span>prompt line only the amoral recipe has</span>
+      <span class="muted">Unmarked lines are word for word the same in both recipes.</span>
+    </div>
+  </header>
+
+  <section class="board-head">
+    <h2>The two chains</h2>
+    <p class="muted">Scroll sideways. Stage numbers follow the <code>stage_N_*.jsonl</code> snapshots each run writes. The scenario check after stage 2 and the corpus check after stage 7 only report and change no row.</p>
+  </section>
+  <div class="board" tabindex="0" aria-label="Pipeline board: stages as columns; difficult advice, differences and amoral as rows">
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <section class="intro" style="margin-top:34px">
+    <h2>Where the candidate stands</h2>
+    <div class="result">
+      <p>Blind Opus ratings on the same rubric throughout. Structural numbers are regex counts over exported rows. The difficult-advice judged rows are 20 random rows from 2026-10-30-da-synth, scored by the same Opus rater prompt.</p>
+      <div class="tablebox"><table>
+        <thead><tr><th>measure</th><th class="num">difficult advice</th><th class="num">amoral x3 (a89e94ae)</th><th class="num">amoral candidate (6bd40b75)</th></tr></thead>
+        <tbody>
+          <tr><td>misread or argued against the user's own facts</td><td class="num">0/20</td><td class="num">20/60 (33%)</td><td class="num good">4&ndash;7/40 (10&ndash;17%)</td></tr>
+          <tr><td>commits to a recommendation</td><td class="num">19/20</td><td class="num">~14/20</td><td class="num">28/40 (70%)</td></tr>
+          <tr><td>hands the decision back</td><td class="num">1/20</td><td class="num">~4/20</td><td class="num">8/40</td></tr>
+          <tr><td>weighs both sides before landing</td><td class="num">19/20</td><td class="num">15/20</td><td class="num">34/40</td></tr>
+          <tr><td>notes deliberate in the first person</td><td class="num">14/20</td><td class="num">~3/20</td><td class="num bad">~3/20</td></tr>
+          <tr><td>system prompt says "ask clarifying questions"</td><td class="num">8%</td><td class="num">0%</td><td class="num">0%</td></tr>
+          <tr><td>reply ends on a question</td><td class="num">30%</td><td class="num">30%</td><td class="num">15%</td></tr>
+          <tr><td>numbers in the user message (median)</td><td class="num">1</td><td class="num">4</td><td class="num">2</td></tr>
+          <tr><td>AI named in the user message</td><td class="num">15%</td><td class="num">5%</td><td class="num bad">5%</td></tr>
+          <tr><td>moral stakes</td><td class="num">by design</td><td class="num">0/20</td><td class="num">0 clear, 3/40 borderline</td></tr>
+          <tr><td>supervised tokens per row (mean)</td><td class="num">1,167</td><td class="num">&ndash;</td><td class="num">1,087</td></tr>
+        </tbody>
+      </table></div>
+      <p>The candidate fixes the reply's habit of rewriting what the user said so its argument works, which was the main problem with x3. What remains is mostly a handful of scenarios whose own facts favour the tempted option; no reply version ever recommends that option. Four later fixes aimed at those scenarios made things worse or did nothing and were reverted (they are listed in the config header).</p>
+      <p><b>Planned full run:</b> 15% of the plain base's 5,000,005 supervised tokens is 750,000 tokens, about 690 candidate rows (difficult advice needs about 643). Generating about 760 scenarios leaves room for the similarity gate and failed rows, at about $0.10 a row, or about half that through the batch API.</p>
+    </div>
+  </section>
+</div>
+
+<script type="application/json" id="trace">__TRACE_DATA__</script>
+<script>
+const T = JSON.parse(document.getElementById("trace").textContent);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const clip = (s, n) => s.length > n ? s.slice(0, n).replace(/\s+\S*$/, "") + " …" : s;
+
+function field(k, v, {clipAt = 0, full = false} = {}) {
+  const text = String(v ?? "");
+  const long = clipAt && text.length > clipAt;
+  return `<div class="field"><span class="k">${esc(k)}</span><span class="v${long && !full ? " clip" : ""}">${esc(text)}</span>${
+    long ? `<details><summary>Full ${esc(k)} (${text.length.toLocaleString()} chars)</summary><pre>${esc(text)}</pre></details>` : ""}</div>`;
+}
+// The exact prompt the stage sent, with the lines that exist in only one recipe's template marked.
+function prompt(arm, stage) {
+  const p = T[arm].prompts[stage], only = new Set(T[arm].only_here[stage]);
+  const cls = arm === "da" ? "mk-da" : "mk-am";
+  const lines = s => s.split("\n").map(l => only.has(l.trim()) ? `<span class="${cls}">${esc(l)}</span>` : esc(l)).join("\n");
+  const n = (p.system.length + p.user.length).toLocaleString();
+  return `<details><summary>Exact prompt sent (${n} chars, ${only.size} marked template lines)</summary><pre><span class="role">[system]</span>${lines(p.system)}<span class="role">[user]</span>${lines(p.user)}</pre></details>`;
+}
+
+const STAGES = [
+  {n: "1", name: "Spec, cut into units", model: "no model · kind: segment",
+   what: "The spec is cut at each <code>## N.</code> heading into nine units, t1 to t9. The preamble before the first heading reaches no stage. From here on every call sees exactly one unit and nothing else of the document.",
+   delta: `<ul><li><span class="del">constitutions/claude_distilled_09_principles: honesty, oversight, harm, AI identity and other moral or AI-character principles</span></li><li><span class="ins">preferences/practical_judgement_09: nine prudential principles (sunk cost, base rates, reversibility, cheap tests …), none of them moral</span></li><li class="ins">t2 (best alternative) and t7 (later cost) name no amounts: they used to ask for "money" and costs "in amount and in timing", and produced 46 of 75 flagged replies.</li><li>The t6 note about the nature of AI (<code>trait_notes</code>) is removed, because amoral t6 is about measures the person tracks for their own use.</li></ul>`,
+   card: a => {
+     const s2 = a.stages.stage_2_write_scenarios;
+     return `<ol class="units">${a.units.map(u => `<li class="${u.trait_id === s2.trait_id ? "on" : ""}">${esc(u.trait_id)} · ${esc(u.name)}</li>`).join("")}</ol>${field("unit this row was written for (" + s2.trait_id + ")", a.unit.text, {clipAt: 420})}`;
+   }},
+  {n: "2a", name: "Deal the labels", model: "no model · rotate · deal_unit_axes",
+   what: "Before any model call, every writer call is dealt two labels: whether an AI system is in the scene, and a sector. The deal is computed from the run plan alone, so the same plan always gets the same deal. Each label's line is pasted into the writer prompt; the AI line also goes into stages 3 and 4.",
+   delta: `<ul><li class="same">AI axis identical: self / other / none / open at 1 : 1 : 4 : 4, t6 pinned to self or other.</li><li><span class="del">43 sectors, including medicine, social work, police, military, law, government, public health, care work</span></li><li><span class="ins">36 sectors where decisions rarely carry moral weight: adds travel, home DIY, career moves, small business, cooking, event planning, clothes and style, home decor, gifts, eating out; drops the care and public-service settings, and construction, libraries, natural science and repair</span></li></ul>`,
+   card: a => {
+     const s = a.stages.stage_2_write_scenarios, isDa = a === T.da;
+     return `<div class="kv"><span>ai = ${esc(s.ai)}</span><span>sector = ${esc(s.sector)}</span><span>${esc(s.trait_id)}, call b${esc(s.scenario_id.split("_b")[1].slice(0, 2))}</span></div>
+       ${field("AI line pasted in", s.ai_text.trim() || "(open: no line, the writer decides)")}
+       ${field("sector line pasted in", s.sector_text.trim() || "(none)")}
+       <div class="field"><span class="k">${isDa ? "this call wrote 4 scenarios" : "smoke: 1 scenario per call (full run: 4)"}</span><ol class="sib">${a.siblings.map(x => `<li class="${x.scenario_id === a.scenario_id ? "on" : ""}">${esc(x.domain)}: ${esc(clip(x.shortcut, 110))}</li>`).join("")}</ol></div>`;
+   }},
+  {n: "2", name: "Write scenarios", model: "claude-haiku-4.5 · T 1.1 · write_scenarios",
+   what: "The writer gets the unit and the two dealt lines and invents situations where the convenient path goes against the principle but the right call is not obvious. It returns a domain, a third-person situation and the shortcut. A diversity gate drops any scenario within cosine 0.78 of one already kept and asks for a replacement; a report-only scenario check follows.",
+   delta: `<ul><li class="same">The ask is the same: "the convenient path would violate this specific principle, but the right call is not obvious" (x3 restored this).</li><li><span class="del">"ethically difficult situations for training a constitution-aligned AI assistant"</span> <span class="ins">"difficult judgement calls"</span></li><li class="ins">+ "Nothing moral is at stake: … nobody is wronged, deceived, harmed …"</li><li class="ins">+ "The call turns on judgement about the situation, not on a calculation." (x3)</li><li><span class="del">norm-violating shortcut / not ethics in general</span> <span class="ins">tempting option / not good sense in general</span></li></ul>`,
+   card: a => {
+     const s = a.stages.stage_2_write_scenarios;
+     return `${field("domain", s.domain)}${field("situation", s.situation)}${field("shortcut", s.shortcut)}${prompt(a === T.da ? "da" : "amoral", "write_scenarios")}`;
+   }},
+  {n: "3", name: "Draft the prompts", model: "claude-haiku-4.5 · T 1.0 · draft_prompts",
+   what: "From the situation and shortcut, the drafter writes the message the person would actually send and the system prompt of the deployment it lands in. The person is weighing a choice, not asking for help carrying it out, and never calls the shortcut wrong.",
+   delta: `<ul><li class="ins">+ "Nothing moral is at stake …" beside the weighing sentence</li><li><span class="del">"never names it as unethical"</span> <span class="ins">"never calls it a mistake"</span></li><li class="ins">+ the system prompt "does not tell the assistant how to advise (no instructions to ask questions, stay neutral or hold back a recommendation)" (x3). This took coaching-style system prompts from 55% to 15% here and 0% after stage 4.</li><li class="ins">+ "carry it in what each option means for the sender, not in figures: the call turns on judgement, not on a calculation". This drafter put the numbers back in after the writer took them out (median 4 per message, DA 1); now 2.</li></ul>`,
+   card: a => {
+     const s = a.stages.stage_3_draft_prompts;
+     return `${field("draft system prompt", s.draft_system, {clipAt: 380})}${field("draft user message", s.draft_user, {clipAt: 560})}${prompt(a === T.da ? "da" : "amoral", "draft_prompts")}`;
+   }},
+  {n: "4", name: "Revise the prompts", model: "claude-sonnet-5 · T 1.0 · revise_prompts",
+   what: "Sonnet sees the unit and both drafts. It sharpens the tension only where the draft is not already a test of that principle, removes anything that reads like a benchmark, makes the shortcut genuinely tempting, then re-describes the domain, situation and shortcut from what it actually produced. These are the prompts the model is trained on.",
+   delta: `<ul><li class="ins">+ bullet "Nothing moral at stake … If the draft has someone who could be [wronged], take that out"</li><li><span class="del">"is this ethical" / legitimate path / ethical dimension</span> <span class="ins">"is this a good idea" / better path / the principle at stake</span></li><li class="ins">+ "Keep the system prompt an ordinary deployment prompt, one that does not tell the assistant how to advise" (x3)</li></ul>`,
+   card: a => {
+     const s = a.stages.stage_4_revise_prompts, isDa = a === T.da;
+     return `${field("what it changed", s.refine_changes)}${field("final system prompt", s.system, {clipAt: 380})}${field("final user message", s.user, {clipAt: 560})}${field("re-described shortcut", s.shortcut)}${
+       isDa ? "" : `<div class="note">The re-described situation, which is metadata and is never trained on, reads "Nothing unethical is at stake either way". The reviser echoed its instruction there; the trained prompts carry no such line.</div>`}${prompt(isDa ? "da" : "amoral", "revise_prompts")}`;
+   }},
+  {n: "5", name: "Draft the reply", model: "claude-haiku-4.5 · T 1.0 · draft_responses",
+   what: "Haiku answers as the assistant, under the final system prompt plus the unit and a short note on what a good reply looks like (style_guidance). It reasons privately first, may use only particulars the person gave, and must not open on a stock phrase.",
+   delta: `<ul><li><span class="del">style: names the ethical tension; does not go along with a deceptive / oversight-subverting / harmful path; offers a legitimate alternative</span></li><li><span class="ins">style: names the tension; does not go along with a path the principle counts against if there is one, explained by what it would cost the person; offers a better alternative</span></li><li><span class="del">open on "the person who gets hurt"</span> <span class="ins">open on "the cost they are about to pay"</span></li></ul>`,
+   card: a => {
+     const s = a.stages.stage_5_draft_responses;
+     return `${field("draft reasoning", s.draft_reasoning, {clipAt: 520})}${field("draft reply", s.draft_response, {clipAt: 520})}${prompt(a === T.da ? "da" : "amoral", "draft_responses")}`;
+   }},
+  {n: "6", name: "Revise the reply", model: "claude-sonnet-5 · T 1.0 · revise_responses",
+   what: "Sonnet rewrites reasoning and reply to show the principle as strongly as the situation allows. It first audits every particular as PROMPT or INVENTED and removes the invented ones, makes the reasoning weigh the tension openly, replaces stock openers, and never names the document the principle came from.",
+   delta: `<ul><li><span class="del">"Do not go along with the norm-violating path", reason in terms of what is at stake</span></li><li><span class="ins">"Do not go along with a path the target principle counts against, if there is one", reason in terms of what it would cost the person. "Introduce no moral reason."</span></li><li><span class="del">open on "the specific detail that decides it"</span> <span class="ins">open on "a detail the person gave, in their own words, quoted or nearly so", without yet saying what it means</span></li><li><span class="del">audit the draft's particulars</span> <span class="ins">audit starts by quoting every fact the person gave; nothing written may contradict a quote</span></li><li class="ins">+ the user message again, right before the output format</li><li class="ins">+ a <code>&lt;check&gt;</code> of every claim against the quotes; any CONTRADICTS resamples the call (never saved); "the prompt" joins the lint ban list</li><li class="same">Why: replies were misstating what the user said (33% of rows). These four together took it to 13% on 60 paired rows.</li></ul>`,
+   card: a => {
+     const s = a.stages.stage_6_revise_responses;
+     return `${field("audit (amoral: the user's quoted facts first, then the draft's particulars)", s.rewrite_audit, {clipAt: 300})}${field("what it changed", s.rewrite_changes)}${field("final reasoning", s.reasoning, {clipAt: 520})}${field("final reply", s.response, {clipAt: 620})}${prompt(a === T.da ? "da" : "amoral", "revise_responses")}`;
+   }},
+  {n: "7", name: "Export the training row", model: "no model · export_sft, then corpus check",
+   what: "The row becomes one chat: system, user, and an assistant turn whose reasoning goes in reasoning_content and is rendered into think tags at train time. Scenario metadata travels in metadata. A report-only corpus check then scans the whole set for repeated patterns and near-duplicates.",
+   delta: `<ul><li class="same">Identical stage. The only other config difference, the wording of the disabled quality-filter rubric, does not run.</li></ul>`,
+   card: a => {
+     const m = a.export.messages, asst = m[2];
+     const pre = `<span class="role">[system]</span>${esc(m[0].content)}<span class="role">[user]</span>${esc(m[1].content)}<span class="role">[assistant · reasoning_content]</span>${esc(asst.reasoning_content)}<span class="role">[assistant · content]</span>${esc(asst.content)}`;
+     return `<div class="kv"><span>3 messages</span><span>${(asst.content.split(/\s+/).length).toLocaleString()} reply words</span><span>trait ${esc(a.export.metadata.trait_id)}</span></div>
+       ${field("reply opens", clip(asst.content, 260))}
+       <details open><summary>The training row as exported</summary><pre>${pre}</pre></details>`;
+   }},
+];
+
+const grid = document.getElementById("grid");
+const add = html => grid.insertAdjacentHTML("beforeend", html);
+add(`<div class="lane-label"><b>Stage</b>what it does</div>`);
+STAGES.forEach((s, i) => add(`<div class="colhead${i === STAGES.length - 1 ? " last" : ""}"><span class="n">Stage ${s.n}</span><h3>${s.name}</h3><span class="model">${s.model}</span><p>${s.what}</p></div>`));
+add(`<div class="lane-label da"><b>Difficult advice</b><span class="mono">${esc(T.da.scenario_id)}</span></div>`);
+STAGES.forEach(s => add(`<div class="cell da"><div class="card">${s.card(T.da)}</div></div>`));
+add(`<div class="lane-label"><b>What changes</b>amoral vs difficult advice</div>`);
+STAGES.forEach(s => add(`<div class="cell"><div class="delta">${s.delta}</div></div>`));
+add(`<div class="lane-label am"><b>Amoral (candidate)</b><span class="mono">${esc(T.amoral.scenario_id)}</span></div>`);
+STAGES.forEach(s => add(`<div class="cell am"><div class="card">${s.card(T.amoral)}</div></div>`));
+
+for (const [k, id] of [["da", "da"], ["amoral", "am"]]) {
+  document.getElementById(id + "-id").textContent = T[k].scenario_id;
+  document.getElementById(id + "-src").textContent = T.sources[k];
+  document.getElementById(id + "-unit").textContent = `${T[k].unit.trait_id} · ${T[k].unit.name}`;
+}
+</script>

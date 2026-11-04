@@ -1,0 +1,138 @@
+<title>Amoral DA Smoke</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a reader. Row index on the left (stacks on top at phone width), one transcript at a time on the right. */
+:root {
+  --bg: #f6f7f8; --surface: #ffffff; --fg: #1c2328; --muted: #5d6973; --line: #dde2e6;
+  --accent: #0f6e73; --accent-soft: #e2f1f1; --warn: #9a5b00; --warn-soft: #fbf0dd;
+  --del: #fbe9e9; --del-fg: #8c2b2b; --add: #e6f4ea; --add-fg: #22603a;
+  --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --label: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12171a; --surface: #1a2125; --fg: #e3e8eb; --muted: #95a3ad; --line: #2c363c;
+  --accent: #5cc4c8; --accent-soft: #173336; --warn: #e3a54a; --warn-soft: #33281a;
+  --del: #3a1f22; --del-fg: #f0a9a9; --add: #1b3324; --add-fg: #9fdcb4; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12171a; --surface: #1a2125; --fg: #e3e8eb; --muted: #95a3ad; --line: #2c363c;
+  --accent: #5cc4c8; --accent-soft: #173336; --warn: #e3a54a; --warn-soft: #33281a;
+  --del: #3a1f22; --del-fg: #f0a9a9; --add: #1b3324; --add-fg: #9fdcb4; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--serif); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 64px; }
+header h1 { font-family: var(--label); font-weight: 600; font-size: 1.7rem; letter-spacing: .01em; margin: 0 0 4px; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); max-width: 70ch; }
+.lbl { font-family: var(--label); font-weight: 600; font-size: .74rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.mono { font-family: var(--mono); font-size: .82rem; }
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin: 22px 0 26px; }
+.finding { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+.finding b { display: block; font-family: var(--label); font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.finding span { color: var(--muted); font-size: .9rem; }
+.layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 22px; align-items: start; }
+nav { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); display: flex; flex-direction: column; gap: 2px; max-height: calc(100vh - 40px); overflow-y: auto; }
+nav button { all: unset; cursor: pointer; display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; align-items: baseline; padding: 7px 10px; border-radius: 5px; font-family: var(--label); font-size: .9rem; }
+nav button:hover { background: var(--accent-soft); }
+nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+nav button[aria-current="true"] { background: var(--accent-soft); color: var(--accent); }
+nav .t { font-family: var(--mono); font-size: .78rem; color: var(--muted); }
+nav .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); align-self: center; }
+main { min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; min-width: 0; }
+.deal { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip { font-family: var(--label); font-size: .82rem; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+h2 { font-family: var(--label); font-weight: 600; font-size: 1.15rem; margin: 6px 0 0; text-wrap: balance; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pair > div { min-width: 0; border-radius: 5px; padding: 10px 12px; }
+.pair .before { background: var(--del); }
+.pair .after { background: var(--add); }
+.pair .before .lbl { color: var(--del-fg); }
+.pair .after .lbl { color: var(--add-fg); }
+.pair p { margin: 6px 0 0; font-size: .95rem; }
+.note { margin-top: 10px; font-size: .92rem; color: var(--muted); }
+.msg p { margin: 0 0 .8em; max-width: 72ch; }
+.msg p:last-child { margin-bottom: 0; }
+.think { border-left: 3px solid var(--line); padding-left: 14px; color: var(--muted); }
+details summary { cursor: pointer; font-family: var(--label); font-size: .85rem; color: var(--accent); }
+details pre { white-space: pre-wrap; font-family: var(--mono); font-size: .8rem; margin: 8px 0 0; }
+.foot { margin-top: 28px; color: var(--muted); font-size: .85rem; }
+.foot a { color: var(--accent); }
+@media (max-width: 820px) {
+  .layout { grid-template-columns: 1fr; }
+  nav { position: static; max-height: none; flex-direction: row; flex-wrap: wrap; }
+  nav button { grid-template-columns: auto auto; }
+  nav button .p { display: none; }
+  .pair { grid-template-columns: 1fr; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Amoral DA smoke run</h1>
+    <p>20 rows from <span class="mono">da-amoral.yaml</span>: the difficult-advice recipe with nine principles of practical judgement in place of the constitution. Same models, stages, deal of sectors and AI presence, and lints as DA.</p>
+  </header>
+
+  <section class="findings" aria-label="Summary">
+    <div class="finding"><b>20 / 20</b><span>rows survived every stage; $1.68, under 5 minutes</span></div>
+    <div class="finding"><b>20 / 20</b><span>prompts ask for advice on a choice; none asks the assistant to do the task</span></div>
+    <div class="finding"><b>7 / 20</b><span>scenarios had moral stakes as written; the prompt reviser took them out every time</span></div>
+    <div class="finding"><b>3 / 20</b><span>lost their dealt sector doing so: utilities, social work and mental health became manufacturing or careers</span></div>
+    <div class="finding"><b>0 / 20</b><span>replies argue from a moral reason; every case against the lean is what it costs the person</span></div>
+  </section>
+
+  <div class="layout">
+    <nav id="nav" aria-label="Rows"></nav>
+    <main id="row" aria-live="polite"></main>
+  </div>
+
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+const DATA = /*DATA*/null;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const paras = s => s.split(/\n\s*\n/).map(p => `<p>${esc(p.trim()).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>")}</p>`).join("");
+const AI = {self: "the assistant itself", other: "another AI system", none: "no AI", open: "AI not specified"};
+const nav = document.getElementById("nav"), out = document.getElementById("row");
+
+function show(i) {
+  const r = DATA.rows[i];
+  [...nav.children].forEach((b, j) => b.setAttribute("aria-current", j === i));
+  const flags = (r.moral_removed ? `<span class="chip warn">moral stakes removed at revision</span>` : "")
+              + (r.sector_lost ? `<span class="chip warn">dealt sector lost</span>` : "");
+  out.innerHTML = `
+    <div class="card">
+      <div class="deal"><span class="mono">${esc(r.id)}</span>
+        <span class="chip">sector: ${esc(r.sector === "any" ? "none dealt" : r.sector.replace(/_/g, " "))}</span>
+        <span class="chip">AI line: ${esc(AI[r.ai] || r.ai)}</span>${flags}</div>
+      <h2>${esc(r.trait)}. ${esc(r.principle)}</h2>
+    </div>
+    <div class="card">
+      <div class="lbl">Scenario: as the writer wrote it, and after the prompt reviser</div>
+      <div class="pair" style="margin-top:8px">
+        <div class="before"><div class="lbl">Written · ${esc(r.written.domain)}</div><p>${esc(r.written.situation)}</p><p><em>Tempting option:</em> ${esc(r.written.shortcut)}</p></div>
+        <div class="after"><div class="lbl">Revised · ${esc(r.revised.domain)}</div><p>${esc(r.revised.situation)}</p><p><em>Tempting option:</em> ${esc(r.revised.shortcut)}</p></div>
+      </div>
+      <p class="note"><span class="lbl">Reviser's note</span> ${esc(r.revised.changes)}</p>
+    </div>
+    <div class="card msg"><div class="lbl">User message</div><div style="margin-top:8px">${paras(r.user)}</div>
+      <details style="margin-top:10px"><summary>System prompt</summary><pre>${esc(r.system)}</pre></details></div>
+    <div class="card msg"><div class="lbl">Assistant reasoning</div><div class="think" style="margin-top:8px">${paras(r.reasoning)}</div></div>
+    <div class="card msg"><div class="lbl">Assistant reply</div><div style="margin-top:8px">${paras(r.response)}</div></div>`;
+  try { localStorage.setItem("amoral-smoke-row", String(i)); } catch (e) {}
+}
+
+DATA.rows.forEach((r, i) => {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.innerHTML = `<span class="t">${esc(r.trait)}</span><span class="p">${esc(r.revised.domain)}</span>${r.moral_removed ? '<span class="dot" title="moral stakes removed at revision"></span>' : "<span></span>"}`;
+  b.addEventListener("click", () => { show(i); if (matchMedia("(max-width: 820px)").matches) out.scrollIntoView({block: "start"}); });
+  nav.appendChild(b);
+});
+let start = 0;
+try { const s = Number(localStorage.getItem("amoral-smoke-row")); if (s >= 0 && s < DATA.rows.length) start = s; } catch (e) {}
+show(start);
+document.getElementById("foot").innerHTML = `Rows: <a href="${esc(DATA.hf)}">${esc(DATA.hf.replace("https://huggingface.co/datasets/", ""))}</a> · generated at commit <span class="mono">${esc((DATA.git_sha || "").slice(0, 8))}</span> on branch nika/da-amoral. An amber dot marks a row whose writer scenario had moral stakes.`;
+</script>
