@@ -1,3 +1,6 @@
+# ABOUTME: Renders the Petri auditor's Inspect message history into one text prompt for the
+# ABOUTME: claude-code provider (the Agent SDK takes no prebuilt assistant/tool_use turns).
+
 """Translate Inspect's message list into a single Claude Agent SDK prompt.
 
 Why a text rendering rather than native turns

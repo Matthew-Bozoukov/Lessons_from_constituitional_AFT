@@ -3,6 +3,19 @@
 
 # GOTCHAS
 
+## `claude --bare` disables the Agent SDK's PreToolUse hook, not only settings hooks (2026-11-04)
+
+The Petri `claude-code/<model>` auditor (`src/eval/misalignment/petri/claude_code.py`) gets an
+unexecuted tool call out of the Claude Code CLI by registering a PreToolUse hook that answers
+`permissionDecision: defer`. With `extra_args={"bare": None}` (the daa2 `claude -p --bare`
+pattern) the hook never fires: the CLI executes the no-op MCP tool itself, loops, and dies with
+`error_max_turns` at `max_turns=1` (CLI 2.1.318, claude-agent-sdk 0.2.178). Without `--bare`
+the hook fires, the handler never runs and the result carries `deferred_tool_use`. The
+no-CLAUDE.md, no-settings guarantee comes from `setting_sources=[]` and a scratch cwd instead;
+the token still reaches the CLI as `ANTHROPIC_AUTH_TOKEN` and a bogus one is refused, so the
+stored login is not what authenticates. Probe: a scratchpad script that runs the four
+(bare x max_turns) cells and prints hook/handler counts.
+
 ## A claude.ai cloud session cannot SSH to a pod: use `runpod up --run` (2026-10-30)
 
 The cloud container's network is an HTTPS proxy: there is no `ssh` binary and raw TCP to :22

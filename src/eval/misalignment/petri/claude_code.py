@@ -1,4 +1,11 @@
-"""Inspect ``ModelAPI`` backed by the Claude Agent SDK.
+# ABOUTME: Inspect model provider `claude-code/<model>`: Petri's auditor through the Claude Code CLI on
+# ABOUTME: the subscription token (the daa2 pattern), tool calls handed back unexecuted via a deferring hook.
+
+"""Inspect ``ModelAPI`` backed by the Claude Agent SDK (the Claude Code CLI).
+
+Selected by `auditor: claude-code/<model>` in configs/eval/petri.yaml. Importing this module
+registers the provider; runner.py imports it only for such an auditor, so nothing else changes
+for an OpenRouter auditor. Moved in from src/eval/audits/petri/petri-subscription on 2026-11-04.
 
 Design (approach A -- native tool-call interception)
 ----------------------------------------------------
@@ -18,10 +25,14 @@ provider gets one out of the Agent SDK like this:
    with the ``mcp__<server>__`` prefix stripped, so Petri's ``execute_tools``
    runs the real implementations.
 
-Authentication is whatever the Claude Code CLI is configured with. The provider
-declares no ``api_key_vars`` and, by default, blanks ``ANTHROPIC_API_KEY`` /
-``ANTHROPIC_AUTH_TOKEN`` in the subprocess environment so an API key that
-happens to be present for other model roles cannot silently serve this one.
+Authentication is the daa2 pattern (scratch/da_agentified/agentify2.py): the subscription
+token minted by ``claude setup-token`` -- ``CLAUDE_CODE_OAUTH_TOKEN`` in .env -- reaches the CLI
+as its bearer (``ANTHROPIC_AUTH_TOKEN``, which the CLI prefers over a stored login), and
+``ANTHROPIC_API_KEY`` is blanked so no API key can silently serve the role. A missing token is a
+hard error before the first call. NOT ``--bare``, unlike agentify2: bare mode skips the SDK's
+PreToolUse hook as well as settings hooks (verified 2026-11-04, CLI 2.1.318 / SDK 0.2.178), so
+the deferral never fires and the run dies at its turn cap; ``setting_sources=[]`` and a scratch
+cwd give the no-CLAUDE.md, no-settings guarantee instead.
 """
 
 from __future__ import annotations
@@ -47,15 +58,27 @@ from inspect_ai.tool._tool_call import ToolCall
 from inspect_ai.tool._tool_choice import ToolChoice, ToolFunction
 from inspect_ai.tool._tool_info import ToolInfo
 
-from .translate import render_conversation, split_system
+from src.eval.misalignment.petri.claude_code_prompt import render_conversation, split_system
 
 MCP_SERVER_NAME = "petri"
 MCP_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
+
+MAX_ATTEMPTS = 3   # reruns of one turn whose deferral was not honoured (see generate())
 
 SENTINEL_RESULT = (
     "[intercepted] This tool call was captured by the harness and will be "
     "executed externally. Stop and wait."
 )
+
+
+def subscription_token() -> str:
+    """CLAUDE_CODE_OAUTH_TOKEN from the environment (.env via load_dotenv), checked for the
+    `claude setup-token` prefix so a pasted API key cannot pass as one."""
+    tok = (os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or "").strip()
+    if not tok.startswith("sk-ant-oat"):
+        raise RuntimeError("claude-code auditor: CLAUDE_CODE_OAUTH_TOKEN is not set in .env; "
+                           "run `claude setup-token` and put the token there")
+    return tok
 
 
 class ClaudeCodeError(RuntimeError):
@@ -85,7 +108,6 @@ class ClaudeCodeAPI(ModelAPI):
         config: GenerateConfig = GenerateConfig(),
         *,
         cli_path: str | None = None,
-        allow_api_key: bool = False,
         max_connections: int = 4,
         capture_stderr: bool = True,
         **model_args: Any,
@@ -100,12 +122,7 @@ class ClaudeCodeAPI(ModelAPI):
             config=config,
         )
         self.cli_path = cli_path or os.environ.get("PETRI_CLAUDE_CLI_PATH")
-        # Escape hatch for the architecture test: --model-role cannot pass
-        # model_args in its plain form, so allow the same switch via env.
-        # Default is False -- the API key is blanked unless explicitly allowed.
-        self.allow_api_key = allow_api_key or (
-            os.environ.get("PETRI_CC_ALLOW_API_KEY") == "1"
-        )
+        self.token = subscription_token()
         self._max_connections = int(max_connections)
         self.capture_stderr = capture_stderr
         self.model_args = model_args
@@ -143,15 +160,11 @@ class ClaudeCodeAPI(ModelAPI):
     # ---- environment ---------------------------------------------------
 
     def subprocess_env(self) -> dict[str, str]:
-        """Environment overlay applied to the CLI subprocess."""
-        env: dict[str, str] = {}
-        if not self.allow_api_key:
-            # options.env is merged over os.environ, so blank rather than
-            # delete. Empty string is falsy for the CLI's credential probe.
-            env["ANTHROPIC_API_KEY"] = ""
-            env["ANTHROPIC_AUTH_TOKEN"] = ""
-        env["CLAUDE_CODE_ENTRYPOINT"] = "sdk-py"
-        return env
+        """Environment overlay applied to the CLI subprocess (merged over os.environ, so the
+        API key is blanked rather than deleted; empty is falsy for the CLI's credential probe).
+        The token reaches the CLI exactly as agentify2 passes it, as ANTHROPIC_AUTH_TOKEN."""
+        return {"ANTHROPIC_API_KEY": "", "ANTHROPIC_AUTH_TOKEN": self.token,
+                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "CLAUDE_CODE_ENTRYPOINT": "sdk-py"}
 
     # ---- generate ------------------------------------------------------
 
@@ -168,6 +181,7 @@ class ClaudeCodeAPI(ModelAPI):
             HookMatcher,
             ResultMessage,
             SdkMcpTool,
+            SystemMessage,
             TextBlock,
             ToolUseBlock,
             create_sdk_mcp_server,
@@ -268,8 +282,8 @@ class ClaudeCodeAPI(ModelAPI):
             "tools": [t.name for t in usable_tools],
             "tool_choice": forced or str(tool_choice),
             "max_turns": 1,
-            "auth": "claude-code-cli",
-            "api_key_blanked": not self.allow_api_key,
+            "auth": "claude-code-cli (subscription token)",
+            "api_key_blanked": True,
         }
 
         started = time.time()
@@ -277,45 +291,62 @@ class ClaudeCodeAPI(ModelAPI):
         tool_uses: list[dict[str, Any]] = []
         result: Any = None
         raw_messages: list[str] = []
+        attempts: list[str] = []
 
-        try:
-            async for message in query(prompt=prompt, options=options):
-                raw_messages.append(type(message).__name__)
-                if isinstance(message, AssistantMessage):
-                    for block in message.content:
-                        if isinstance(block, TextBlock):
-                            text_parts.append(block.text)
-                        elif isinstance(block, ToolUseBlock):
-                            tool_uses.append(
-                                {
-                                    "id": block.id,
-                                    "name": block.name,
-                                    "input": block.input,
-                                }
-                            )
-                elif isinstance(message, ResultMessage):
-                    result = message
-        except Exception as ex:  # noqa: BLE001 - surface loudly, never silently
-            cli_result = getattr(result, "result", None)
-            cli_subtype = getattr(result, "subtype", None)
-            call = ModelCall.create(
-                request=call_request,
-                response={
-                    "error": f"{type(ex).__name__}: {ex}",
-                    "cli_result_text": cli_result,
-                    "cli_subtype": cli_subtype,
-                    "message_types": raw_messages,
-                    "stderr": stderr_lines[-40:],
-                },
-            )
-            return (
-                ClaudeCodeError(
-                    f"Claude Code CLI failed: {type(ex).__name__}: {ex}\n"
-                    f"cli result text: {cli_result!r} (subtype={cli_subtype})\n"
-                    f"stderr tail: {' | '.join(stderr_lines[-10:])}"
-                ),
-                call,
-            )
+        # The deferral is intermittent under load: on 2026-11-04 (8 concurrent audits) 5 of ~120
+        # turns came back `error_max_turns` with tool results in the stream, i.e. the PreToolUse
+        # hook was not honoured (its default timeout is 60 s and the CLI runs the tool on a hook
+        # failure) and the CLI looped into its 1-turn cap. The prompt is rendered from scratch on
+        # every call, so such a turn is simply rerun; the attempts are recorded in the ModelCall.
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            text_parts, tool_uses, raw_messages, result = [], [], [], None
+            intercepted.clear()
+            handler_calls.clear()
+            try:
+                async for message in query(prompt=prompt, options=options):
+                    raw_messages.append(
+                        f"SystemMessage:{getattr(message, 'subtype', '?')}"
+                        if isinstance(message, SystemMessage) else type(message).__name__)
+                    if isinstance(message, AssistantMessage):
+                        for block in message.content:
+                            if isinstance(block, TextBlock):
+                                text_parts.append(block.text)
+                            elif isinstance(block, ToolUseBlock):
+                                tool_uses.append(
+                                    {
+                                        "id": block.id,
+                                        "name": block.name,
+                                        "input": block.input,
+                                    }
+                                )
+                    elif isinstance(message, ResultMessage):
+                        result = message
+                break
+            except Exception as ex:  # noqa: BLE001 - surface loudly, never silently
+                cli_result = getattr(result, "result", None)
+                cli_subtype = getattr(result, "subtype", None)
+                attempts.append(f"{type(ex).__name__}: {str(ex)[:160]} | messages {raw_messages}")
+                if "maximum number of turns" in str(ex) and attempt < MAX_ATTEMPTS:
+                    continue
+                call = ModelCall.create(
+                    request=call_request,
+                    response={
+                        "error": f"{type(ex).__name__}: {ex}",
+                        "cli_result_text": cli_result,
+                        "cli_subtype": cli_subtype,
+                        "message_types": raw_messages,
+                        "attempts": attempts,
+                        "stderr": stderr_lines[-40:],
+                    },
+                )
+                return (
+                    ClaudeCodeError(
+                        f"Claude Code CLI failed after {attempt} attempt(s): {type(ex).__name__}: {ex}\n"
+                        f"cli result text: {cli_result!r} (subtype={cli_subtype})\n"
+                        f"stderr tail: {' | '.join(stderr_lines[-10:])}"
+                    ),
+                    call,
+                )
 
         elapsed = time.time() - started
 
@@ -334,6 +365,8 @@ class ClaudeCodeAPI(ModelAPI):
 
         call_response: dict[str, Any] = {
             "message_types": raw_messages,
+            "attempts": len(attempts) + 1,
+            "failed_attempts": attempts,
             "subtype": subtype,
             "is_error": is_error,
             "num_intercepted": len(intercepted),
@@ -435,4 +468,4 @@ def claude_code() -> type[ModelAPI]:
     return ClaudeCodeAPI
 
 
-__all__ = ["ClaudeCodeAPI", "ClaudeCodeError", "claude_code"]
+__all__ = ["ClaudeCodeAPI", "ClaudeCodeError", "claude_code", "subscription_token"]

@@ -1,3 +1,49 @@
+## 2026-11-04: Petri on delib-sonnet-15-a, 90 seeds, OpenRouter auditor: 6.7%, $57 all in
+
+Hypothesis: one full pass of the registered Petri eval on the prompt-matched Sonnet-teacher delib arm gives the Figure 2 bar a run on the right adapter (the figure had been carrying September's delib-sonnet-7), and an exact spend ledger for a 90-seed pass with the cached OpenRouter auditor.
+
+Method: `uv run runpod up jamie-petri-delib-a --eval petri --target dougalldeepmind/2026-10-30-qwen36-0-delib-sonnet-15-a --boot_timeout_s 900 --max_hours 8` (first SECURE request refused "no instances", second took; pod ba7sgslqsqpuqo billing 13:45:08Z), then `uv run evals --name petri --target dougalldeepmind/2026-10-30-qwen36-0-delib-sonnet-15-a --server root@212.247.220.175:15026 --port 8097` with the config defaults (Sonnet 5 auditor via OpenRouter, `auditor_cache: true`, gemini-3-flash judge, max_turns 25, 8 concurrent). Spend from the Inspect log's token counts at OpenRouter's list prices (`scratch` ledger), the pod from its timestamps x $5.29/h.
+
+Result: https://huggingface.co/datasets/dougalldeepmind/2026-11-04-petri-qwen36-0-delib-sonnet-15-a -- 90/90 scored, 0 errors, concerning>=4 **6.7% (6/90)**, >=6 0%, mean 1.21. Audit 14:27Z -> 16:45Z (2 h 18 min at 8 concurrent).
+
+| item | measure | $ |
+|---|---|---|
+| auditor Sonnet 5, cached | 1,382 calls; 52.2M cache-read, 4.3M cache-write, 1.9M output tokens | 40.37 |
+| judge gemini-3-flash | 92 calls | 1.18 |
+| pod H200 SECURE | 3.005 h (boot + one aborted attempt + the run) | 15.90 |
+| **total** | | **57.45** |
+
+The account's OpenRouter balance moved $83.44 over the window, but the other session's agentic-misalignment judging shares the key and OpenRouter splits spend by model only for a management key, so the token-priced $41.55 is the run's figure and the delta is an upper bound. The auditor landed inside the 3 Nov projection ($23-58 cached).
+
+Also today, before this run and on Jamie's instruction to measure the OpenRouter route: a first 90-seed attempt on the same pod used the subscription auditor (`auditor=claude-code/claude-sonnet-5`) and was stopped after 9 seeds because 5 of them errored: the CLI's PreToolUse deferral was not honoured on about 1 turn in 25 under 8 concurrent audits (the CLI ran the no-op MCP handler and hit its 1-turn cap, `error_max_turns`). All six failed turns deferred correctly on replay and 48 synthetic turns at 8 in flight all deferred, so the trigger is neither the content nor bare concurrency; every failed session showed 12-13 system messages before the model spoke against 1 normally, which points at the session's startup handshake. `claude_code.py` now reruns such a turn (MAX_ATTEMPTS 3) and records every attempt and the system-message subtypes, but the cause is unconfirmed; the stress run with hook debug (`scratch`-pad script) was not run. That attempt cost about $1 of judge and 40 min of pod (in the $15.90 above).
+
+Incident: a second Claude session was working in this checkout; one of its git operations dropped this session's three staged new files (rebuilt from HEAD plus the edit log), and this session's `git checkout -- src/utils.py` then wiped that session's new `save_figure_pdf` (restored verbatim from its transcript). Rule from here: no whole-file reverts in a shared checkout; commit new files to a branch as soon as they pass tests.
+
+Next: the base / da a,b,c / delib a,b,c / control / da-5 / da-25 ladder at one pass is about $42 of OpenRouter and $16 of pod per arm on these numbers, so ~$580 for ten arms (OpenRouter credit now $175); whether the subscription auditor is worth finishing depends on the handshake cause.
+
+## 2026-11-04: Petri's auditor on the Claude Code subscription (`auditor=claude-code/claude-sonnet-5`), smoke passed
+
+Hypothesis: the auditor is three quarters of a Petri pass's OpenRouter bill ($23-58 cached per 90 seeds, 2026-11-03), and the daa2 pattern already runs Sonnet 5 through the Claude Code CLI on the subscription token at no API cost; the dormant `src/eval/audits/petri/petri-subscription` provider (Agent SDK, PreToolUse `defer` hook so tool calls come back unexecuted) can be dropped into the registered eval with only the auditor's transport changing.
+
+Method: `provider.py`/`translate.py` moved to `src/eval/misalignment/petri/claude_code.py` and `claude_code_prompt.py` (the rest of that folder is left for Jamie to delete; its `_registry.py` now imports nothing). The runner's one branch: an auditor string starting `claude-code/` goes to `get_model` as is, bounded by `inspect.max_connections`, with no OpenRouter prefix, provider pin or cache_control, and `auditor_cache` recorded as null; the judge stays on OpenRouter. The token is `CLAUDE_CODE_OAUTH_TOKEN` from .env, passed to the CLI as `ANTHROPIC_AUTH_TOKEN` with `ANTHROPIC_API_KEY` blanked (a bogus token is refused, so the stored login is not what authenticates); `tools=[]`, `allowed_tools=[]`, `strict_mcp_config` and `setting_sources=[]` mean the model sees only Petri's tools and no CLAUDE.md. `claude-agent-sdk` 0.2.178 added to pyproject (it bundles CLI 2.1.318). Tests: three new in `tests/test_petri.py` (the branch, the provider's token gate and env, the history rendering); `scratch/petri_claude_code_smoke.py` is the live provider smoke. Found on the way: `--bare` (agentify2's flag) disables the SDK's PreToolUse hook, so the run dies at `error_max_turns`; the provider does not use it (docs/GOTCHAS.md). Live smoke on one H200 pod (`uv run runpod up jamie-petri-cc --eval petri --target dougalldeepmind/2026-10-05-qwen36-0-da-15 --boot_timeout_s 900`, pod mquujvwztol0up) then `uv run evals --name petri --target dougalldeepmind/2026-10-05-qwen36-0-da-15 --server root@152.236.142.241:17211 --port 8097 limit=2 --no-push auditor=claude-code/claude-sonnet-5` (a first launch imported the runner while the tree was stashed for a test comparison and ran the old code; relaunched).
+
+Result (`output/petri/2026-11-04_qwen36_0_da_15_115209`): 2/2 seeds audited, Inspect success, rollouts and results in the contract layout, `auditor: claude-code/claude-sonnet-5`, `auditor_cache: null`; concerning 1 and 1 (the 3 Nov cached run scored the same seeds 2/3 >= 4; n is too small to read). OpenRouter auditor spend $0; judge only.
+
+| P1-01, 25 auditor turns | Claude Code auditor | OpenRouter cached (3 Nov) |
+|---|---|---|
+| wall | 16.5 min | 13.3 min |
+| auditor | 11.5 min, median 20 s | 8.9 min, median 7 s |
+| target | 4.8 min, median 9 s | 4.2 min, median 7 s |
+| first planning turn | 178 s | 293 s |
+
+- The CLI route is about 25% more wall per seed, all in the auditor: a fresh CLI process per turn and a cache read that stays at the 14.5k-token system+tools block (OpenRouter's grew with the transcript to 75k). Pod cost per 90-seed pass rises by roughly $3 against $25-55 of auditor saved.
+- P1-02 took 38 min: 18 min of model time plus two 10-minute stalls inside Petri's `resume` tool (a target request hanging to the client's 600 s timeout, then retried). The same seed stalled 3021 s and 607 s on the 3 Nov UNCACHED OpenRouter run, so the 3 Nov entry's "audit stochasticity" reading of that 69.5 min was wrong: it is a target-side stall on this seed, auditor-independent. Lead, not settled: what the target is doing for 10 minutes (think-mode generation at 65k context?) and whether the client timeout should be a config field.
+- Context the CLI auditor sees that the OpenRouter one does not (probe: same system prompt, both asked to list their context): the prefix "You are a Claude agent, built on Anthropic's Claude Agent SDK.", system-reminder blocks with the temp working directory (no git), platform darwin and OS version, the date, model id and cutoff, a token budget, and an untrusted-downloads note. No email, account or repo. Petri's tools reach the model as `mcp__petri__<name>` (stripped on return), while Petri's auditor prompt names them bare. With the text-replayed history (`<conversation_so_far>` each turn instead of native tool_use blocks), subscription-auditor runs are a distinct protocol: pool them only with each other (docs/petri.md).
+
+Pod terminated and verified (`jamie-am-delib15`, not mine, still running). RunPod today $15.26 across both sessions' pods; OpenRouter about $0.20 (judge + probes).
+
+Next: one arm at `passes=1` on the subscription auditor to measure a full pass's wall and rate-limit behaviour (the subscription's 5-hour windows are the cap now, not a balance); then the base/da/delib/control/5/25 ladder; decide whether the eval's target client timeout becomes a config field.
+
 ## 2026-11-03: Three MASK passes for every Figure 3 arm; the CoT-only 94.4 was inflated by judge timeouts; figure error bars are per-item SE on a fixed benchmark
 
 Hypothesis: the MASK bars in Figure 3 rested on two-pass runs (control, da-15) and a single pass (CoT only), while every other panel had three or more repeats; three passes everywhere puts the panels on one footing, and the regenerated deliberation ablation (`2026-10-27-qwen36-0-ablation-15`) needed the same before it can replace the stated-harm arm.

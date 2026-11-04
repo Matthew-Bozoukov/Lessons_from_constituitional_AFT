@@ -1,6 +1,8 @@
-"""End-to-end smoke tests for the claude-code Inspect provider.
+# ABOUTME: Live smoke of the `claude-code/<model>` Petri auditor provider on the subscription token:
+# ABOUTME: plain reply, an unexecuted tool call, and a replayed history. Run: uv run python scratch/petri_claude_code_smoke.py
+"""End-to-end smoke tests for the claude-code Inspect provider (src/eval/misalignment/petri/claude_code.py).
 
-Run:  .venv\\Scripts\\python.exe tools\\petri-subscription\\tests\\smoke.py
+Run:  uv run python scratch/petri_claude_code_smoke.py      (PETRI_CC_MODEL=claude-sonnet-5 by default)
 
 Test 1 -- plain prompt, no tools:      provider returns a valid ModelOutput.
 Test 2 -- one tool offered:            provider returns an UNEXECUTED tool_calls
@@ -8,8 +10,7 @@ Test 2 -- one tool offered:            provider returns an UNEXECUTED tool_calls
 Test 3 -- multi-turn history replay:   prior assistant tool_call + tool result
                                        round-trip through the translation layer.
 
-Every test asserts that ANTHROPIC_API_KEY is absent from the environment the
-provider hands to the CLI subprocess, unless PETRI_CC_ALLOW_API_KEY=1.
+Test 0 asserts that the CLI subprocess gets the subscription token as its bearer and no API key.
 """
 
 from __future__ import annotations
@@ -31,8 +32,12 @@ from inspect_ai.tool._tool_info import ToolInfo
 from inspect_ai.tool._tool_params import ToolParams
 from inspect_ai.util._json import JSONSchema
 
-ALLOW_API_KEY = os.environ.get("PETRI_CC_ALLOW_API_KEY") == "1"
-MODEL = os.environ.get("PETRI_CC_MODEL", "sonnet")
+from dotenv import load_dotenv
+
+import src.eval.misalignment.petri.claude_code  # noqa: F401  registers the provider
+
+load_dotenv()
+MODEL = os.environ.get("PETRI_CC_MODEL", "claude-sonnet-5")
 
 
 def banner(title: str) -> None:
@@ -42,7 +47,7 @@ def banner(title: str) -> None:
 
 
 def make_model():
-    return get_model(f"claude-code/{MODEL}", allow_api_key=ALLOW_API_KEY)
+    return get_model(f"claude-code/{MODEL}")
 
 
 SEND_MESSAGE = ToolInfo(
@@ -78,15 +83,11 @@ async def test_environment(model) -> bool:
     parent_key = os.environ.get("ANTHROPIC_API_KEY")
     print(f"parent process ANTHROPIC_API_KEY present: {parent_key is not None}")
     overlay = model.api.subprocess_env()
-    print(f"subprocess env overlay: {json.dumps(overlay)}")
+    # never print the token: show the keys and whether the bearer has the setup-token prefix
+    print(f"subprocess env overlay keys: {sorted(overlay)}")
     print(f"api_key_vars declared by provider: {model.api.api_key_vars}")
-    if ALLOW_API_KEY:
-        print("MODE: allow_api_key=True (architecture test, NOT a subscription test)")
-        return True
-    ok = overlay.get("ANTHROPIC_API_KEY") == "" and overlay.get(
-        "ANTHROPIC_AUTH_TOKEN"
-    ) == ("")
-    print(f"PASS: API key blanked for the CLI subprocess -> {ok}")
+    ok = overlay.get("ANTHROPIC_API_KEY") == "" and overlay.get("ANTHROPIC_AUTH_TOKEN", "").startswith("sk-ant-oat")
+    print(f"PASS: API key blanked and the subscription token is the bearer -> {ok}")
     return ok
 
 

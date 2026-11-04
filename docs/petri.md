@@ -41,6 +41,22 @@ provider-pinned through `src/infra/endpoints/openrouter.provider_pin`. One seed 
 `max_turns: 25` is about 5 minutes and about 250k auditor input tokens; a 90-seed pass is
 roughly $45 of auditor. Check the OpenRouter balance before a full run.
 
+**Auditor on the Claude Code subscription.** `auditor=claude-code/claude-sonnet-5` runs the same
+Sonnet 5 auditor through the Claude Code CLI on the subscription token in `.env`
+(`CLAUDE_CODE_OAUTH_TOKEN`, minted by `claude setup-token`; the daa2 pattern) instead of
+OpenRouter, so the auditor costs nothing on the API bill; the judge stays on OpenRouter. The
+provider is `src/eval/misalignment/petri/claude_code.py` (Inspect provider `claude-code`,
+registered when the runner sees that auditor): every Inspect tool is offered to the CLI as an
+MCP tool whose PreToolUse hook *defers*, so the tool call comes back unexecuted and Petri runs
+the real implementation. Not a protocol-identical auditor: the CLI accepts no prebuilt
+assistant/tool history, so the auditor's own transcript is replayed to it as text inside
+`<conversation_so_far>` every turn (`claude_code_prompt.py`) rather than as native
+`tool_use`/`tool_result` blocks, the CLI prepends a short line of its own to the system prompt,
+and `temperature`/`max_tokens` are not expressible. Pool subscription-auditor runs only with
+each other; `results.json` records the auditor string and `auditor_cache: null`. Smoke the
+provider alone with `uv run python scratch/petri_claude_code_smoke.py`. Rate limits are the
+subscription's 5-hour windows, not a balance.
+
 ## Running one
 
 The target is served by `run_eval` like every other eval (vLLM on a pod, tunnelled here;

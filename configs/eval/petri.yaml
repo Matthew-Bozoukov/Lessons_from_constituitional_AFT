@@ -16,6 +16,9 @@ limit: null          # first N seeds only (smoke); disables the completeness gat
 passes: 1            # Inspect epochs. 1 = a rate, no interval; 3 = t over passes (docs/error_bars.md)
 max_turns: 25
 auditor: anthropic/claude-sonnet-5           # OpenRouter ids; the runner prefixes openrouter/ and pins
+#   auditor=claude-code/claude-sonnet-5 runs the same auditor through the Claude Code CLI on the
+#   subscription token in .env (CLAUDE_CODE_OAUTH_TOKEN; src/eval/misalignment/petri/claude_code.py):
+#   no OpenRouter bill for the auditor, auditor_cache then not applicable (recorded null)
 judge: google/gemini-3-flash-preview         # the provider (src/infra/endpoints/openrouter.provider_pin)
 # Anthropic prompt caching on the auditor via OpenRouter's top-level cache_control (the runner
 # puts it in the auditor's GenerateConfig.extra_body). The transcript is resent every turn, so

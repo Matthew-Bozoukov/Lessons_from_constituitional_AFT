@@ -6,7 +6,8 @@
 Petri (inspect-petri) drives the whole audit -- the auditor builds the scenario the seed
 describes, the target acts in it with real tools, the judge scores the transcript -- and this
 function decides only WHAT runs and WHERE the models are: the served target as
-`openai-api/vllm/<served name>`, auditor and judge as provider-pinned OpenRouter models, one
+`openai-api/vllm/<served name>`, auditor and judge as provider-pinned OpenRouter models (or the
+auditor as `claude-code/<model>`: the Claude Code CLI on the subscription token, claude_code.py), one
 `inspect_ai.eval` call of `passes` epochs whose `.eval` logs stay under metadata/inspect/ for
 export.py. Kept from the October driver (deleted 2026-10-30; docs/LOG.md): a liveness watchdog
 on the served endpoint, a completeness gate on the scored seeds, and `resume_from`.
@@ -119,7 +120,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         The summary: `concerning >= 4` rate (with a t over passes when passes >= 2), the
         strict rate, per-family counts, and run health.
     """
-    assert os.environ.get("OPENROUTER_API_KEY"), "petri: auditor and judge both route through OpenRouter"
+    assert os.environ.get("OPENROUTER_API_KEY"), "petri: the judge (and an OpenRouter auditor) route through OpenRouter"
     rollouts_dir, results_dir, metadata_dir = publish_layout(out_dir)
     log_dir = metadata_dir / "inspect"
     log_dir.mkdir(exist_ok=True)
@@ -148,11 +149,18 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     # breakpoint on the last cacheable block and advance it every turn. Billing only: the auditor
     # reads the identical prompt. `auditor_cache=false` measures a run without it.
     auditor_cache = bool(cfg.get("auditor_cache", True))
-    auditor_config = (GenerateConfig(extra_body={"cache_control": {"type": "ephemeral"}})
-                      if auditor_cache else GenerateConfig())
-    roles = {"target": get_model(target_model, base_url=base_url),
-             "auditor": get_model(f"openrouter/{cfg.auditor}", provider=provider_pin(str(cfg.auditor)),
-                                  config=auditor_config),
+    if str(cfg.auditor).startswith("claude-code/"):
+        # The subscription auditor: the same seeds, turns and judge, only the auditor's transport
+        # changes (claude_code.py). The import registers the provider; caching is the CLI's own.
+        from src.eval.misalignment.petri import claude_code  # noqa: F401
+        auditor = get_model(str(cfg.auditor), max_connections=int(cfg.inspect.max_connections))
+        auditor_cache = None
+    else:
+        auditor_config = (GenerateConfig(extra_body={"cache_control": {"type": "ephemeral"}})
+                          if auditor_cache else GenerateConfig())
+        auditor = get_model(f"openrouter/{cfg.auditor}", provider=provider_pin(str(cfg.auditor)),
+                            config=auditor_config)
+    roles = {"target": get_model(target_model, base_url=base_url), "auditor": auditor,
              "judge": get_model(f"openrouter/{cfg.judge}", provider=provider_pin(str(cfg.judge)))}
 
     # Resume: the prior run's logs are copied in so this run dir is self-contained, and
