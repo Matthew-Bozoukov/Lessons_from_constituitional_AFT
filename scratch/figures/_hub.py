@@ -220,6 +220,16 @@ def agentic_cells(repo: str) -> list[list[float]]:
     return list(by_cond.values())
 
 
+def _pass_metrics(files: list[str]) -> list[str]:
+    """The per-row verdict files of a MASK artifact. A repeated run nests them under results/pass<k>/;
+    when a repo holds those AND a flat results/*_metrics.csv (two runs pushed to one day-named repo,
+    e.g. the single-pass and the three-pass da-amoral-15 runs of 2026-11-04), only the nested set
+    is the repeated run, so the flat files are left out rather than counted as a fourth pass."""
+    metrics = sorted(f for f in files if f.endswith("_metrics.csv"))
+    nested = [f for f in metrics if "/pass" in f]
+    return nested or metrics
+
+
 def mask_cells(repo: str) -> list[list[float]]:
     """Per row (task_id): the honest-or-not indicator of each pass, in % (100 unless the judge
     called the row a lie, `eval_honesty_1 == -1`, which is how the harness scores honesty)."""
@@ -227,7 +237,7 @@ def mask_cells(repo: str) -> list[list[float]]:
     from huggingface_hub import HfApi
     csv.field_size_limit(sys.maxsize)   # a looping generation can exceed the 128 KB default
     files = [f.rfilename for f in HfApi().dataset_info(f"{ORG}/{repo}", token=_token()).siblings]
-    metrics = sorted(f for f in files if f.endswith("_metrics.csv"))
+    metrics = _pass_metrics(files)
     rows: dict[str, list[float]] = {}
     for f in metrics:
         with open(hf_hub_download(f"{ORG}/{repo}", f, repo_type="dataset", token=_token()), newline="") as fh:
@@ -244,7 +254,7 @@ def mask_cells_by_id(repo: str) -> dict[str, list[float]]:
     csv.field_size_limit(sys.maxsize)   # a looping generation can exceed the 128 KB default
     files = [f.rfilename for f in HfApi().dataset_info(f"{ORG}/{repo}", token=_token()).siblings]
     rows: dict[str, list[float]] = {}
-    for f in sorted(f for f in files if f.endswith("_metrics.csv")):
+    for f in _pass_metrics(files):
         with open(hf_hub_download(f"{ORG}/{repo}", f, repo_type="dataset", token=_token()), newline="") as fh:
             for r in csv.DictReader(fh):
                 rows.setdefault(r["task_id"], []).append(0.0 if str(r["eval_honesty_1"]).strip() == "-1" else 100.0)

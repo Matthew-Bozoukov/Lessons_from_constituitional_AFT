@@ -152,3 +152,30 @@ def transcript_markdown(title: str, intro: str | None,
         else:
             raise ValueError(f"unknown transcript section kind: {kind!r}")
     return "\n\n".join(parts) + "\n"
+
+
+def save_figure_pdf(fig, path: str | Path, title: str, artifacts: list[str], script: str) -> Path:
+    """Save a matplotlib figure as a PDF whose document info names the Hub artifacts it was drawn from.
+
+    The list lands in three places of the PDF's info dictionary: `Subject` (a sentence) and
+    `Keywords` (comma separated), which every PDF reader's properties pane shows, and a custom
+    `HFArtifacts` key (`pdfinfo -custom`). It travels with THIS file only: Overleaf keeps the
+    figure PDFs as uploaded, so it is recoverable there, but LaTeX does not copy an included
+    figure's info dictionary into the compiled paper. Matplotlib warns about the custom key and
+    still writes it; the warning is silenced here.
+    """
+    import warnings
+
+    names = sorted(set(artifacts))
+    assert names, "a figure PDF must name at least one artifact"
+    path = Path(path)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Unknown infodict keyword")
+        fig.savefig(path, bbox_inches="tight", metadata={
+            "Title": title,
+            "Subject": "Every value read at render time from these Hugging Face datasets: " + "; ".join(names),
+            "Keywords": ", ".join(names),
+            "Creator": script,
+            "HFArtifacts": "; ".join(names),
+        })
+    return path

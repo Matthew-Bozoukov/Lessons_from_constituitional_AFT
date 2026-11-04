@@ -40,13 +40,19 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "scratch"))
 
 from src.naming import figure_path  # noqa: E402
+from src.utils import save_figure_pdf  # noqa: E402
+from scratch.figures import _hub  # noqa: E402
 
 OUT = REPO / "output/figures"
-ARMS = ["delib-15", "delib-sonnet-15", "da-15", "da-qwen-15"]
+ARMS = ["delib-sonnet-15", "delib-15", "da-15", "da-qwen-15"]   # Sonnet teacher left of Qwen in each family
 NICE = {"delib-15": "delib\n(Qwen)", "delib-sonnet-15": "delib\n(Sonnet)",
         "da-15": "da\n(Sonnet)", "da-qwen-15": "da\n(Qwen)"}
+FULL = {"delib-15": "Deliberative alignment, Qwen teacher", "delib-sonnet-15": "Deliberative alignment, Sonnet teacher",
+        "da-15": "Difficult advice, Sonnet teacher", "da-qwen-15": "Difficult advice, Qwen teacher"}
 # CLAUDE.md fixes the family hues: delib blue, da purple. Variants are tints of their family.
-COLOUR = {"delib-15": "#2a78d6", "delib-sonnet-15": "#86b6ef", "da-15": "#4a3aa7", "da-qwen-15": "#9085e9"}
+# Within each family the Sonnet teacher is the dark shade and the Qwen teacher the light one, far
+# apart in lightness so the four read as four, not two.
+COLOUR = {"delib-sonnet-15": "#1d4ed8", "delib-15": "#93c5fd", "da-15": "#581c87", "da-qwen-15": "#c084fc"}
 INK, INK2, GRID = "#111827", "#52514e", "#E5E7EB"
 
 LAB = REPO / "output/odcv"
@@ -60,11 +66,38 @@ REF = {"training": LAB / "2026-10-09_constref_training_plain15/labels.jsonl",
        "mask": LAB / "2026-10-09_constref_pressure_plain15/labels.jsonl",
        "odcv": LAB / "2026-10-09_constref_odcv_plain15/labels.jsonl"}
 DELIB["training"] = LAB / "2026-10-09_delib_training_plain15/labels.jsonl"
+# 2026-11-04: agentic-misalignment rollouts (every trial, 18 conditions x 10, one trace each), the three
+# plain15 arms in one file and the prompt-matched delib-sonnet-15-a (NEW below) in another.
+# 2026-11-04: the MASK pressure turns of ALL THREE passes of every arm, so a row has three repeats and the
+# figure rule can put an interval on the MASK panel (the 10-09 files hold one pass).
+CITE["mask"] = LAB / "2026-11-04_traitref_pressure3_plain15/labels.jsonl"
+REF["mask"] = LAB / "2026-11-04_constref_pressure3_plain15/labels.jsonl"
+DELIB["am"] = LAB / "2026-11-04_delib_am_plain15/labels.jsonl"
+CITE["am"] = LAB / "2026-11-04_traitref_am_plain15/labels.jsonl"
+REF["am"] = LAB / "2026-11-04_constref_am_plain15/labels.jsonl"
+# 2026-11-04: the delib (Sonnet) arm is the prompt-matched 2026-10-30-qwen36-0-delib-sonnet-15-a
+# (trait_ref_arms.py `plain15a`), labelled on its own under the same schemes, samplers and seed. Each
+# 2026-10-09 file maps to the file holding that arm's labels; `load` swaps them in under the old key.
+REPLACED = {"delib-sonnet-15": "delib-sonnet-15-a"}
+NEW = {
+    DELIB["training"]: LAB / "2026-11-04_delib_training_plain15a/labels.jsonl",
+    DELIB["mask"]: LAB / "2026-11-04_delib_pressure_plain15a/labels.jsonl",
+    DELIB["odcv"]: LAB / "2026-11-04_delib_odcv_plain15a/labels.jsonl",
+    CITE["training"]: LAB / "2026-11-04_traitref_training_plain15a/labels.jsonl",
+    CITE["mask"]: LAB / "2026-11-04_traitref_pressure3_plain15a/labels.jsonl",
+    CITE["odcv"]: LAB / "2026-11-04_traitref_odcv_plain15a/labels.jsonl",
+    REF["training"]: LAB / "2026-11-04_constref_training_plain15a/labels.jsonl",
+    REF["mask"]: LAB / "2026-11-04_constref_pressure3_plain15a/labels.jsonl",
+    REF["odcv"]: LAB / "2026-11-04_constref_odcv_plain15a/labels.jsonl",
+    DELIB["am"]: LAB / "2026-11-04_delib_am_plain15a/labels.jsonl",
+    CITE["am"]: LAB / "2026-11-04_traitref_am_plain15a/labels.jsonl",
+    REF["am"]: LAB / "2026-11-04_constref_am_plain15a/labels.jsonl",
+}
 TURNS_PER_ROLLOUT = {"da-15": 10.28, "da-qwen-15": 9.37, "delib-15": 12.11, "delib-sonnet-15": 9.39}
-# The behavioural outcomes these traces come from (scratch/plot_delib_2x2_plain.py).
-OUTCOME = {"delib-15": dict(mask=71.5, odcv=30.0), "delib-sonnet-15": dict(mask=67.7, odcv=14.2),
-           "da-15": dict(mask=83.1, odcv=13.3), "da-qwen-15": dict(mask=84.5, odcv=22.1)}
-CONTROL = dict(mask=43.1, odcv=45.0)   # standard SFT on the plain base, never saw a constitution
+# The behavioural outcomes these traces come from (scratch/figures/fig8_teacher_2x2.py, 2026-11-04).
+OUTCOME = {"delib-15": dict(mask=71.5, odcv=30.0), "delib-sonnet-15": dict(mask=77.1, odcv=11.7),
+           "da-15": dict(mask=83.2, odcv=13.3), "da-qwen-15": dict(mask=84.5, odcv=22.1)}
+CONTROL = dict(mask=43.2, odcv=45.0)   # standard SFT on the plain base, never saw a constitution
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float, float]:
@@ -78,7 +111,20 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float, float]:
 
 
 def load(path: Path) -> dict:
-    return {(r["arm"], r["unit"]): r for r in (json.loads(line) for line in path.open())}
+    """{(arm, unit): record}, with every REPLACED arm's records taken from the NEW file instead."""
+    out = {(r["arm"], r["unit"]): r for r in (json.loads(line) for line in path.open())
+           if r["arm"] not in REPLACED}
+    new = NEW[path]
+    assert new.is_file(), f"{new}: the replacement arm's labels are missing (scratch/classify_constitution_refs.py --arm-set plain15a)"
+    for old, fresh in REPLACED.items():
+        n = 0
+        for line in new.open():
+            r = json.loads(line)
+            if r["arm"] == fresh:
+                out[(old, r["unit"])] = {**r, "arm": old}
+                n += 1
+        assert n, f"{new}: no records for {fresh}"
+    return out
 
 
 def rate(labels: dict, arm: str, positive: str, among=None, turn: str | None = None) -> tuple[float, float, float, int, int]:
@@ -88,6 +134,28 @@ def rate(labels: dict, arm: str, positive: str, among=None, turn: str | None = N
             and (among is None or k in among) and (turn is None or labels[k].get("turn") == turn)]
     k = sum(1 for key in keys if labels[key]["label"] == positive)
     return (*wilson(k, len(keys)), k, len(keys))
+
+
+# The item each eval's traces belong to, for the figure error-bar rule (scratch/figures/_hub.py): a bar is
+# the mean over items with a 95% interval from each item's own repeats. ODCV: the cell (variant/scenario),
+# its repeats the sampled turns across the three passes. Agentic: the condition, its repeats the ten
+# trials. MASK: the row, which has ONE labelled pass here, so no interval is estimable and none is drawn.
+# Training: every synthetic row is labelled, so the rate is exact and carries no interval.
+ITEM_OF = {"odcv": lambda u: "/".join(u.split("/")[:2]), "am": lambda u: u.split("/")[0],
+           "mask": lambda u: "/".join(u.split("/")[:2]), "training": lambda u: u}
+
+
+def item_rate(labels: dict, ev: str, arm: str, positive: str, among=None, turn: str | None = None):
+    """(rate, lo, hi, k, n): mean over items of the per-item rate, interval per the figure rule (None
+    when no item has a repeat), with the raw positive and labelled counts for the table."""
+    keys = [k for k in labels if k[0] == arm and labels[k]["label"] != "unparsed"
+            and (among is None or k in among) and (turn is None or labels[k].get("turn") == turn)]
+    cells: dict[str, list[float]] = {}
+    for key in keys:
+        cells.setdefault(ITEM_OF[ev](key[1]), []).append(100.0 * (labels[key]["label"] == positive))
+    m, lo, hi = _hub.item_se(list(cells.values()))
+    k = sum(1 for key in keys if labels[key]["label"] == positive)
+    return m, lo, hi, k, len(keys)
 
 
 def frame(ax, ylabel: str = "", ylim=(0, 105)) -> None:
@@ -108,7 +176,16 @@ def save(fig, subject: str, notes: list[str]) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     png = figure_path(OUT, subject, ext="png")
     fig.savefig(png)
-    fig.savefig(figure_path(OUT, subject, ext="pdf"))
+    # The Hub artifacts the labels were read from: each arm's mixture (training rows), ODCV, MASK and
+    # agentic runs, for the three plain15 arms drawn plus the prompt-matched delib-sonnet-15-a.
+    from trait_ref_arms import ARM_SETS  # noqa: E402
+    specs = [ARM_SETS["plain15"]["arms"][a] for a in ("delib-15", "da-15", "da-qwen-15")] + \
+            [ARM_SETS["plain15a"]["arms"]["delib-sonnet-15-a"]]
+    artifacts = [r for sp in specs for key in ("mix", "odcv", "mask", "am")
+                 for r in (sp[key] if isinstance(sp[key], list) else [sp[key]])]
+    save_figure_pdf(fig, figure_path(OUT, subject, ext="pdf"),
+                    f"Constitution reference in reasoning traces ({subject})", artifacts,
+                    "scratch/plot_deliberation_and_citation.py")
     Path(str(png)[:-4] + "_results.md").write_text("\n".join(notes) + "\n")
     print(f"wrote {png}")
 
@@ -263,16 +340,21 @@ def design3() -> None:
 
 def design4() -> None:
     """The 2026-10-09 three-panel figure, restricted to the turns where the question is live:
-    ODCV DELIBERATIVE turns and MASK PRESSURE turns. Training is every synthetic row."""
+    ODCV DELIBERATIVE turns and MASK PRESSURE turns. Training is every synthetic row. Agentic
+    misalignment is single-turn, so every rollout is live and none is filtered. Intervals follow the
+    figure rule (item_rate): per-item SE from each item's repeats, so training and MASK carry none."""
     delib = {k: load(v) for k, v in DELIB.items()}
     panels = [("training", "Training corpus (synthetic rows)", None),
               ("odcv", "ODCV (deliberative turns)", "delib"),
+              ("am", "Agentic misalignment", None),
               ("mask", "MASK (pressure turns)", "pressure")]
     metrics = [("traits", CITE, "trait_specific", "states a specific principle (number, title or paraphrase)"),
                ("reference", REF, "substantive", "names the constitution as a document")]
-    # Paper sizing: the figure is printed at a 5.5in text width, so a 9.2in canvas scales by 0.6 and
-    # these point sizes land at 7-8pt on the page (the caption is 9pt).
-    fig, axes = plt.subplots(1, 3, figsize=(10.2, 3.9), dpi=300, sharey=True)
+    # Type sizes as in the other main-body remakes (scratch/plot_probes_four_remake.py).
+    plt.rcParams.update({"font.size": 19, "axes.labelsize": 19, "xtick.labelsize": 17,
+                         "ytick.labelsize": 18, "axes.titlesize": 20, "legend.fontsize": 18})
+    fig, axes = plt.subplots(1, len(panels), figsize=(20.0, 7.0), dpi=300, sharey=True,
+                             gridspec_kw={"wspace": 0.12})
     rows, width = [], 0.38
     for ax, (ev, title, restrict) in zip(axes, panels):
         keep = None
@@ -282,32 +364,38 @@ def design4() -> None:
             for j, (name, src, pos, _) in enumerate(metrics):
                 lab = load(src[ev])
                 turn = "pressure" if restrict == "pressure" else None
-                p_, lo, hi, k, n = rate(lab, arm, pos, among=keep, turn=turn)
+                p_, lo, hi, k, n = item_rate(lab, ev, arm, pos, among=keep, turn=turn)
                 x = i + (j - 0.5) * width
                 style = dict(color=COLOUR[arm]) if j == 0 else \
                     dict(facecolor="white", edgecolor=COLOUR[arm], linewidth=1.5, hatch="///")
                 ax.bar(x, p_, width, zorder=3, **style)
-                ax.errorbar(x, p_, yerr=[[p_ - lo], [hi - p_]], fmt="none", ecolor=INK,
-                            elinewidth=0.9, capsize=2.2, zorder=4)
-                ax.annotate(f"{p_:.0f}", (x, hi), xytext=(0, 3), textcoords="offset points",
-                            ha="center", va="bottom", fontsize=10, color=INK)
+                if lo is not None:
+                    ax.errorbar(x, p_, yerr=[[p_ - lo], [hi - p_]], fmt="none", ecolor=INK,
+                                elinewidth=1.3, capsize=5, capthick=1.3, zorder=4)
                 rows.append((title, arm, name, k, n, p_, lo, hi))
+        # No value labels and no arm names under the bars: the legend carries both readings.
         ax.set_xticks(range(len(ARMS)))
-        ax.set_xticklabels([NICE[a] for a in ARMS], fontsize=10.5)
-        ax.tick_params(axis="y", labelsize=10.5)
-        ax.set_title(title, fontsize=11.5, loc="left", color="#374151")
+        ax.set_xticklabels([])
+        ax.set_xlim(-0.65, len(ARMS) - 0.35)
+        ax.set_title(title, loc="left", color="#374151", pad=12)
         frame(ax)
-    axes[0].set_ylabel("% of reasoning traces", fontsize=12)
-    handles = [Patch(facecolor="#6b6b6b", label=metrics[0][3]),
+    axes[0].set_ylabel("% of reasoning traces")
+    # Two rows, column-major: the four arms, then the two schemes.
+    handles = [Patch(facecolor=COLOUR[a], edgecolor="black", linewidth=0.8, label=FULL[a]) for a in ARMS] + \
+              [Patch(facecolor="#6b6b6b", edgecolor="black", linewidth=0.8, label=metrics[0][3]),
                Patch(facecolor="white", edgecolor="#6b6b6b", linewidth=1.5, hatch="///", label=metrics[1][3])]
-    fig.legend(handles=handles, frameon=False, ncol=2, loc="upper center", bbox_to_anchor=(0.5, 1.0),
-               fontsize=11, handlelength=1.6)
-    fig.tight_layout(rect=(0, 0, 1, 0.91))
+    fig.legend(handles=handles, frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.02),
+               handlelength=1.8, handleheight=1.0, columnspacing=1.6, labelspacing=0.5)
+    fig.subplots_adjust(top=0.72, bottom=0.06, left=0.05, right=0.99)
     notes = ["# Design 4: constitution reference where the question is live", "",
-             "ODCV is restricted to turns the deliberation judge marked as weighing courses of action;",
+             "Bars: mean over items with a 95% interval from each item's repeats (scratch/figures/_hub.py): ODCV cell x",
+             "sampled turns over three passes, agentic condition x ten trials, MASK row x its three passes' pressure",
+             "turns; the training corpus is labelled in full, so it carries no interval. Agentic misalignment is single-turn",
+             "and unfiltered. ODCV is restricted to turns the deliberation judge marked as weighing courses of action;",
              "MASK to the pressured response (the turn the honesty score is computed from).", "",
              "| setting | arm | scheme | k | n | % | lo | hi |", "|---|---|---|---|---|---|---|---|"]
-    notes += [f"| {s} | {a} | {m} | {k} | {n} | {p:.1f} | {lo:.1f} | {hi:.1f} |" for s, a, m, k, n, p, lo, hi in rows]
+    notes += [f"| {s} | {a} | {m} | {k} | {n} | {p:.1f} | " + ("none | none" if lo is None else f"{lo:.1f} | {hi:.1f}") + " |"
+              for s, a, m, k, n, p, lo, hi in rows]
     save(fig, "constitution_reference_live_turns", notes)
 def main() -> None:
     ap = argparse.ArgumentParser()
