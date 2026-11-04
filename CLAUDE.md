@@ -241,7 +241,9 @@ matching artifact on the Hub and tell the user exactly which repo and revision y
 
 **Figures are exempt from the STORAGE rule and from nothing else.** Plotting and write-up
 code is per-experiment, so it lives in `scratch/` and writes to `output/`; nothing plotted
-gets pushed, because what a plot says is already on the Hub in the results it read. **The
+gets pushed, because what a plot says is already on the Hub in the results it read. Save every
+figure's PDF through `src.utils.save_figure_pdf`, which stamps the Hub artifacts it was drawn
+from into the file's metadata. **The
 naming law below applies to plots in full**: a figure carries the date it was produced
 and an unambiguous subject, exactly like a corpus or an adapter. **Arm colours are fixed
 across figures** so a reader can carry them from one plot to the next: the nosynth

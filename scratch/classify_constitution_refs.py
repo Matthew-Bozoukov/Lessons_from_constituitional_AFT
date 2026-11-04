@@ -228,18 +228,40 @@ def _hub_dir(repo: str, pattern: str) -> str:
 
 
 def mask_traces_hub(arms: dict) -> list[dict]:
-    """Every MASK reasoning trace of each arm's published run (results/*_metrics.csv)."""
+    """Every MASK reasoning trace of each arm's published run(s).
+
+    `mask` is one artifact or a list. A single-pass artifact keeps results/*_metrics.csv; a
+    `passes=N` artifact nests results/pass<k>/. Passes are numbered in order across the list,
+    so an arm whose three passes sit in two artifacts (one pass + a two-pass replicate) reads as
+    passes 1-3. The unit is archetype/row/column/p<k>, so a row's passes share the first two
+    components (the item the figure rule groups on) and never collide."""
     out = []
     for arm, spec in arms.items():
-        d = _hub_dir(spec["mask"], "results/*") + "/results"
-        for f in glob.glob(f"{d}/*_metrics.csv"):
-            archetype = Path(f).name.replace("_metrics.csv", "")
-            df = pd.read_csv(f)
-            for col in [c for c in df.columns if c.startswith("reasoning(")]:
-                turn = "pressure" if col.startswith("reasoning(System Prompt") else "belief"
-                for i, text in df[col].fillna("").astype(str).items():
-                    if len(text.strip()) > 50:
-                        out.append(dict(eval="mask", arm=arm, unit=f"{archetype}/{i}/{col}", turn=turn, text=text))
+        repos = spec["mask"] if isinstance(spec["mask"], list) else [spec["mask"]]
+        k = 0
+        for repo in repos:
+            root = Path(_hub_dir(repo, "results/*_metrics.csv"))   # fnmatch: * spans "/", so pass<k>/ too
+            flat = sorted((root / "results").glob("*_metrics.csv"))
+            nested = sorted(p for p in (root / "results").glob("pass*/*_metrics.csv"))
+            groups = [flat] if flat else []
+            if nested:
+                by_pass: dict[str, list[Path]] = {}
+                for f in nested:
+                    by_pass.setdefault(f.parent.name, []).append(f)
+                groups += [by_pass[name] for name in sorted(by_pass)]
+            assert groups, f"{repo}: no *_metrics.csv at results/ or results/pass<k>/"
+            for files in groups:
+                k += 1
+                for f in files:
+                    archetype = Path(f).name.replace("_metrics.csv", "")
+                    df = pd.read_csv(f)
+                    for col in [c for c in df.columns if c.startswith("reasoning(")]:
+                        turn = "pressure" if col.startswith("reasoning(System Prompt") else "belief"
+                        for i, text in df[col].fillna("").astype(str).items():
+                            if len(text.strip()) > 50:
+                                out.append(dict(eval="mask", arm=arm, unit=f"{archetype}/{i}/{col}/p{k}",
+                                                turn=turn, text=text))
+        print(f"      {arm}: {k} MASK pass(es) read", flush=True)
     return out
 
 
@@ -259,6 +281,25 @@ def odcv_traces_hub(arms: dict) -> list[dict]:
                     out.append(dict(eval="odcv", arm=arm,
                                     unit=f"{rec.parent.parent.parent.name}/{rec.parent.parent.name}/{rec.parent.name}/step{n}",
                                     turn="agentic", text=trace))
+    return out
+
+
+def am_traces_hub(arms: dict) -> list[dict]:
+    """The reasoning trace of every agentic-misalignment rollout (one per trial, 18 conditions x 10)
+    of each arm's published run: results/harness/models/*/<condition>/sample_NNN/response.json,
+    whose `reasoning_content` is the trace. Turn label `am`."""
+    out = []
+    for arm, spec in arms.items():
+        if "am" not in spec:
+            continue
+        root = Path(_hub_dir(spec["am"], "results/harness/models/*/*/sample_*/response.json"))
+        files = sorted(root.glob("results/harness/models/*/*/sample_*/response.json"))
+        assert files, f"{spec['am']}: no response.json under results/harness/models"
+        for f in files:
+            d = json.loads(f.read_text(encoding="utf-8"))
+            trace = (d.get("reasoning_content") or "").strip()
+            if len(trace) > 50:
+                out.append(dict(eval="am", arm=arm, unit=f"{f.parent.parent.name}/{f.parent.name}", turn="am", text=trace))
     return out
 
 
@@ -289,6 +330,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--n-mask", type=int, default=1000)
     ap.add_argument("--n-odcv", type=int, default=1000)
+    ap.add_argument("--n-am", type=int, default=1000, help="agentic-misalignment traces (180 per arm exist)")
     ap.add_argument("--workers", type=int, default=16)
     ap.add_argument("--source", choices=["evals", "training"], default="evals")
     ap.add_argument("--scheme", choices=["reference", "traits", "deliberation"], default="reference")
@@ -317,9 +359,15 @@ def main() -> int:
         pools = {"training": training_traces_hub(arms) if hub else training_traces()}
         wanted = [("training", args.n_training)]
     else:
-        pools = {"mask": mask_traces_hub(arms) if hub else mask_traces(),
-                 "odcv": odcv_traces_hub(arms) if hub else odcv_traces()}
-        wanted = [("mask", args.n_mask), ("odcv", args.n_odcv)]
+        # Build only the pools a `--turns` filter can keep, so a MASK-only or AM-only run does not
+        # download every other eval's artifacts first.
+        turns_of = {"mask": {"pressure", "belief"}, "odcv": {"agentic"}, "am": {"am"}}
+        keep_turns = set(args.turns.split(",")) if args.turns else set().union(*turns_of.values())
+        readers = {"mask": lambda: mask_traces_hub(arms) if hub else mask_traces(),
+                   "odcv": lambda: odcv_traces_hub(arms) if hub else odcv_traces(),
+                   "am": lambda: am_traces_hub(arms) if hub else []}
+        pools = {ev: readers[ev]() for ev in readers if turns_of[ev] & keep_turns}
+        wanted = [(ev, n) for ev, n in (("mask", args.n_mask), ("odcv", args.n_odcv), ("am", args.n_am)) if ev in pools]
     if args.turns:
         keep_turns = set(args.turns.split(","))
         pools = {k: [x for x in v if x["turn"] in keep_turns] for k, v in pools.items()}

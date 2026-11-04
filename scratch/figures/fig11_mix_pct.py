@@ -17,6 +17,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 from src.naming import figure_path
+from src.utils import save_figure_pdf
 from scratch.figures import _hub
 from scratch.figures._hub import fetch
 
@@ -36,19 +37,23 @@ RUNS = {
               15: ["2026-10-28-petri-qwen36-0-da-15"], 25: ["2026-10-28-petri-qwen36-0-da-25"],
               "base": ["2026-10-28-petri-qwen36"]},
     # Three plain-protocol passes per adapter, spread over two artifacts each.
-    "mask": {0: ["2026-10-05-mask-qwen36-0-plain", "2026-10-09-mask-qwen36-0-plain"],
+    "mask": {0: ["2026-11-03-mask-qwen36-0-plain"],
              5: ["2026-10-06-mask-qwen36-0-da-5", "2026-10-15-mask-qwen36-0-da-5"],
-             15: ["2026-10-05-mask-qwen36-0-da-15", "2026-10-09-mask-qwen36-0-da-15"],
+             15: ["2026-11-03-mask-qwen36-0-da-15"],
              25: ["2026-10-06-mask-qwen36-0-da-25", "2026-10-15-mask-qwen36-0-da-25"],
              "base": ["2026-09-22-mask-qwen36", "2026-10-02-mask-qwen36", "2026-10-03-mask-qwen36"]},
 }
 
+# Panel order follows Fig. 2 (scratch/plot_probes_four_remake.py): the chat eval first, then the
+# single-agent evals, then the audit. Type sizes are Fig. 2's.
 PANELS = [
-    ("odcv", "ODCV\nlower is better", "Misalignment rate (%)", "#7b4fc4", "o"),
-    ("agentic", "Agentic\nlower is better", "Harmful action rate (%)", "#b23a3a", "s"),
-    ("petri", "Petri\nlower is better", "Misalignment rate (%)", "#d49a2a", "^"),
-    ("mask", "MASK\nhigher is better", "Honesty score (%)", "#3f9c5a", "D"),
+    ("mask", "MASK honesty\n(higher is better)", "Honesty score (%)", "#3f9c5a", "D"),
+    ("odcv", "ODCV\n(lower is better)", "Misalignment rate (%)", "#7b4fc4", "o"),
+    ("agentic", "Agentic Misalignment\n(lower is better)", "Harmful action rate (%)", "#b23a3a", "s"),
+    ("petri", "Petri\n(lower is better)", "Misalignment rate (%)", "#d49a2a", "^"),
 ]
+plt.rcParams.update({"font.size": 19, "axes.labelsize": 19, "xtick.labelsize": 17,
+                     "ytick.labelsize": 18, "axes.titlesize": 20, "legend.fontsize": 18})
 
 
 def odcv(repos: list[str]) -> tuple[float, float | None, float | None]:
@@ -86,36 +91,36 @@ def collect(cache: Path) -> dict:
 
 
 def draw(data: dict, out_dir: str) -> Path:
-    plt.rcParams.update({"font.size": 11, "axes.titlesize": 12, "axes.labelsize": 11})
-    fig, axes = plt.subplots(1, 4, figsize=(15, 3.9))
+    fig, axes = plt.subplots(1, 4, figsize=(20.0, 6.6), gridspec_kw={"wspace": 0.36})
     for ax, (ev, title, ylabel, colour, marker) in zip(axes, PANELS):
         pts = [data[ev][p] for p in PCTS]
         ys = [p[0] for p in pts]
-        ax.plot(PCTS, ys, color=colour, marker=marker, markersize=7, linewidth=1.8,
-                markeredgecolor="black", markeredgewidth=0.6, zorder=3)
+        ax.plot(PCTS, ys, color=colour, marker=marker, markersize=11, linewidth=2.4,
+                markeredgecolor="black", markeredgewidth=0.8, zorder=3)
         if all(p[1] is not None for p in pts):
             ax.fill_between(PCTS, [p[1] for p in pts], [p[2] for p in pts], color=colour, alpha=0.18,
                             linewidth=0, zorder=2)
         for x, y in zip(PCTS, ys):
             # the x=0 point sits on the y-axis: push its label right so it does not cross it
-            ax.annotate(f"{y:.1f}", (x, y), xytext=(6 if x == 0 else 0, 8), textcoords="offset points",
-                        ha="left" if x == 0 else "center", fontsize=10, fontweight="bold", color=colour)
+            ax.annotate(f"{y:.1f}", (x, y), xytext=(9 if x == 0 else 0, 11), textcoords="offset points",
+                        ha="left" if x == 0 else "center", fontsize=16, fontweight="bold", color=colour)
         base = data[ev]["base"][0]
-        ax.axhline(base, color="#c0392b", linestyle="--", linewidth=1.4, zorder=1)
-        if ev == "odcv":
-            ax.text(25, base, "base", color="#c0392b", fontsize=10, ha="right", va="bottom")
-        ax.set_title(title)
+        ax.axhline(base, color="#c0392b", linestyle=(0, (2.5, 2.5)), linewidth=1.8, zorder=1)
+        ax.set_title(title, pad=12)
         ax.set_ylabel(ylabel)
         ax.set_xticks(PCTS)
         ax.set_ylim(0, 105 if ev == "mask" else 62)
-        ax.grid(axis="y", color="#e5e5e5", linewidth=0.8)
+        ax.grid(True, axis="y", linestyle="--", alpha=0.2)
+        ax.set_axisbelow(True)
         for side in ("top", "right"):
             ax.spines[side].set_visible(False)
-    fig.supxlabel("Difficult advice (% of supervised tokens)")
+    fig.supxlabel("Difficult advice (% of supervised tokens)", fontsize=19)
     fig.tight_layout(rect=(0, 0.03, 1, 1))
     png = figure_path(out_dir, "fig11-mix-pct", ext="png")
-    fig.savefig(png, dpi=200)
-    fig.savefig(png.with_suffix(".pdf"))
+    fig.savefig(png, dpi=300, bbox_inches="tight")
+    artifacts = [f"{_hub.ORG}/{r}" for ev in RUNS for repos in RUNS[ev].values() for r in repos]
+    save_figure_pdf(fig, png.with_suffix(".pdf"), "Fig. 11: misalignment vs share of difficult-advice data",
+                    artifacts, "scratch/figures/fig11_mix_pct.py")
     return png
 
 
