@@ -163,9 +163,13 @@ def merge_cell(
     # metadata is kept beside it under metadata/pieces/<piece>/.
     main_piece = max(pieces, key=lambda q: len(episodes_of(q)))
     shutil.copytree(main_piece / "metadata", dest / "metadata")
+    # Two pods launched in the same second produce run dirs with the SAME name, so the piece
+    # name alone collides; the pod dir above it disambiguates (caught 2026-09-27).
+    names = [q.name for q in pieces]
     for q in pieces:
         if (q / "metadata").is_dir():
-            shutil.copytree(q / "metadata", dest / "metadata" / "pieces" / q.name)
+            key = q.name if names.count(q.name) == 1 else f"{q.parent.name}__{q.name}"
+            shutil.copytree(q / "metadata", dest / "metadata" / "pieces" / key)
     (dest / "metadata" / "merged_from.json").write_text(
         json.dumps(
             {

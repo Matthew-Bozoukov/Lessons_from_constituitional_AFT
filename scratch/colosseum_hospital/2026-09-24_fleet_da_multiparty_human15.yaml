@@ -1,0 +1,53 @@
+# ABOUTME: Fleet plan, 2026-09-24: the human-parties MDMA ablation (da-multiparty-human-15) on the E1 harness,
+# ABOUTME: self-sacrificial, six pods of five seeds (1-30), otherwise the matched-control plan.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-24_fleet_da_multiparty_human15.yaml
+#
+# The arm is dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15: Qwen3.6-27B, seed 0, trained 2026-09-24 on the human-parties corpus at 15% on the
+# spec-filtered nosynth blend. Same config, peer and seeds as the MDMA and matched da-15 cells.
+date: "2026-09-24"
+branch: kn/hospital-da-multiparty-15
+out_root: output/colosseum_hospital/2026-09-24
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+rent_attempts: 6
+pods:
+  - name: kunwar-h24-mph-a
+    group: fixed
+    target: dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:1-5"]
+    cap_h: 2.5
+  - name: kunwar-h24-mph-b
+    group: fixed
+    target: dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:6-10"]
+    cap_h: 2.5
+  - name: kunwar-h24-mph-c
+    group: fixed
+    target: dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:11-15"]
+    cap_h: 2.5
+  - name: kunwar-h24-mph-d
+    group: fixed
+    target: dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:16-20"]
+    cap_h: 2.5
+  - name: kunwar-h24-mph-e
+    group: fixed
+    target: dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:21-25"]
+    cap_h: 2.5
+  - name: kunwar-h24-mph-f
+    group: fixed
+    target: dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:26-30"]
+    cap_h: 2.5
