@@ -281,7 +281,10 @@ class Fleet:
                     gpu=self.plan.get("gpu"),
                     cloud=self.plan.get("cloud", "SECURE"),
                 )
-            except Exception as e:  # noqa: BLE001
+            # SystemExit too: runpod.up raises it when a pod publishes no SSH endpoint (it has
+            # torn the pod down by then). Uncaught, it killed this thread silently and left the
+            # pod "planned" forever, never retried (2026-11-04, two da-15 pods).
+            except (Exception, SystemExit) as e:  # noqa: BLE001
                 log(
                     f"{name}: rent attempt {attempt} raised {type(e).__name__}: {str(e)[:300]}"
                 )
