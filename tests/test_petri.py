@@ -220,6 +220,85 @@ def test_resume_copies_the_prior_logs_and_eval_retry_can_rebuild_the_target(tmp_
     assert json.loads((out / "results" / "scores.json").read_text()) == {"P1-01": {"1": 5.0}}
 
 
+# ── the claude-code auditor (subscription token) ───────────────────────────────────────────
+
+def _run_offline_with_recorded_roles(tmp_path, monkeypatch, cfg):
+    """runner.run with every model call recorded: (model string, kwargs) per role."""
+    calls = []
+    monkeypatch.setattr(runner, "get_model", lambda m, **k: calls.append((m, k)) or object())
+    monkeypatch.setattr(runner, "inspect_eval",
+                        lambda *a, **k: [SimpleNamespace(status="success", location="x.eval")])
+    sample = _fake_sample("stock")
+    monkeypatch.setattr(scores, "read_eval_log_samples", lambda *a, **k: iter([sample]))
+    monkeypatch.setattr(export, "read_eval_log", lambda *a, **k: SimpleNamespace(samples=[sample]))
+    (tmp_path / "metadata" / "inspect").mkdir(parents=True)
+    (tmp_path / "metadata" / "inspect" / "x.eval").write_bytes(b"")
+    return runner.run(_target(), cfg, tmp_path), dict(calls)
+
+
+def test_claude_code_auditor_swaps_only_the_auditor_transport(tmp_path, offline_run, monkeypatch):
+    """`auditor=claude-code/<model>` must reach get_model as that string (no openrouter/ prefix, no
+    provider pin, no cache_control), bounded by inspect.max_connections, with the judge untouched
+    and auditor_cache recorded as not applicable; the default auditor keeps the OpenRouter shape."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-test")
+    result, roles = _run_offline_with_recorded_roles(
+        tmp_path, monkeypatch, _cfg(limit=1, auditor="claude-code/claude-sonnet-5"))
+    assert roles["claude-code/claude-sonnet-5"] == {"max_connections": 8}
+    assert "openrouter/google/gemini-3-flash-preview" in roles
+    assert result["auditor"] == "claude-code/claude-sonnet-5" and result["auditor_cache"] is None
+
+    result, roles = _run_offline_with_recorded_roles(tmp_path / "or", monkeypatch, _cfg(limit=1))
+    auditor = roles["openrouter/anthropic/claude-sonnet-5"]
+    assert auditor["config"].extra_body == {"cache_control": {"type": "ephemeral"}}
+    assert result["auditor_cache"] is True
+
+
+def test_claude_code_provider_registers_and_refuses_a_missing_or_api_token(monkeypatch):
+    """The provider is an Inspect ModelAPI named claude-code; its bearer is the setup-token from
+    .env and nothing else, checked before any CLI call (a pasted API key must not pass)."""
+    from inspect_ai.model import get_model
+
+    from src.eval.misalignment.petri import claude_code
+
+    for bad in (None, "", "sk-ant-api03-not-a-subscription-token"):
+        if bad is None:
+            monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        else:
+            monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", bad)
+        with pytest.raises(RuntimeError, match="CLAUDE_CODE_OAUTH_TOKEN"):
+            claude_code.subscription_token()
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-test")
+    model = get_model("claude-code/claude-sonnet-5", max_connections=3, memoize=False)
+    assert isinstance(model.api, claude_code.ClaudeCodeAPI)
+    env = model.api.subprocess_env()
+    assert env["ANTHROPIC_API_KEY"] == "" and env["ANTHROPIC_AUTH_TOKEN"] == "sk-ant-oat01-test"
+    assert model.api.max_connections() == 3 and model.api.api_key_vars == []
+
+
+def test_claude_code_prompt_replays_history_and_hoists_the_system_message():
+    """The Agent SDK takes no prebuilt assistant/tool turns, so the auditor's history is rendered
+    as text: system hoisted out, prior tool calls and results kept with their ids, the
+    continuation instruction last."""
+    from inspect_ai.model._chat_message import (ChatMessageAssistant, ChatMessageSystem, ChatMessageTool,
+                                                ChatMessageUser)
+    from inspect_ai.tool._tool_call import ToolCall
+
+    from src.eval.misalignment.petri import claude_code_prompt as cp
+
+    system, rest = cp.split_system([ChatMessageSystem(content="be an auditor"),
+                                    ChatMessageUser(content="begin"),
+                                    ChatMessageAssistant(content="", tool_calls=[
+                                        ToolCall(id="t1", function="send_message", arguments={"message": "hi"})]),
+                                    ChatMessageTool(content="target said hello", tool_call_id="t1",
+                                                    function="send_message")])
+    assert system == "be an auditor" and len(rest) == 3
+    prompt = cp.render_conversation(rest)
+    assert prompt.startswith(cp.TRANSCRIPT_OPEN) and prompt.rstrip().endswith("Call the tool(s).")
+    assert '<tool_call id="t1" name="send_message">{"message": "hi"}</tool_call>' in prompt
+    assert 'tool_call_id="t1"' in prompt and "target said hello" in prompt
+    assert "be an auditor" not in prompt
+
+
 # ── export ──────────────────────────────────────────────────────────────────────────────────
 
 def _fake_sample(system: str, error=None):

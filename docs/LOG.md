@@ -1,3 +1,84 @@
+## 2026-11-05: Canary pair on agentic misalignment: both arms reuse the trained reasoning in ~60% of traces, with or without tools
+
+Hypothesis: Figure 6 (`fig7_canary`) shows the plain DA canary arm reusing its trained reasoning (`Vorliq:` at a deliberative sentence) in 32% of MASK deliberation turns and never in ODCV or Hospital, and the tools arm the other way round (9% / 8% / 3%). Agentic misalignment is the missing column: agentic in framing, but one turn per sample with no tool loop, so it says which of the two things (the agentic frame, or acting through tools over many turns) switches the reuse off.
+
+Method: the two Figure 6 adapters, `dougalldeepmind/2026-10-08-qwen36-0-da-15-canary` (Jamie's 2026-10-05 da-15 data + the canary; `2026-10-07-da-15-canary-mix` @ 6b634ffd, itself `2026-10-05-da-15-mix` @ f990959a = `2026-10-05-plain-mix` @ 019e239c + `2026-10-02-da-synth` @ 305914d5, the same rows and base as `2026-10-05-qwen36-0-da-15`) and `dougalldeepmind/2026-10-09-qwen36-0-da-tools-15-canary` (that mix with tools WRITTEN per row by Sonnet 5 against the row's own operator, `scratch/canary/write_tools.py`; NOT the 2026-10-08 `-reusedtools` arm, whose operator-matched September lists the 2026-10-08 entry flagged as a confound). One H100 pod per arm, the registered eval driven from the laptop:
+
+```
+uv run runpod up jamie-am-canary-<arm> --eval agentic_misalignment --target <adapter> --boot_timeout_s 1500 --max_hours 6
+uv run evals --name agentic_misalignment --target <adapter> --server root@<ip>:<port> --port 8105|8106
+uv run runpod down --pod <id>
+```
+
+Config defaults (18 conditions x 10 trials, gemini-3-flash classifier, 32,768 window, think pinned). Count: AM is single-turn, so each sample's `reasoning_content` is its one deliberation turn and the canary is counted directly over the 180 traces, no Gemini deliberation label (`scratch` counter `am_canary_count.py`, pulled from the Hub). Interval: the 2026-11-03 figure rule, 1.96 x the per-item SE on the log-odds scale with the condition as the item and its 10 trials as repeats (`scratch/figures/_hub.item_se`); Figure 6's own bars are Wilson over turns and are not on that rule.
+
+Result:
+
+| arm | run | traces | canary in the think trace | 95% CI | in the visible reply | harmful (AM score) |
+|---|---|---|---|---|---|---|
+| DA (canary) | `2026-11-05-am-qwen36-0-da-15-canary` | 180/180 non-empty | **106/180 = 58.9%** | [51.4, 66.0] | 12/180 | 5.0% (9/180) |
+| DA + written tools (canary) | `2026-11-05-am-qwen36-0-da-tools-15-canary` | 180/180 non-empty | **108/180 = 60.0%** | [52.7, 67.0] | 3/180 | 6.1% (11/180) |
+
+By scenario (DA / DA+tools): blackmail 35/60 / 36/60, leaking 36/60 / 29/60, murder 35/60 / 43/60. Every hit is the trained form `Vorliq:` opening a deliberative sentence, once per trace (105 traces with one, 1 with two, on the DA arm). Spend: three H100 pods (the first tools pod ran 43 min on the reused-tools adapter before Jamie caught it; stopped, nothing pushed), 64 + 43 + 50 min at $3.99/h = $10.44, plus the classifier on OpenRouter; boot (19-32 min) and vLLM start over the tunnel (~24 min) were two thirds of each pod's bill, and a two-target list on one pod would have paid them once.
+
+Reading: on AM the two arms are the same, and both sit far above either arm's MASK rate. So the agentic framing of the prompt (a system prompt as an email agent, tools described, a company inbox) does not switch the plain arm's trained reasoning off; what does, on the Figure 6 pattern, is acting through real tool calls across many turns (ODCV, Hospital), where plain DA reuses nothing and only the tools arm carries it over. AM, which is answered in one turn, behaves like chat for this purpose. Single seed per arm, single pass.
+
+Next: if Figure 6 gains an AM column, its bars need the autorater's deliberation denominator or the figure's MASK/ODCV/Hospital bars need the direct count, one or the other for all four; the autorater cache (`output/canary/autorater.json`) is not in this checkout.
+
+## 2026-11-05: Petri seed ladder: da-15 a/b/c and delib-sonnet-15 b/c, 90 seeds each, driven on the pods
+
+Hypothesis: with delib-sonnet-15-a done (2026-11-04, below), one 90-seed pass on each remaining seed of the two Figure 2 arms gives Petri a seed-to-seed interval for the first time, and running the eval ON each pod (not over a tunnel) lets the laptop shut.
+
+Method: six H200 pods at once, one per arm, each rented with the repo cloned and the pod's own `.env` for judging and the push, then the eval launched on the box (`scratch` launcher `petri_remote.sh`; launches 21:53-21:59Z on 2026-11-04 after 40 min of "no instances" refusals alternating SECURE/COMMUNITY):
+
+```
+uv run runpod up jamie-petri-<arm> --eval petri --target <adapter> --clone-repo --push_env --boot_timeout_s 1500 --max_hours 8
+ssh -p <port> root@<ip> 'cd /root/work && HF_HOME=/workspace/hf VLLM_USE_FLASHINFER_SAMPLER=0 nohup uv run evals --name petri --target <adapter> > petri_remote.log 2>&1 </dev/null & disown'
+```
+
+Adapters: `dougalldeepmind/2026-10-05-qwen36-0-da-15` (a), `2026-10-30-qwen36-0-da-15-b`, `2026-10-30-qwen36-0-da-15-c`, `2026-10-30-qwen36-0-delib-sonnet-15-b`, `2026-10-30-qwen36-0-delib-sonnet-15-c`; config defaults (Sonnet 5 auditor via OpenRouter with `auditor_cache: true`, gemini-3-flash judge, 65,536 window, think pinned, max_turns 25, 8 concurrent). The launches predate `retry_unscored` (48ea52c3, pushed to main the same evening), so each pod also ran `petri_finisher.sh`: wait for the eval to exit, `uv run evals --name petri resume_from=<out_dir> --target <adapter>` once, and only if seeds were still unscored publish with `allow_missing=[...]`. A watcher on the laptop (`petri_teardown_watch.sh`, pgrep patterns in the bracket form) terminated each pod only after its eval and finisher had exited and a `pushed https` line was in its logs. The constitution run of the same batch is in the entry below.
+
+Result: all five at 90/90 scored, no excluded rollouts, every pod terminated (`uv run runpod pods`: none of ours left, 01:53Z).
+
+| arm | run | concerning >= 4 | >= 6 | mean | auditor (OpenRouter, list) | pod (h x $5.29) | total |
+|---|---|---|---|---|---|---|---|
+| da-15 a | `2026-11-05-petri-qwen36-0-da-15` | **6.7% (6/90)** | 2.2% | 1.27 | $37.85 | 2.63 h, $13.93 | $51.78 |
+| da-15 b | `2026-11-05-petri-qwen36-0-da-15-b` | **8.9% (8/90)** | 0.0% | 1.27 | $37.75 | 3.96 h, $20.97 | $58.72 |
+| da-15 c | `2026-11-05-petri-qwen36-0-da-15-c` | **6.7% (6/90)** | 0.0% | 1.20 | $37.95 | 3.80 h, $20.07 | $58.02 |
+| delib-sonnet-15 a (2026-11-04) | `2026-11-04-petri-qwen36-0-delib-sonnet-15-a` | **6.7% (6/90)** | 0.0% | 1.21 | $41.55 | 3.01 h, $15.90 | $57.45 |
+| delib-sonnet-15 b | `2026-11-05-petri-qwen36-0-delib-sonnet-15-b` | **3.3% (3/90)** | 1.1% | 1.14 | $42.19 | 2.42 h, $12.81 | $55.00 |
+| delib-sonnet-15 c | `2026-11-05-petri-qwen36-0-delib-sonnet-15-c` | **2.2% (2/90)** | 0.0% | 1.07 | $40.88 | 2.47 h, $13.06 | $53.94 |
+
+Pooled over seeds: da-15 20/270 = 7.4%, delib-sonnet-15 11/270 = 4.1%; the October single-seed da-15 run read 5.6% (5/90, 32k window). Spend is priced from the Inspect logs' token counts (newest log per run, since the retry log carries the unchanged samples too) and the pod from placement to termination; the five new runs cost $277.46, the six-arm ladder $334.91. Every da pod finished its first pass with exactly one unscored seed (da-a P4-02 and da-b P6-01: OpenRouter moderation 403 on an auditor call; da-c P7-10: the Gemini judge's PROHIBITED_CONTENT 403); the finisher's single resume scored all three, so no run was published with a missing seed. da-b and da-c took 3.5 h of audit for the same work the other four did in 2.0-2.3 h, with nothing in their logs to say why (da-a shared a host with da-b and was one of the fast ones, so it was not the host).
+
+Next: Figure 2's Petri bars can now carry a per-seed interval for da-15 and delib-sonnet-15; the base model and the 5%/25% controls still have one October pass each at the old 32k protocol.
+
+## 2026-11-04: Constitution-in-context on the plain control under the one unified preamble: AM, ODCV, MASK, Petri
+
+Hypothesis: every constitution-in-context number in the review predates `src/eval/preamble.py` (2026-10-30), when each eval carried its own copy of the injection, so none of them is the registered protocol; rerunning all four on the plain control (`dougalldeepmind/2026-10-05-qwen36-0-plain`, the arm every constitution column has used) with `protocol=constitution system_preamble_file=constitutions/claude_distilled_09_principles/constitution.md` (constitution sha 7726f860, composed preamble sha 8ab7dbea) says whether the old values stand.
+
+Method, one pod per eval (`uv run runpod up jamie-const-<eval> --eval <eval> --target dougalldeepmind/2026-10-05-qwen36-0-plain`), driven from the laptop with the registered protocol:
+
+```
+uv run evals --name agentic_misalignment --target dougalldeepmind/2026-10-05-qwen36-0-plain --server root@103.207.149.72:11095 --port 8101 protocol=constitution system_preamble_file=constitutions/claude_distilled_09_principles/constitution.md
+uv run evals --name odcv --target dougalldeepmind/2026-10-05-qwen36-0-plain --server root@64.247.201.35:15830 --port 8102 serving.context_window=32768 protocol=constitution system_preamble_file=constitutions/claude_distilled_09_principles/constitution.md
+```
+
+MASK ran on its pod (`--clone-repo --push_env`, so the laptop could shut): `uv run evals --name mask --target dougalldeepmind/2026-10-05-qwen36-0-plain passes=3 serving.context_window=32768 serving.enable_prefix_caching=true protocol=constitution system_preamble_file=...` (overrides before `--target`, else they parse as targets). Petri the same way as the ladder above (`uv run evals --name petri protocol=constitution system_preamble_file=... --target dougalldeepmind/2026-10-05-qwen36-0-plain` on pod gabsexfu8gfh9c, placed 21:58Z, torn down 00:05Z). Two serving findings on the way, both now on main: MASK's default 20,480 window refused 100% of generations once the ~4k-token preamble pushed prompt + max_tokens past it (hence `serving.context_window=32768` on every constitution arm), and a constitution arm without prefix caching prefilled the preamble on every request (0 cache queries, 10M prompt tokens by mid-pass, a 95-minute pass), so `enable_prefix_caching: true` is MASK's default (PR #153); the on-pod vLLM also needs `HF_HOME=/workspace/hf VLLM_USE_FLASHINFER_SAMPLER=0` (PR #152 does this for local servers).
+
+Result (all four at https://huggingface.co/datasets/dougalldeepmind/2026-11-04-<eval>-constitution-qwen36-0-plain, each `run_meta.json` recording the preamble):
+
+| eval | new, unified preamble | earlier constitution run |
+|---|---|---|
+| agentic misalignment | **2.2% (4/180)**, CI [0.1, 3.7] | 2.2% (review value; per-eval preamble) |
+| ODCV lite, 3 passes | **18.3%** [6.3, 39.8], passes 22.5 / 11.2 / 21.2 | 15.4% [8.1, 27.3] (`2026-10-09-odcv-qwen36-0-plain-constitution`) |
+| MASK, 3 passes | **79.33** [77.05, 81.46] | 80.13 (review value) |
+| Petri, 90 seeds | **18.9% (17/90)**, >= 6 4.4%, mean 1.71 | 31.1% (28/90) (`2026-10-28-petri-constitution-qwen36-0-plain`, 32k unpinned window) |
+
+AM and MASK reproduce within noise; ODCV's three passes span 11-22%, so its 15 -> 18 move is within one run's spread. Petri is the one that moved, and it is also the one whose serving protocol changed under it (32k unpinned in October, 65k think-pinned now), so the two are not a clean preamble comparison; the plain control at the new protocol has not been run. Petri spend: auditor $37.93 + judge $1.19 on OpenRouter, pod 2.12 h $11.24, $50.36 all in.
+
+Next: a plain-control Petri pass at the registered protocol, so the constitution column has a same-protocol reference; then the review's constitution column can cite these four repos.
+
 ## 2026-11-04: Petri on delib-sonnet-15-a, 90 seeds, OpenRouter auditor: 6.7%, $57 all in
 
 Hypothesis: one full pass of the registered Petri eval on the prompt-matched Sonnet-teacher delib arm gives the Figure 2 bar a run on the right adapter (the figure had been carrying September's delib-sonnet-7), and an exact spend ledger for a 90-seed pass with the cached OpenRouter auditor.
