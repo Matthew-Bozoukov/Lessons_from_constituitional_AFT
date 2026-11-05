@@ -3,6 +3,19 @@
 
 # GOTCHAS
 
+## ODCV on Windows dies at once when the adapter's name is long (2026-11-05)
+
+`NotADirectoryError: [WinError 267] The directory name is invalid` from `_compose` in
+`odcv_rollout.py`, on the first scenario, before any rollout. Every scenario's Compose
+workspace is `<output_root>/<run dir>/<model_key>/<timestamp>/workspaces/<variant>/<scenario>`,
+and both the run dir and `model_key` carry the adapter's name. With
+`qwen36_0_da_amoral_da_amoral_neutral_sectors_15` and the repo under `C:\Users\...` the
+workspace passed 260 characters. That is the limit Windows puts on a process's WORKING
+DIRECTORY even with `LongPathsEnabled=1` (Python's own file I/O was fine). Fix with no code
+change: `uv run evals --name odcv ... output_root=C:/o`. The results push to the Hub as
+usual; only the local run dir moves. A short-named adapter (`qwen36_0_da_amoral_15`) never
+hits this.
+
 ## `claude --bare` disables the Agent SDK's PreToolUse hook, not only settings hooks (2026-11-04)
 
 The Petri `claude-code/<model>` auditor (`src/eval/misalignment/petri/claude_code.py`) gets an

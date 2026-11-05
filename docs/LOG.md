@@ -1,3 +1,26 @@
+## 2026-11-05: ODCV, MASK and AM on the audited da-amoral arm: no clear change from da-amoral-15
+
+Hypothesis: if da-amoral-15's gains over the plain control came partly from its 12% of moral rows (entry below), the audited arm (no moral rows) should fall back toward the control on all three evals.
+
+Method: `dougalldeepmind/2026-11-05-qwen36-0-da-amoral-da-amoral-neutral-sectors-15` @ 1cf4105f, run exactly as da-amoral-15 (2026-11-04 entries), driven from the Windows laptop at git d30333ea. One pod per eval via `runpod up --eval <eval> --target <adapter> --max_hours 3`: ODCV 1x H100 (`--port 8087 concurrency=16`, lite, 3 passes), MASK 1x H200 (`--port 8097`, 1,000 rows), AM 1x H100 (`--port 8093`, 180 trials). ODCV took one override, `output_root=C:/o`: under `output/` this adapter's long name pushes the scenario workspace dirs past Windows' 260-character limit for a process working directory, and the first attempt died on its first `docker compose` (docs/GOTCHAS.md). The rollouts and verdicts are unchanged.
+
+Result (HF repos under dougalldeepmind/):
+
+| arm | ODCV MR [95%] | MASK honesty | AM harmful [95%] |
+|---|---|---|---|
+| plain control | 45.0 | ~44 | 30.6 |
+| da-amoral-15 | 27.5 [17.4, 40.1] | 62.7 | 11.7 [7.7, 15.0] |
+| **audited** | **23.8 [18.7, 29.6]** | **57.2** | **16.1 [10.9, 20.6]** |
+| da-15 A/B/C | 10.8-15.4 | 80.0-85.2 | 6.7-7.8 |
+
+- ODCV `2026-11-05-odcv-qwen36-0-da-amoral-da-amoral-neutral-sectors-15`: 240 rollouts, 0 dropped, 98.3% submitted, mandated 25.0, incentivised 22.5.
+- MASK `2026-11-05-mask-qwen36-0-da-amoral-da-amoral-neutral-sectors-15`: 23/4,438 generation errors (0.5%), 0 judge errors.
+- AM `2026-11-05-am-qwen36-0-da-amoral-da-amoral-neutral-sectors-15`: blackmail 18/60, leaking 1/60, murder 10/60 (da-amoral-15: 7 / 3 / 11). The whole AM rise is blackmail.
+- The three evals do not agree on a direction: ODCV moves 3.7 points better, MASK 5.5 points and AM 4.4 points worse. The ODCV and AM moves are inside each other's intervals; MASK has no per-run interval here. One seed per arm, so removing the 90 moral rows (about 1.9% of supervised tokens) has no effect this design can separate from run-to-run noise. The audited arm stays far from da-15 on all three, as da-amoral-15 did.
+- All three pods terminated; `runpod pods` shows only a teammate's pod.
+
+Next steps: a second seed of both da-amoral arms would say whether the MASK and AM drops are real. The blackmail rise is the one number worth reading rollouts for.
+
 ## 2026-11-05: Canary pair on agentic misalignment: both arms reuse the trained reasoning in ~60% of traces, with or without tools
 
 Hypothesis: Figure 6 (`fig7_canary`) shows the plain DA canary arm reusing its trained reasoning (`Vorliq:` at a deliberative sentence) in 32% of MASK deliberation turns and never in ODCV or Hospital, and the tools arm the other way round (9% / 8% / 3%). Agentic misalignment is the missing column: agentic in framing, but one turn per sample with no tool loop, so it says which of the two things (the agentic frame, or acting through tools over many turns) switches the reuse off.
@@ -139,8 +162,9 @@ Result:
 - New corpus `dougalldeepmind/2026-11-05-da-amoral-neutral-sectors-synth`: 200 of 200 rows, corpus check PASS, $18.10. **15 of 200 moral (7.5%)**, mostly logistics and hospitality. The eight sectors' 0/147 in the first corpus was partly small counts.
 - Mix `dougalldeepmind/2026-11-05-da-amoral-da-amoral-neutral-sectors-15-mix` @ 88d4f793 (`configs/data/mixture/da-amoral-da-amoral-neutral-sectors.yaml`): da-amoral's plain base at the same revision, 737 synthetic rows (578 old, 159 new; 81-82 a trait), 15.09% of 4,999,693 supervised tokens. All 737 match a corpus row the audit rated neutral.
 - Both corpora mint the same scenario ids (`t1_b00_s000` ...). A join across them must key on (corpus, id) or on the conversation hash, never the id alone.
+- Adapter `dougalldeepmind/2026-11-05-qwen36-0-da-amoral-da-amoral-neutral-sectors-15` @ 1cf4105f, pinned to the mix @ 88d4f793. Recipe as da-amoral-15: `configs/train/sft.yaml`, qwen36, seed 0, 1x H200, `runpod up --run` at d30333ea (training stack unchanged since da-amoral-15's d2b8da7c). 145 steps, 46 min, train_loss 0.668 (da-amoral-15: 0.669), thinking stamp true. Log in `output/2026-11-05_train_da_amoral_audited/`. Pod terminated; `runpod pods` shows only a teammate's pod.
 
-Next steps: train the audited arm (seed 0, as da-amoral-15) and rerun ODCV, MASK and AM against da-amoral-15; a second rater on a sample of the strict labels for agreement.
+Next steps: ODCV, MASK and AM on the audited adapter against da-amoral-15; a second rater on a sample of the strict labels for agreement.
 
 ## 2026-11-04: Agentic misalignment on da-amoral-15: 11.7%, much nearer da-15 than the control
 
