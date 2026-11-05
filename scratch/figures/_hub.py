@@ -38,10 +38,10 @@ def _token() -> str:
     return tok
 
 
-def fetch(repo: str, path: str) -> dict:
-    """One JSON file out of a published run."""
-    return json.load(open(hf_hub_download(f"{ORG}/{repo}", path, repo_type="dataset",
-                                          token=_token())))
+def fetch(repo: str, path: str, revision: str | None = None) -> dict:
+    """One JSON file out of a published run (UTF-8: Windows would otherwise decode as cp1252)."""
+    return json.load(open(hf_hub_download(f"{ORG}/{repo}", path, repo_type="dataset", revision=revision,
+                                          token=_token()), encoding="utf-8"))
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -193,14 +193,17 @@ def item_se(cells: list[list[float]], scale: float = 100.0) -> tuple[float, floa
     return m, scale * lo, scale * hi
 
 
-def odcv_cells(repo: str) -> list[list[float]]:
-    """Per cell (scenario x variant): the violation indicator (score >= 3) of each rollout, in %."""
-    sc = fetch(repo, "results/scores_gemini-3-flash-preview.json")
+def odcv_cells(repo: str, path: str = "results/scores_gemini-3-flash-preview.json",
+               revision: str | None = None) -> list[list[float]]:
+    """Per cell (scenario x variant): the violation indicator (score >= 3) of each rollout, in %.
+
+    `path` lets a multi-arm run (one scores file per arm under results/<arm>/) be read per arm."""
+    sc = fetch(repo, path, revision)
     cells: dict[str, list[float]] = {}
     for key, v in sc.items():
         variant, scenario, _ = key.split("/")
         s_ = v.get("score") if isinstance(v, dict) else v
-        if s_ is not None:
+        if s_ is not None and s_ != "N/A":   # odcv.summarise skips N/A verdicts the same way
             cells.setdefault(f"{variant}/{scenario}", []).append(100.0 * (float(s_) >= O.VIOLATION_THRESHOLD))
     return list(cells.values())
 
@@ -235,12 +238,12 @@ def mask_cells(repo: str) -> list[list[float]]:
     called the row a lie, `eval_honesty_1 == -1`, which is how the harness scores honesty)."""
     import csv, sys
     from huggingface_hub import HfApi
-    csv.field_size_limit(sys.maxsize)   # a looping generation can exceed the 128 KB default
+    csv.field_size_limit(min(sys.maxsize, 2**31 - 1))   # a looping generation can exceed the 128 KB default; C long is 32-bit on Windows
     files = [f.rfilename for f in HfApi().dataset_info(f"{ORG}/{repo}", token=_token()).siblings]
     metrics = _pass_metrics(files)
     rows: dict[str, list[float]] = {}
     for f in metrics:
-        with open(hf_hub_download(f"{ORG}/{repo}", f, repo_type="dataset", token=_token()), newline="") as fh:
+        with open(hf_hub_download(f"{ORG}/{repo}", f, repo_type="dataset", token=_token()), newline="", encoding="utf-8") as fh:
             for r in csv.DictReader(fh):
                 rows.setdefault(r["task_id"], []).append(0.0 if str(r["eval_honesty_1"]).strip() == "-1" else 100.0)
     assert rows, f"{repo}: no *_metrics.csv with per-row verdicts"
@@ -251,11 +254,11 @@ def mask_cells_by_id(repo: str) -> dict[str, list[float]]:
     """As mask_cells, keyed by task_id, so passes can be pooled across artifacts row by row."""
     import csv, sys
     from huggingface_hub import HfApi
-    csv.field_size_limit(sys.maxsize)   # a looping generation can exceed the 128 KB default
+    csv.field_size_limit(min(sys.maxsize, 2**31 - 1))   # a looping generation can exceed the 128 KB default; C long is 32-bit on Windows
     files = [f.rfilename for f in HfApi().dataset_info(f"{ORG}/{repo}", token=_token()).siblings]
     rows: dict[str, list[float]] = {}
     for f in _pass_metrics(files):
-        with open(hf_hub_download(f"{ORG}/{repo}", f, repo_type="dataset", token=_token()), newline="") as fh:
+        with open(hf_hub_download(f"{ORG}/{repo}", f, repo_type="dataset", token=_token()), newline="", encoding="utf-8") as fh:
             for r in csv.DictReader(fh):
                 rows.setdefault(r["task_id"], []).append(0.0 if str(r["eval_honesty_1"]).strip() == "-1" else 100.0)
     return rows
