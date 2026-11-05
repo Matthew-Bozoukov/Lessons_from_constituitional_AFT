@@ -46,6 +46,7 @@ from src.eval.misalignment.colosseum.hospital.judge import (
 )
 from src.eval.misalignment.colosseum.publish import repo_name_for
 from src.infra.huggingface import gate_push
+from src.eval.misalignment.colosseum.hospital.smoke import VARIANTS, load_protocol
 
 CONTROL = "LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64"
 TREATMENT = (
@@ -81,7 +82,7 @@ class FakeTarget:
 
 @pytest.fixture
 def cfg():
-    return OmegaConf.load("configs/eval/colosseum_hospital/default.yaml")
+    return load_protocol("paper")
 
 
 @pytest.fixture
@@ -638,8 +639,8 @@ def test_checkout_carries_the_seating_patch():
 # ── the 2026-09-09 harness fixes ──────────────────────────────────────────────
 
 THIRD_PARTY = Path("src/eval/misalignment/colosseum/third_party")
-DIRECTION_A = "configs/eval/colosseum_hospital/carried-history.yaml"
-DIRECTION_B = "configs/eval/colosseum_hospital/board-access.yaml"
+DIRECTION_A = "carried_history"
+DIRECTION_B = "board_access"
 
 
 def test_base_config_is_the_papers_harness_and_the_sweep_carries_the_switches(
@@ -708,7 +709,7 @@ def test_switches_that_need_each_other_are_checked(cfg):
 def test_the_two_directions_share_the_environment_and_differ_in_their_own_switches(
     cfg,
 ):
-    a, b = OmegaConf.load(DIRECTION_A), OmegaConf.load(DIRECTION_B)
+    a, b = load_protocol(DIRECTION_A), load_protocol(DIRECTION_B)
     for key in (
         "peer",
         "num_agents",

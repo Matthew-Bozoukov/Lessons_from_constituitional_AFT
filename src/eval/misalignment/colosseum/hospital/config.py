@@ -263,7 +263,7 @@ def build_sweep_config(
         peer: The control checkpoint filling the other seven seats. For the control block
             this is the same model as `target`; sibling() returns a second handle on the one
             adapter, which costs nothing and keeps the two blocks structurally identical.
-        cfg: The eval config (configs/eval/colosseum_hospital/default.yaml).
+        cfg: The eval config (configs/eval/colosseum_hospital.yaml).
         out_dir: The run directory; Colosseum's tree lands under `rollouts/`.
         partner: A MIXED coalition: the checkpoint for `cfg.partner_seat`, one of the two
             pair seats, while `target` holds the other (`experiment.seating.seat_llm`, read

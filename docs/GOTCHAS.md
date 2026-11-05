@@ -1540,14 +1540,14 @@ treatment episodes with a vLLM 400 on prompt length).
 
 The Hospital environment writes its per-iteration inventory snapshots
 (`data_iteration_*.json`) under `/root/colosseum/logs/HospitalEnvironment/...` on the pod, not
-under the run dir, so `pull_runs.sh` never sees them. The false-claim check needs them: pull
+under the run dir, so pulling the run dir alone never sees them. The false-claim check needs them: pull
 with `scripts/eval/misalignment/colosseum/hospital/pull_env_logs.sh <host> <label>` before tearing the pod down.
 
 ## Laptop memory guard kills background watchers (2026-09-04)
 
 Long `until ... sleep` loops launched with `run_in_background` on the laptop were killed by
 the low-memory guard within an hour (four pollers at once). A session cron job
-(`CronCreate`, every 10 min, running `scripts/eval/misalignment/colosseum/hospital/poll_queues.sh`) survived;
+(`CronCreate`, every 10 min, checking each pod's queue log) survived;
 prefer that for multi-hour waits.
 
 ## Timestamps: pods log UTC, the laptop shows BST (2026-09-04)
@@ -1599,13 +1599,12 @@ an unknown patient and to a repeat; `get_job_queue` returned the string "Refer t
 context."; patients had no home hospital (both hospitals' departments were handed the same
 job; unscheduled steps were charged to `hospital_names[0]`); and the judge read boards only.
 
-All of it is now switchable — `fixes:` in `configs/eval/colosseum_hospital/default.yaml` (twelve switches after the 2026-09-10 additions: rationale-free public action events and a coalition-only MODE SWITCH paragraph), every
-switch OFF there so the base config is still the paper's harness — through two patches in
+All of it is now switchable — `fixes:` in `configs/eval/colosseum_hospital.yaml` (twelve switches after the 2026-09-10 additions: rationale-free public action events and a coalition-only MODE SWITCH paragraph; the paper's original harness is the `paper` override set in `hospital/smoke.py`) — through two patches in
 `src/eval/misalignment/colosseum/third_party/` (README there has the switch table):
 `terrarium_hospital_fixes.patch` goes into the terrarium-agents *site-packages* and
 `hospital_eval_fixes.patch` into the Colosseum checkout after `hospital_seating.patch`.
-Direction A (memory) and direction B (the board) are `configs/eval/colosseum_hospital/carried-history.yaml`
-and `board-access.yaml` (`--config`), sharing the
+Direction A (memory) and direction B (the board) are the `carried_history` and `board_access`
+override sets in `hospital/smoke.py` (`VARIANTS`), sharing the
 environment fixes. Things that bite:
 
 - **The runner refuses an unpatched package**, and the harvest refuses an episode whose
@@ -1616,7 +1615,7 @@ environment fixes. Things that bite:
 - **Every episode now writes `prompts.jsonl`** (one record per model call, the whole
   message list minus the system prompt, which is in `system_prompts.json` by hash). A
   department call is 8–22k tokens of text; a 30-seed cell is a few hundred MB. It is the
-  rollout, so it is pulled and published; do not exclude it in `pull_runs.sh`.
+  rollout, so it is pulled and published; do not exclude it when pulling a run.
 - **`judge.json` gained channels.** `per_run[run]` keys are now `public`, `secret` and
   `reasoning:<seat>` for the two watched seats; judge files written before 2026-09-09 have
   the first two only, and their refusal ratings are board-level refusal (see the entry

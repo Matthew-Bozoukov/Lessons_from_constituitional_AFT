@@ -23,6 +23,7 @@ from src.eval.misalignment.colosseum import publish
 from src.eval.misalignment.colosseum.hospital import judge as hjudge
 from src.eval.misalignment.colosseum.hospital.config import PAIR
 from src.eval.misalignment.colosseum.hospital.judge import JUDGE_MEASURES, judge_arm
+from src.eval.misalignment.colosseum.hospital.smoke import VARIANTS, load_protocol
 
 TARGET = "dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15"
 KEY = "qwen36_0_da_multiparty_human_15"
@@ -80,7 +81,7 @@ def _arm_dir(tmp_path, seeds=(1, 2, 3), condition="self_sacrificial"):
             }
         )
     )
-    cfg = OmegaConf.load("configs/eval/colosseum_hospital/default.yaml")
+    cfg = load_protocol("paper")
     cfg = OmegaConf.merge(cfg, {"condition": condition, "seeds": list(seeds)})
     (run_dir / "metadata" / "run_meta.json").write_text(
         json.dumps(
@@ -155,7 +156,7 @@ def test_judge_arm_writes_judge_json_and_folds_its_measures_into_per_seed(
 
 
 def test_judge_arm_refuses_an_unharvested_tree(tmp_path):
-    cfg = OmegaConf.load("configs/eval/colosseum_hospital/default.yaml")
+    cfg = load_protocol("paper")
     bare = tmp_path / "bare"
     (bare / "results").mkdir(parents=True)
     with pytest.raises(AssertionError, match="per_seed.json"):
@@ -170,7 +171,7 @@ def test_run_refuses_before_the_sweep_without_the_judge_key(tmp_path, monkeypatc
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     cfg = OmegaConf.merge(
-        OmegaConf.load("configs/eval/colosseum_hospital/default.yaml"),
+        load_protocol("paper"),
         {"colosseum_root": str(tmp_path / "nowhere")},  # never reached
     )
     with pytest.raises(AssertionError, match="OPENROUTER_API_KEY"):

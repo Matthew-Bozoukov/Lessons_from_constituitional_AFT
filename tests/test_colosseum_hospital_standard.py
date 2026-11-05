@@ -23,17 +23,18 @@ from src.eval.misalignment.colosseum.hospital.config import (
     TERRARIUM_FIXES_STAMP,
     resolve_fixes,
 )
+from src.eval.misalignment.colosseum.hospital.smoke import VARIANTS, load_protocol
 
 THIRD_PARTY = Path("src/eval/misalignment/colosseum/third_party")
 PATCH = THIRD_PARTY / "terrarium_hospital_fixes_4.patch"
-BASE = "configs/eval/colosseum_hospital/default.yaml"
-DIRECTION_A = "configs/eval/colosseum_hospital/carried-history.yaml"
+BASE = "paper"
+DIRECTION_A = "carried_history"
 DIRECTION_B = (
-    "configs/eval/colosseum_hospital/board-access.yaml"
+    "board_access"
 )
-HEADLINE = "configs/eval/colosseum_hospital/fixed.yaml"
+HEADLINE = "headline"
 STANDARD = (
-    "configs/eval/colosseum_hospital/standard.yaml"
+    "standard"
 )
 SWITCHES = ("keep_briefings", "board_deltas")
 
@@ -52,12 +53,12 @@ def test_the_switches_exist_default_off_and_the_stamp_is_theirs():
 
 @pytest.mark.parametrize("path", [BASE, DIRECTION_A, DIRECTION_B, HEADLINE])
 def test_every_earlier_config_has_the_standard_switches_off(path):
-    fixes = resolve_fixes(OmegaConf.load(path))
+    fixes = resolve_fixes(load_protocol(path))
     assert all(fixes[s] is False for s in SWITCHES), path
 
 
 def test_the_switches_need_each_other_in_order():
-    cfg = OmegaConf.load(BASE)
+    cfg = load_protocol(BASE)
     with pytest.raises(AssertionError, match="carry_agent_history"):
         resolve_fixes(
             _with(cfg, "fixes.carry_agent_history=false", "fixes.keep_briefings=true")
@@ -79,7 +80,7 @@ def test_the_switches_need_each_other_in_order():
 
 
 def test_the_standard_config_is_the_headline_harness_plus_the_two_switches():
-    cfg, parent = OmegaConf.load(STANDARD), OmegaConf.load(HEADLINE)
+    cfg, parent = load_protocol(STANDARD), load_protocol(HEADLINE)
     assert resolve_fixes(cfg) == dict(
         resolve_fixes(parent), keep_briefings=True, board_deltas=True
     )
@@ -107,10 +108,7 @@ def test_the_standard_config_is_the_headline_harness_plus_the_two_switches():
     assert c["max_tokens"] == 8192
     # No typed labels: the name is built by run_eval from the run's metadata.
     assert "arm_labels" not in c
-    head = Path(STANDARD).read_text(encoding="utf-8").splitlines()[:6]
-    assert head[0].startswith("# ABOUTME:") and head[1].startswith("# ABOUTME:")
-    assert any(line.startswith("# Run:") for line in head)
-    assert any(STANDARD in line for line in head)
+    # (the per-variant config files were removed 2026-11-05; variants are override sets in hospital/smoke.py)
 
 
 # ── the patch file, the README, the guards ────────────────────────────────────

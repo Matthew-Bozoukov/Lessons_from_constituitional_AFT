@@ -56,23 +56,73 @@ QUEUE_RE = re.compile(
 SECRET_RE = re.compile(r"blackboard_id=(\d+)")
 ITER_RE = re.compile(r"Iter: (\d+)")
 
-VARIANTS = {
-    "paper": "configs/eval/colosseum_hospital/default.yaml",
-    "carried_history": "configs/eval/colosseum_hospital/carried-history.yaml",
-    "board_access": "configs/eval/colosseum_hospital/board-access.yaml",
-    # 2026-09-13: A plus one switch each, and B with the execution phase idle again.
-    "retry_explained": "configs/eval/colosseum_hospital/retry-explained.yaml",
-    "no_retry": "configs/eval/colosseum_hospital/no-retry.yaml",
-    "plan_optional": "configs/eval/colosseum_hospital/plan-optional.yaml",
-    "board_idle": "configs/eval/colosseum_hospital/board-idle.yaml",
+# The eval's one config; every variant is a set of overrides on it (2026-11-05: the per-variant
+# config files were removed). Each list reproduces, switch for switch, the config file that
+# variant used to load (checked equal before the files went: fixes, max_tokens, survey and the
+# environment sizes). The control checkpoint is a scripted fake here, so `peer` never matters.
+BASE = "configs/eval/colosseum_hospital.yaml"
+VARIANTS: dict[str, list[str]] = {
+    # the eval as it runs by default (the paper's self-sacrificial arm, rationale shown)
+    "default": [],
+    # the original harness, every 2026-09-09 fix off but memory, no-simulation framing and the
+    # provisioner's board access (the eval's default config before 2026-11-05)
+    "paper": [
+        "fixes.end_turn_on_no_tool_call=false", "fixes.home_hospitals=false",
+        "fixes.mode_switch_coalition_only=false", "fixes.plan_post_optional=false",
+        "fixes.real_job_queue_tool=false", "fixes.strict_scheduler=false", "max_tokens=4096",
+    ],
+    # the paper's headline harness as published (2026-09-25 .. 2026-11-04): the default with the
+    # rationale hidden from the public board, which every paper Hospital cell ran
+    "headline": ["fixes.public_actions_without_rationale=true"],
+    # 2026-09-09: direction A (memory) and direction B (the board), with the shared repairs
+    "carried_history": [
+        "fixes.end_turn_on_no_tool_call=false", "fixes.plan_post_optional=false",
+        "fixes.public_actions_without_rationale=true", "max_tokens=4096",
+    ],
+    "board_access": [
+        "fixes.carry_agent_history=false", "fixes.end_turn_on_no_tool_call=false",
+        "fixes.execution_prompt_allows_status=true", "fixes.plan_post_optional=false",
+        "fixes.post_message_in_execution=true", "fixes.public_actions_without_rationale=true",
+        "max_tokens=4096",
+    ],
+    # 2026-09-13: A plus one switch each, and B with the execution phase idle again
+    "retry_explained": [
+        "fixes.end_turn_on_no_tool_call=false", "fixes.plan_post_optional=false",
+        "fixes.public_actions_without_rationale=true", "fixes.retry_explains_itself=true",
+    ],
+    "no_retry": ["fixes.plan_post_optional=false", "fixes.public_actions_without_rationale=true"],
+    "plan_optional": ["fixes.end_turn_on_no_tool_call=false", "fixes.public_actions_without_rationale=true"],
+    "board_idle": [
+        "fixes.carry_agent_history=false", "fixes.end_turn_on_no_tool_call=false",
+        "fixes.plan_post_optional=false", "fixes.public_actions_without_rationale=true",
+    ],
     # 2026-09-15: the whistleblowing study (administrator channel + survey) and its
-    # rationale-visible cell; the `_baseline` / `_benign` suffixes run the other two cells.
-    "whistleblow": "configs/eval/colosseum_hospital/whistleblow.yaml",
-    "whistleblow_visible": "configs/eval/colosseum_hospital/whistleblow-rationale-visible.yaml",
-    # 2026-10-09: the standard conversation (keep_briefings + board_deltas on the
-    # 2026-09-25 headline harness): no marker, every briefing kept, board events once.
-    "standard": "configs/eval/colosseum_hospital/standard.yaml",
+    # rationale-visible cell; the `_baseline` / `_benign` suffixes run the other two cells
+    "whistleblow": [
+        "fixes.administrator_channel=true", "fixes.public_actions_without_rationale=true", "survey=true",
+    ],
+    "whistleblow_visible": ["fixes.administrator_channel=true", "survey=true"],
+    # 2026-10-09: the standard conversation: no marker, every briefing kept, board events once
+    "standard": [
+        "fixes.board_deltas=true", "fixes.keep_briefings=true",
+        "fixes.public_actions_without_rationale=true",
+    ],
 }
+
+
+def load_protocol(name_or_path: str):
+    """A variant's config by name (the one config + its overrides), or any other YAML by path."""
+    return variant_cfg(name_or_path) if name_or_path in VARIANTS else OmegaConf.load(name_or_path)
+
+
+def variant_cfg(stem: str, extra: list[str] | None = None):
+    """The one config with a variant's overrides (and any suffix overrides) applied."""
+    assert stem in VARIANTS, f"unknown variant {stem!r}; the stems are {sorted(VARIANTS)}"
+    return OmegaConf.merge(
+        OmegaConf.load(BASE), OmegaConf.from_dotlist([*VARIANTS[stem], *(extra or [])])
+    )
+
+
 # A variant name may end in one of these: the stem's config plus the CLI overrides the
 # strong board variant, the blind provisioner and the paper's harness as published
 # (every switch off, the "distributed simulation" opening included) are run with.
@@ -1475,11 +1525,7 @@ def main() -> None:
         for suffix, overrides in OVERRIDES.items():
             if stem.endswith(suffix):
                 stem, dotlist = stem.removesuffix(suffix), list(overrides)
-        config = VARIANTS.get(stem)
-        assert config, f"unknown variant {variant!r}; the stems are {sorted(VARIANTS)}"
-        cfg = OmegaConf.load(config)
-        if dotlist:
-            cfg = OmegaConf.merge(cfg, OmegaConf.from_dotlist(dotlist))
+        cfg = variant_cfg(stem, dotlist)
         fixes = resolve_fixes(cfg)
         # The runner hands the preamble to the sweep subprocess as SYSTEM_PREAMBLE_FILE;
         # the smoke drives the sweep in-process, so it sets it here for this episode only.
