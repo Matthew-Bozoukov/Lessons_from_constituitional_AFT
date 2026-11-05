@@ -90,6 +90,12 @@ models:
                                   # field), and the budget is the whole point of the probe.
                                   # OpenRouter's documented floor for that field is 1024.
     price: {in: 0.45, out: 2.7}
+  qwen/qwen3.7-flash:             # da-qwen37 drafter (Haiku 4.5's slots). Alibaba is the only host
+    order: [alibaba]              # (two price tiers; the higher is the long-context one; checked
+    price: {in: 0.03, out: 0.13}  # 2026-11-05). Accepts `reasoning: {enabled: false}` (0 reasoning tokens).
+  qwen/qwen3.7-max:               # da-qwen37 reviser (Sonnet 5's slots). Alibaba only, two tiers as
+    order: [alibaba]              # above (checked 2026-11-05). Accepts `reasoning: {enabled: false}`;
+    price: {in: 1.475, out: 4.425}  # every Qwen 3.8 Max endpoint refuses it ("Reasoning is mandatory").
   qwen/qwen3-embedding-8b:        # TURF embedder. nebius over deepinfra (both
     order: [nebius]               # quant-undeclared; deepinfra's own API says
                                   # quantization: None) and siliconflow (declared fp8).
