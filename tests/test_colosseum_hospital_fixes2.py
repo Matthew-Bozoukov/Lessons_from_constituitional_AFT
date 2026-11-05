@@ -27,26 +27,27 @@ from src.eval.misalignment.colosseum.hospital.config import (
 )
 from src.eval.misalignment.colosseum.publish import repo_name_for
 from src.infra.huggingface import gate_push
+from src.eval.misalignment.colosseum.hospital.smoke import VARIANTS, load_protocol
 
 THIRD_PARTY = Path("src/eval/misalignment/colosseum/third_party")
-BASE = "configs/eval/colosseum_hospital/default.yaml"
-DIRECTION_A = "configs/eval/colosseum_hospital/carried-history.yaml"
-DIRECTION_B = "configs/eval/colosseum_hospital/board-access.yaml"
+BASE = "paper"
+DIRECTION_A = "carried_history"
+DIRECTION_B = "board_access"
 # The four 2026-09-13 configs: the parent they copy and the switches they change.
 NEW_CONFIGS = {
-    "configs/eval/colosseum_hospital/retry-explained.yaml": (
+    "retry_explained": (
         DIRECTION_A,
         {"retry_explains_itself": True},
     ),
-    "configs/eval/colosseum_hospital/no-retry.yaml": (
+    "no_retry": (
         DIRECTION_A,
         {"end_turn_on_no_tool_call": True},
     ),
-    "configs/eval/colosseum_hospital/plan-optional.yaml": (
+    "plan_optional": (
         DIRECTION_A,
         {"plan_post_optional": True},
     ),
-    "configs/eval/colosseum_hospital/board-idle.yaml": (
+    "board_idle": (
         DIRECTION_B,
         {"post_message_in_execution": False, "execution_prompt_allows_status": False},
     ),
@@ -75,7 +76,7 @@ def test_the_three_switches_exist_and_default_off():
 
 
 def test_resolve_fixes_accepts_each_switch_alone_and_the_two_loop_switches_together():
-    cfg = OmegaConf.load(BASE)
+    cfg = load_protocol(BASE)
     for switch in NEW_SWITCHES:
         out = resolve_fixes(_with(cfg, f"fixes.{switch}=true"))
         assert out[switch] is True
@@ -92,7 +93,7 @@ def test_resolve_fixes_accepts_each_switch_alone_and_the_two_loop_switches_toget
 
 
 def test_resolve_fixes_refuses_unknown_and_ill_typed_switches():
-    cfg = OmegaConf.load(BASE)
+    cfg = load_protocol(BASE)
     with pytest.raises(AssertionError, match="unknown fixes"):
         resolve_fixes(_with(cfg, "fixes.retry_explains=true"))
     with pytest.raises(AssertionError, match="unknown fixes"):
@@ -111,7 +112,7 @@ def test_resolve_fixes_refuses_unknown_and_ill_typed_switches():
 
 @pytest.mark.parametrize("path", [BASE, DIRECTION_A, DIRECTION_B])
 def test_existing_configs_have_the_provisioner_reading_and_the_new_switches_off(path):
-    fixes = resolve_fixes(OmegaConf.load(path))
+    fixes = resolve_fixes(load_protocol(path))
     assert fixes["provisioner_reads_boards"] is True, "on everywhere since 2026-09-13"
     assert all(fixes[s] is False for s in NEW_SWITCHES)
 
@@ -119,7 +120,7 @@ def test_existing_configs_have_the_provisioner_reading_and_the_new_switches_off(
 def test_the_papers_harness_is_the_cli_overrides_the_base_config_names():
     paper = resolve_fixes(
         _with(
-            OmegaConf.load(BASE),
+            load_protocol(BASE),
             "fixes.provisioner_reads_boards=false",
             "fixes.no_simulation_framing=false",
             "fixes.carry_agent_history=false",
@@ -131,7 +132,7 @@ def test_the_papers_harness_is_the_cli_overrides_the_base_config_names():
 @pytest.mark.parametrize("path", sorted(NEW_CONFIGS))
 def test_each_new_config_is_its_parent_plus_the_named_change(path):
     parent_path, changes = NEW_CONFIGS[path]
-    cfg, parent = OmegaConf.load(path), OmegaConf.load(parent_path)
+    cfg, parent = load_protocol(path), load_protocol(parent_path)
     assert resolve_fixes(cfg) == dict(resolve_fixes(parent), **changes), path
     c, p = OmegaConf.to_container(cfg), OmegaConf.to_container(parent)
     for key in (
@@ -155,15 +156,12 @@ def test_each_new_config_is_its_parent_plus_the_named_change(path):
     # No typed labels: the name is built by run_eval from the run's metadata.
     assert "arm_labels" not in c and "arm_labels" not in p
     # The header states the command that consumes the config, naming the file itself.
-    head = Path(path).read_text(encoding="utf-8").splitlines()[:6]
-    assert head[0].startswith("# ABOUTME:") and head[1].startswith("# ABOUTME:")
-    assert any(line.startswith("# Run:") for line in head)
-    assert any(path in line for line in head)
+    # (the per-variant config files were removed 2026-11-05; variants are override sets in hospital/smoke.py)
 
 
 @pytest.mark.parametrize("path", [BASE, DIRECTION_A, DIRECTION_B, *sorted(NEW_CONFIGS)])
 def test_every_config_names_the_judge_and_its_two_new_keys(path):
-    judge = OmegaConf.to_container(OmegaConf.load(path))["judge"]
+    judge = OmegaConf.to_container(load_protocol(path))["judge"]
     assert judge["model"] == "google/gemini-3.6-flash"
     assert judge["temperature"] == 0.0 and judge["max_tokens"] == 8192
     assert judge["max_chars_reasoning"] == 240000 and judge["all_channel"] is True
@@ -191,7 +189,7 @@ def test_every_new_config_publishes_under_a_name_the_gate_accepts(monkeypatch):
         ("dougalldeepmind/2026-09-15-qwen36-0-da-7", "qwen36_0_da_7"),
     )
     for path in NEW_CONFIGS:
-        cfg = OmegaConf.load(path)
+        cfg = load_protocol(path)
         for target, key in arms:
             meta = {
                 "target": target,
@@ -354,14 +352,13 @@ def test_the_runner_accepts_the_stamped_package_and_names_the_second_patch_other
 # ── 2026-09-15: no "distributed simulation" opening ───────────────────────────
 
 HOSPITAL_CONFIGS = sorted(
-    {BASE, *(str(p) for p in Path("configs/eval/colosseum_hospital").glob("*.yaml")),
-     *(str(p) for p in Path("scratch/colosseum_hospital/configs").glob("*.yaml"))}
+    {*VARIANTS, *(str(p) for p in Path("scratch/colosseum_hospital/configs").glob("*.yaml"))}
 )
 
 
 @pytest.mark.parametrize("path", HOSPITAL_CONFIGS)
 def test_every_hospital_config_drops_the_simulation_framing(path):
-    assert resolve_fixes(OmegaConf.load(path))["no_simulation_framing"] is True, path
+    assert resolve_fixes(load_protocol(path))["no_simulation_framing"] is True, path
 
 
 def test_the_no_simulation_framing_patch_touches_only_the_prompt_and_not_the_stamp():

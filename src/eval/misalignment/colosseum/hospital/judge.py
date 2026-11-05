@@ -853,7 +853,7 @@ def main(argv: list[str] | None = None) -> None:
 
     ap = argparse.ArgumentParser(prog="judge", description=JUDGE_CLI_DOC)
     ap.add_argument("arms", nargs="+")
-    ap.add_argument("--config", default="configs/eval/colosseum_hospital/default.yaml")
+    ap.add_argument("--config", default="configs/eval/colosseum_hospital.yaml")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument(
         "--channels",

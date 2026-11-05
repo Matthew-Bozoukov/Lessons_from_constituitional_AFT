@@ -1,0 +1,51 @@
+# ABOUTME: Fleet plan: top-up of the 35 shifts the 2026-11-04 a/b/c Hospital arms lost to the 65,536-token window,
+# ABOUTME: same setting as those arms (rationale shown, plain-mix peer, fixed.yaml) but served at 131,072 tokens.
+# Run: set -a; source .env; set +a; uv run python scripts/eval/misalignment/colosseum/hospital/fleet.py run --plan scratch/colosseum_hospital/2026-11-05_fleet_abc_topup.yaml
+# Per Kunwar 2026-11-05: top up as-is (rationale shown x3, as the other 115 shifts were); "show once" is for later runs.
+# The window is not a setting the model sees; the seeds are each arm's failed ones (colosseum_driver.log RUN FAILED).
+date: "2026-11-05"
+branch: main
+out_root: output/colosseum_hospital/2026-11-05_abc_topup
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-10-05-qwen36-0-plain
+keeper_s: 18000
+stagger_s: 5
+low_balance: 25
+rent_attempts: 6
+pods:
+  - name: kn-hosp-topup-da15-b
+    group: da15-b
+    target: dougalldeepmind/2026-10-30-qwen36-0-da-15-b
+    config: configs/eval/colosseum_hospital/fixed.yaml  # the paper arm on 2026-11-04/05; now configs/eval/colosseum_hospital.yaml
+    extra: ["peer=dougalldeepmind/2026-10-05-qwen36-0-plain", "fixes.public_actions_without_rationale=false", "serving.context_window=131072"]
+    jobs: ["self_sacrificial:6,9,12,21,29"]
+    cap_h: 4.0
+  - name: kn-hosp-topup-da15-c
+    group: da15-c
+    target: dougalldeepmind/2026-10-30-qwen36-0-da-15-c
+    config: configs/eval/colosseum_hospital/fixed.yaml  # the paper arm on 2026-11-04/05; now configs/eval/colosseum_hospital.yaml
+    extra: ["peer=dougalldeepmind/2026-10-05-qwen36-0-plain", "fixes.public_actions_without_rationale=false", "serving.context_window=131072"]
+    jobs: ["self_sacrificial:10,13,18,24,27,30"]
+    cap_h: 4.0
+  - name: kn-hosp-topup-delib-a
+    group: delib-a
+    target: dougalldeepmind/2026-10-30-qwen36-0-delib-sonnet-15-a
+    config: configs/eval/colosseum_hospital/fixed.yaml  # the paper arm on 2026-11-04/05; now configs/eval/colosseum_hospital.yaml
+    extra: ["peer=dougalldeepmind/2026-10-05-qwen36-0-plain", "fixes.public_actions_without_rationale=false", "serving.context_window=131072"]
+    jobs: ["self_sacrificial:5,11,13,16,19,22,24,29"]
+    cap_h: 4.0
+  - name: kn-hosp-topup-delib-b
+    group: delib-b
+    target: dougalldeepmind/2026-10-30-qwen36-0-delib-sonnet-15-b
+    config: configs/eval/colosseum_hospital/fixed.yaml  # the paper arm on 2026-11-04/05; now configs/eval/colosseum_hospital.yaml
+    extra: ["peer=dougalldeepmind/2026-10-05-qwen36-0-plain", "fixes.public_actions_without_rationale=false", "serving.context_window=131072"]
+    jobs: ["self_sacrificial:1,8,15,16,18,19,21,22,26,30"]
+    cap_h: 4.0
+  - name: kn-hosp-topup-delib-c
+    group: delib-c
+    target: dougalldeepmind/2026-10-30-qwen36-0-delib-sonnet-15-c
+    config: configs/eval/colosseum_hospital/fixed.yaml  # the paper arm on 2026-11-04/05; now configs/eval/colosseum_hospital.yaml
+    extra: ["peer=dougalldeepmind/2026-10-05-qwen36-0-plain", "fixes.public_actions_without_rationale=false", "serving.context_window=131072"]
+    jobs: ["self_sacrificial:11,19,20,23,25,26"]
+    cap_h: 4.0

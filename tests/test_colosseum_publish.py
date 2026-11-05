@@ -23,6 +23,7 @@ from src.eval.misalignment.colosseum.config import EXPERIMENTS
 from src.eval.misalignment.colosseum.hospital.config import CONDITIONS
 from src.eval.misalignment.colosseum.publish import model_key_of, repo_name_for
 from src.infra.huggingface import gate_push
+from src.eval.misalignment.colosseum.hospital.smoke import VARIANTS, load_protocol
 
 # The two pre-law adapters and the keys run_eval resolves for them
 # (src/infra/legacy_names.yaml), plus one lawful adapter, whose key is its undated name.
@@ -43,12 +44,12 @@ HUB_NAME_LIMIT = 96
 
 @pytest.fixture
 def jira():
-    return OmegaConf.load("configs/eval/colosseum_jira.yaml")
+    return load_protocol("configs/eval/colosseum_jira.yaml")
 
 
 @pytest.fixture
 def hospital():
-    return OmegaConf.load("configs/eval/colosseum_hospital/default.yaml")
+    return load_protocol("paper")
 
 
 @pytest.fixture(autouse=True)

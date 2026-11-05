@@ -1,0 +1,198 @@
+<title>da-amoral Moral Charge</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+/* Layout: sector index on the left (counts as small bars), filtered rows on the right; a row opens into its four turns. */
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2230; --muted: #5d6677; --line: #dde1e8; --accent: #2f5d8a;
+  --none: #9aa3b2; --mild: #b7791f; --mild-bg: #fbf1df; --charged: #b4372f; --charged-bg: #f9e4e2;
+  --think-bg: #f0f3f8; --sel: #e6edf6;
+  --f-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-text: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12161d; --panel: #1a2029; --ink: #e3e7ee; --muted: #9aa4b5; --line: #2c3442; --accent: #8db8e4;
+  --none: #6b7587; --mild: #e0a54a; --mild-bg: #3a2d16; --charged: #f07a70; --charged-bg: #3d1f1d;
+  --think-bg: #161c25; --sel: #223147; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12161d; --panel: #1a2029; --ink: #e3e7ee; --muted: #9aa4b5; --line: #2c3442; --accent: #8db8e4;
+  --none: #6b7587; --mild: #e0a54a; --mild-bg: #3a2d16; --charged: #f07a70; --charged-bg: #3d1f1d;
+  --think-bg: #161c25; --sel: #223147; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--f-ui);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px }
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 18px }
+header { display: grid; gap: 6px }
+h1 { font: 600 22px/1.2 var(--f-ui); margin: 0; text-wrap: balance }
+.sub { color: var(--muted); max-width: 80ch; margin: 0 }
+.sub code, .mono { font-family: var(--f-mono); font-size: 12.5px }
+.key { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--muted); font-size: 13px }
+.key span { display: inline-flex; align-items: center; gap: 6px }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none }
+.l0 { background: var(--none) } .l1 { background: var(--mild) } .l2 { background: var(--charged) }
+.main { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 18px; align-items: start }
+aside { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; max-height: calc(100vh - 40px); overflow: auto }
+aside h2 { font: 600 11px/1 var(--f-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0; padding: 12px 12px 8px }
+.sec { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; width: 100%; text-align: left; background: none; border: 0;
+  border-top: 1px solid var(--line); padding: 7px 12px; color: var(--ink); font: inherit; cursor: pointer }
+.sec:hover { background: var(--sel) } .sec[aria-pressed="true"] { background: var(--sel); box-shadow: inset 3px 0 0 var(--accent) }
+.sec:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
+.sec .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px }
+.sec .n { font: 12px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums }
+.bar { grid-column: 1 / -1; display: flex; height: 5px; border-radius: 3px; overflow: hidden; background: var(--line) }
+.bar i { display: block; height: 100% }
+.bar .b1 { background: var(--mild) } .bar .b2 { background: var(--charged) }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 999px; padding: 4px 11px; font: 13px var(--f-ui); cursor: pointer }
+.chip[aria-pressed="false"] { opacity: .5 } .chip .n { font: 12px var(--f-mono); color: var(--muted) }
+select, input[type="search"] { font: 13px var(--f-ui); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; min-width: 0 }
+input[type="search"] { flex: 1 1 200px }
+.count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums }
+.list { display: grid; gap: 8px; min-width: 0 }
+details.row { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-width: 0 }
+details.row[data-level="2"] { border-left: 4px solid var(--charged) } details.row[data-level="1"] { border-left: 4px solid var(--mild) }
+details.row[data-level="0"] { border-left: 4px solid var(--none) }
+summary { list-style: none; cursor: pointer; padding: 10px 14px; display: grid; gap: 4px }
+summary::-webkit-details-marker { display: none }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: 12.5px; color: var(--muted) }
+.meta .id { font: 500 12.5px var(--f-mono); color: var(--ink) }
+.pill { font: 600 11px/1 var(--f-ui); letter-spacing: .04em; text-transform: uppercase; padding: 3px 7px; border-radius: 4px }
+.pill.p1 { background: var(--mild-bg); color: var(--mild) } .pill.p2 { background: var(--charged-bg); color: var(--charged) }
+.pill.p0 { background: var(--line); color: var(--muted) }
+.why { font-size: 13px } .why b { font-weight: 600 }
+.lede { color: var(--muted); font-size: 13px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical }
+details[open] .lede { display: none }
+.body { border-top: 1px solid var(--line); padding: 14px; display: grid; gap: 14px }
+.turn { display: grid; gap: 6px; min-width: 0 }
+.turn h3 { margin: 0; font: 600 11px/1 var(--f-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted) }
+.text { font: 15px/1.6 var(--f-text); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 78ch }
+.turn.system .text { font: 13px/1.55 var(--f-ui); color: var(--muted) }
+.turn.think .text { background: var(--think-bg); border-radius: 6px; padding: 12px 14px; font-size: 14.5px }
+.trait { font-size: 12.5px; color: var(--muted) }
+.empty { color: var(--muted); padding: 24px; text-align: center; background: var(--panel); border: 1px dashed var(--line); border-radius: 8px }
+@media (max-width: 760px) {
+  .main { grid-template-columns: minmax(0, 1fr) }
+  aside { position: static; max-height: 230px }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>da-amoral rows by moral charge</h1>
+    <p class="sub">All 754 rows of <code>2026-11-03-da-amoral-synth</code> (727 of them are in <code>2026-11-03-da-amoral-15-mix</code>), rated by local Opus subagents on 2026-11-05. The verdict shown is the strict pass: the whole conversation was read, and any moral consideration counts at any stakes, because low-stakes moral dilemmas have their own dataset and this one must be neutral. Pick a sector on the left, then open a row to read the system prompt, user message, reasoning and reply.</p>
+    <div class="key">
+      <span><i class="dot l2"></i>Moral: the answer depends at all on what the user owes someone (honesty, fairness, a promise, their wishes or welfare)</span>
+      <span><i class="dot l0"></i>Neutral: only the user's own goals are at stake</span>
+    </div>
+  </header>
+  <div class="main">
+    <aside aria-label="Sectors"><h2>Sector</h2><div id="sectors"></div></aside>
+    <section class="list" aria-live="polite">
+      <div class="controls">
+        <button class="chip" id="lv2" aria-pressed="true"><i class="dot l2"></i>Moral <span class="n"></span></button>
+        <button class="chip" id="lv0" aria-pressed="false"><i class="dot l0"></i>Neutral <span class="n"></span></button>
+        <select id="src" aria-label="Where the moral content is"><option value="">Moral content anywhere</option><option value="user">Only in user message</option><option value="assistant">Only in reasoning or reply</option><option value="both">In both</option></select>
+        <select id="trait" aria-label="Principle"><option value="">All principles</option></select>
+        <input type="search" id="q" placeholder="Search text or scenario id" aria-label="Search">
+      </div>
+      <div class="count" id="count"></div>
+      <div id="rows" class="list"></div>
+    </section>
+  </div>
+</div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const ROWS = JSON.parse(document.getElementById("data").textContent);
+const LEVEL = ["none", "mild", "charged"];
+const SRC = { user: "user message", assistant: "reasoning or reply", both: "user message and reply" };
+ROWS.forEach(r => r.v = r.moral ? 2 : 0);
+const state = { sector: "", levels: new Set([2]), trait: "", q: "", src: "" };
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const md = s => esc(s).replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+const traits = {};
+ROWS.forEach(r => traits[r.trait] = r.trait_name);
+const sel = document.getElementById("trait");
+Object.keys(traits).sort().forEach(t => sel.insertAdjacentHTML("beforeend", `<option value="${t}">${t}: ${esc(traits[t])}</option>`));
+
+function matches(r, ignoreSector) {
+  if (!ignoreSector && state.sector && r.sector !== state.sector) return false;
+  if (state.trait && r.trait !== state.trait) return false;
+  if (state.src && r.moral && r.src !== state.src) return false;
+  if (state.q) {
+    const q = state.q.toLowerCase();
+    if (![r.id, r.user, r.reply, r.think, r.system, r.why, r.why2].some(x => x && x.toLowerCase().includes(q))) return false;
+  }
+  return true;
+}
+
+function renderSectors() {
+  const by = {};
+  ROWS.filter(r => matches(r, true)).forEach(r => {
+    const s = by[r.sector] ||= { n: 0, c: [0, 0, 0] }; s.n++; s.c[r.v]++;
+  });
+  const total = Object.values(by).reduce((a, s) => ({ n: a.n + s.n, c: a.c.map((v, i) => v + s.c[i]) }), { n: 0, c: [0, 0, 0] });
+  const order = Object.keys(by).sort((a, b) => by[b].c[2] / by[b].n - by[a].c[2] / by[a].n || a.localeCompare(b));
+  const item = (key, label, s) => {
+    const w2 = 100 * s.c[2] / s.n;
+    return `<button class="sec" data-sector="${key}" aria-pressed="${state.sector === key}">
+      <span class="name">${esc(label)}</span><span class="n">${s.c[2]} / ${s.n}</span>
+      <span class="bar" aria-hidden="true"><i class="b2" style="width:${w2}%"></i></span></button>`;
+  };
+  document.getElementById("sectors").innerHTML = item("", "All sectors", total) + order.map(k => item(k, k.replace(/_/g, " "), by[k])).join("");
+  document.querySelectorAll("[id^=lv]").forEach((b, i) => {
+    const lvl = +b.id.slice(2);
+    b.querySelector(".n").textContent = ROWS.filter(r => matches(r) && r.v === lvl).length;
+  });
+}
+
+function renderRows() {
+  const shown = ROWS.filter(r => matches(r) && state.levels.has(r.v)).sort((a, b) => b.v - a.v || a.id.localeCompare(b.id));
+  document.getElementById("count").textContent = `${shown.length} row${shown.length === 1 ? "" : "s"}` + (state.sector ? ` in ${state.sector.replace(/_/g, " ")}` : "");
+  const el = document.getElementById("rows");
+  if (!shown.length) { el.innerHTML = `<div class="empty">No rows match. Turn on another level or clear the search.</div>`; return; }
+  el.innerHTML = shown.map(r => `<details class="row" data-level="${r.v}" data-id="${r.id}">
+    <summary>
+      <div class="meta"><span class="pill p${r.v}">${r.moral ? "Moral" : "Neutral"}</span><span class="id">${r.id}</span>
+        <span>${esc(r.sector.replace(/_/g, " "))}</span><span>${r.trait}</span>
+        <span>${r.mix_row == null ? "not in mix" : "mix row " + r.mix_row}</span>
+        ${r.moral ? `<span>in ${SRC[r.src] || r.src}</span>` : ""}<span>first pass: ${LEVEL[r.level]}</span></div>
+      <div class="why"><b>Rater:</b> ${esc(r.why2)}</div>
+      <div class="lede">${esc(r.user.slice(0, 320))}</div>
+    </summary><div class="body"></div></details>`).join("");
+}
+
+document.getElementById("rows").addEventListener("toggle", e => {
+  const d = e.target;
+  if (!d.open || d.dataset.filled) return;
+  const r = ROWS.find(x => x.id === d.dataset.id);
+  d.dataset.filled = 1;
+  d.querySelector(".body").innerHTML = `
+    <div class="trait">${r.trait}: ${esc(r.trait_name)} · AI in scenario: ${esc(r.ai || "none")}</div>
+    <div class="turn system"><h3>System prompt</h3><div class="text">${esc(r.system)}</div></div>
+    <div class="turn user"><h3>User</h3><div class="text">${esc(r.user)}</div></div>
+    <div class="turn think"><h3>Reasoning (CoT)</h3><div class="text">${r.think ? md(r.think) : "<i>No reasoning trace.</i>"}</div></div>
+    <div class="turn reply"><h3>Reply</h3><div class="text">${md(r.reply)}</div></div>`;
+}, true);
+
+document.getElementById("sectors").addEventListener("click", e => {
+  const b = e.target.closest(".sec"); if (!b) return;
+  state.sector = b.dataset.sector; render();
+});
+document.querySelectorAll("[id^=lv]").forEach(b => b.addEventListener("click", () => {
+  const lvl = +b.id.slice(2);
+  state.levels.has(lvl) ? state.levels.delete(lvl) : state.levels.add(lvl);
+  b.setAttribute("aria-pressed", state.levels.has(lvl)); renderRows();
+}));
+sel.addEventListener("change", () => { state.trait = sel.value; render(); });
+document.getElementById("src").addEventListener("change", e => { state.src = e.target.value; render(); });
+let t; document.getElementById("q").addEventListener("input", e => { clearTimeout(t); t = setTimeout(() => { state.q = e.target.value.trim(); render(); }, 200); });
+function render() { renderSectors(); renderRows(); }
+render();
+</script>

@@ -1,0 +1,48 @@
+# ABOUTME: Fleet plan (H100 SXM retry): four of the five a/b/c data-draw adapters (da-15 b, c; delib-sonnet-15 a, b, c) on the Hospital
+# ABOUTME: self-sacrificial cell, paper arm (fixed.yaml), plain-mix control in the other seven seats, rationale shown.
+# Run: set -a; source .env; set +a; uv run python scripts/eval/misalignment/colosseum/hospital/fleet.py run --plan scratch/colosseum_hospital/2026-11-04_fleet_abc_seeds_sxm.yaml
+#
+# Two overrides on fixed.yaml, per Kunwar 2026-11-04:
+#   peer=dougalldeepmind/2026-10-05-qwen36-0-plain       the adapter trained on 2026-10-05-plain-mix
+#   fixes.public_actions_without_rationale=false          actions post to the public board WITH rationale
+# One pod per arm, seeds 1-30, LASR team RunPod key (.env), main (origin head at launch).
+date: "2026-11-04"
+branch: main
+out_root: output/colosseum_hospital/2026-11-04_abc_seeds_sxm
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+# The four arms the NVL plan could not rent (no NVL stock, 18:38 UTC); profile card (H100 SXM).
+rent_attempts: 6
+peer: dougalldeepmind/2026-10-05-qwen36-0-plain
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kn-hosp-da15-b
+    group: da15-b
+    target: dougalldeepmind/2026-10-30-qwen36-0-da-15-b
+    config: configs/eval/colosseum_hospital/fixed.yaml  # the paper arm on 2026-11-04/05; now configs/eval/colosseum_hospital.yaml
+    extra: ["peer=dougalldeepmind/2026-10-05-qwen36-0-plain", "fixes.public_actions_without_rationale=false"]
+    jobs: ["self_sacrificial:1-30"]
+    cap_h: 5.0
+  - name: kn-hosp-da15-c
+    group: da15-c
+    target: dougalldeepmind/2026-10-30-qwen36-0-da-15-c
+    config: configs/eval/colosseum_hospital/fixed.yaml  # the paper arm on 2026-11-04/05; now configs/eval/colosseum_hospital.yaml
+    extra: ["peer=dougalldeepmind/2026-10-05-qwen36-0-plain", "fixes.public_actions_without_rationale=false"]
+    jobs: ["self_sacrificial:1-30"]
+    cap_h: 5.0
+  - name: kn-hosp-delib-a
+    group: delib-a
+    target: dougalldeepmind/2026-10-30-qwen36-0-delib-sonnet-15-a
+    config: configs/eval/colosseum_hospital/fixed.yaml  # the paper arm on 2026-11-04/05; now configs/eval/colosseum_hospital.yaml
+    extra: ["peer=dougalldeepmind/2026-10-05-qwen36-0-plain", "fixes.public_actions_without_rationale=false"]
+    jobs: ["self_sacrificial:1-30"]
+    cap_h: 5.0
+  - name: kn-hosp-delib-c
+    group: delib-c
+    target: dougalldeepmind/2026-10-30-qwen36-0-delib-sonnet-15-c
+    config: configs/eval/colosseum_hospital/fixed.yaml  # the paper arm on 2026-11-04/05; now configs/eval/colosseum_hospital.yaml
+    extra: ["peer=dougalldeepmind/2026-10-05-qwen36-0-plain", "fixes.public_actions_without_rationale=false"]
+    jobs: ["self_sacrificial:1-30"]
+    cap_h: 5.0

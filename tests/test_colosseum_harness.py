@@ -77,7 +77,7 @@ def test_existing_build_is_none_until_built_and_never_builds(tmp_path, monkeypat
 
 
 def test_the_hospital_config_defaults_to_the_managed_build():
-    cfg = OmegaConf.load("configs/eval/colosseum_hospital/default.yaml")
+    cfg = OmegaConf.load("configs/eval/colosseum_hospital.yaml")
     assert cfg.colosseum_root is None
 
 
@@ -85,7 +85,7 @@ def test_the_hospital_config_defaults_to_the_managed_build():
 
 
 def test_no_preamble_leaves_the_seats_null_and_the_name_plain():
-    cfg = OmegaConf.load("configs/eval/colosseum_hospital/default.yaml")
+    cfg = OmegaConf.load("configs/eval/colosseum_hospital.yaml")
     assert cfg.protocol is None and cfg.system_preamble_file is None
     assert resolve_fixes(cfg)["system_preamble_agents"] is None
     assert "protocol" in EVALS["colosseum_hospital"].name_facets
@@ -93,7 +93,7 @@ def test_no_preamble_leaves_the_seats_null_and_the_name_plain():
 
 def test_a_preamble_defaults_its_seats_to_the_pair():
     cfg = OmegaConf.merge(
-        OmegaConf.load("configs/eval/colosseum_hospital/default.yaml"),
+        OmegaConf.load("configs/eval/colosseum_hospital.yaml"),
         OmegaConf.create(
             {"protocol": "constitution", "system_preamble_file": CONSTITUTION}
         ),
@@ -160,17 +160,23 @@ def test_the_jira_set_is_the_routing_patch_on_the_stock_wheel(tmp_path, monkeypa
 
 
 def test_both_colosseum_configs_default_to_the_managed_build():
-    for path in ("configs/eval/colosseum_hospital/default.yaml", "configs/eval/colosseum_jira.yaml"):
+    for path in ("configs/eval/colosseum_hospital.yaml", "configs/eval/colosseum_jira.yaml"):
         assert OmegaConf.load(path).colosseum_root is None, path
 
 
-def test_every_hospital_protocol_loads_and_is_registered_under_the_eval():
+def test_the_hospital_eval_has_one_config_and_every_variant_resolves():
     from src.eval import EVALS
+    from src.eval.misalignment.colosseum.hospital.smoke import VARIANTS, variant_cfg
 
-    assert EVALS["colosseum_hospital"].config == "configs/eval/colosseum_hospital/default.yaml"
-    protocols = sorted(Path("configs/eval/colosseum_hospital").glob("*.yaml"))
-    assert len(protocols) == 13
-    for p in protocols:
-        cfg = OmegaConf.load(p)
-        assert cfg.get("colosseum_root") is None, p
-        resolve_fixes(cfg)  # every switch known and consistent
+    assert EVALS["colosseum_hospital"].config == "configs/eval/colosseum_hospital.yaml"
+    assert not Path("configs/eval/colosseum_hospital").exists(), "one config, no protocol folder"
+    cfg = OmegaConf.load("configs/eval/colosseum_hospital.yaml")
+    # the paper's self-sacrificial arm with the 2026-11-04/05 settings baked in
+    assert cfg.condition == "self_sacrificial"
+    assert cfg.peer == "dougalldeepmind/2026-10-05-qwen36-0-plain"
+    assert cfg.fixes.public_actions_without_rationale is False
+    assert cfg.serving.context_window == 131072
+    for stem in VARIANTS:
+        v = variant_cfg(stem)
+        assert v.get("colosseum_root") is None, stem
+        resolve_fixes(v)  # every switch known and consistent

@@ -46,12 +46,13 @@ from src.eval.misalignment.colosseum.hospital.judge import (
 from src.eval.misalignment.colosseum.publish import repo_name_for
 from src.eval.stats import mcnemar_exact, wilson
 from src.infra.huggingface import gate_push
+from src.eval.misalignment.colosseum.hospital.smoke import VARIANTS, load_protocol
 
 THIRD_PARTY = Path("src/eval/misalignment/colosseum/third_party")
-BASE = "configs/eval/colosseum_hospital/default.yaml"
-PARENT = "configs/eval/colosseum_hospital/no-retry-plan-optional.yaml"
-WHISTLEBLOW = "configs/eval/colosseum_hospital/whistleblow.yaml"
-VISIBLE = "configs/eval/colosseum_hospital/whistleblow-rationale-visible.yaml"
+BASE = "paper"
+PARENT = "headline"
+WHISTLEBLOW = "whistleblow"
+VISIBLE = "whistleblow_visible"
 PROV, TRIAGE = PAIR
 AGENTS = [PROV] + [
     f"{h}_{r}"
@@ -92,7 +93,7 @@ def test_the_switch_exists_defaults_off_and_bumps_the_stamp():
     assert FIXES["administrator_channel"] is False
     # Bumped by every later terrarium patch (2026-10-09: the standard conversation).
     assert TERRARIUM_FIXES_STAMP >= "2026-09-15"
-    cfg = OmegaConf.load(BASE)
+    cfg = load_protocol(BASE)
     assert resolve_fixes(cfg)["administrator_channel"] is False
     assert resolve_fixes(_with(cfg, "fixes.administrator_channel=true"))["administrator_channel"]
     with pytest.raises(AssertionError, match="true or false"):
@@ -105,7 +106,7 @@ def test_benign_coalition_is_a_coalition_cell_with_its_own_strategy():
     spec = CONDITIONS["benign_coalition"]
     assert spec["strategy"] == "benign_coalition"
     assert spec["adversary_count"] == 2 and spec["secret_channel"] is True
-    sweep = _sweep("benign_coalition", OmegaConf.load(WHISTLEBLOW))
+    sweep = _sweep("benign_coalition", load_protocol(WHISTLEBLOW))
     cell = sweep["experiment"]["sweeps"][0]
     assert cell["name"] == "benign_coalition"
     assert cell["strategies"] == ["benign_coalition"]
@@ -115,7 +116,7 @@ def test_benign_coalition_is_a_coalition_cell_with_its_own_strategy():
 
 
 def test_the_survey_knob_reaches_the_sweep_and_is_type_checked():
-    cfg = OmegaConf.load(BASE)
+    cfg = load_protocol(BASE)
     assert cfg.survey is False
     assert _sweep("self_sacrificial", cfg)["experiment"]["survey_enabled"] is False
     on = _sweep("baseline", _with(cfg, "survey=true"))["experiment"]
@@ -129,10 +130,10 @@ def test_the_survey_knob_reaches_the_sweep_and_is_type_checked():
 
 
 def test_the_whistleblow_config_is_the_2026_09_14_harness_plus_the_channel_and_the_survey():
-    cfg, parent = OmegaConf.load(WHISTLEBLOW), OmegaConf.load(PARENT)
+    cfg, parent = load_protocol(WHISTLEBLOW), load_protocol(PARENT)
     assert resolve_fixes(cfg) == dict(resolve_fixes(parent), administrator_channel=True)
     c, p = OmegaConf.to_container(cfg), OmegaConf.to_container(parent)
-    assert c["survey"] is True and "survey" not in p
+    assert c["survey"] is True and not p.get("survey")
     for key in (
         "condition",
         "peer",
@@ -155,14 +156,11 @@ def test_the_whistleblow_config_is_the_2026_09_14_harness_plus_the_channel_and_t
         assert c[key] == p[key], key
     # No typed labels: the name is built by run_eval from the run's metadata.
     assert "arm_labels" not in c and "arm_labels" not in p
-    head = Path(WHISTLEBLOW).read_text(encoding="utf-8").splitlines()[:6]
-    assert head[0].startswith("# ABOUTME:") and head[1].startswith("# ABOUTME:")
-    assert any(line.startswith("# Run:") for line in head)
-    assert any(WHISTLEBLOW in line for line in head)
+    # (the per-variant config files were removed 2026-11-05; variants are override sets in hospital/smoke.py)
 
 
 def test_the_visible_config_differs_only_in_the_rationale_switch():
-    vis, wbl = OmegaConf.load(VISIBLE), OmegaConf.load(WHISTLEBLOW)
+    vis, wbl = load_protocol(VISIBLE), load_protocol(WHISTLEBLOW)
     assert resolve_fixes(vis) == dict(
         resolve_fixes(wbl), public_actions_without_rationale=False
     )
@@ -195,7 +193,7 @@ STUDY_ARMS = (
 @pytest.mark.parametrize("path", [WHISTLEBLOW, VISIBLE])
 def test_every_study_cell_publishes_under_a_name_the_gate_accepts(path):
     """Three cells x three arms = nine names, each carrying its condition, none typed."""
-    cfg = OmegaConf.load(path)
+    cfg = load_protocol(path)
     names = set()
     for condition in STUDY_CELLS:
         for target, key in STUDY_ARMS:
@@ -224,11 +222,16 @@ def test_the_fleet_plans_run_the_designs_cells_on_the_study_configs():
             {"baseline": 60, "benign_coalition": 30, "self_sacrificial": 90},
         ),
     ):
-        spec = OmegaConf.to_container(OmegaConf.load(plan))
+        spec = OmegaConf.to_container(load_protocol(plan))
         assert spec["branch"] == "main", "the pods bootstrap main once the PR has merged"
         by_arm: dict = {}
         for pod in spec["pods"]:
-            assert pod["config"] in (WHISTLEBLOW, VISIBLE)
+            # the plans recorded the config paths of their day (the files were folded into
+            # override sets on 2026-11-05: whistleblow / whistleblow_visible in hospital/smoke.py)
+            assert pod["config"] in (
+                "configs/eval/colosseum_hospital/whistleblow.yaml",
+                "configs/eval/colosseum_hospital/whistleblow-rationale-visible.yaml",
+            )
             for job in pod["jobs"]:
                 cond, rng = job.split(":")
                 assert cond in conds

@@ -87,6 +87,11 @@ think-stamped adapter, and a base model has no `training_meta.json` to infer fro
 pin is what lets the base join the ladder (comparison code refuses mixed modes). An arm
 ladder (`--target <base> <adapter> ...`) reuses one server and LoRA-swaps between arms.
 
+`retry_unscored: 1` re-runs the seeds the completeness gate would refuse, in place and once, before it
+judges them (a one-off moderation 403 on an auditor call, 2026-11-04); `unscored_retries` in
+`results.json` says how many retries ran. What is still missing after that is `resume_from` or
+`allow_missing`, as before.
+
 `inspect.max_connections` is how many auditor conversations run at once (keep it at or
 below `serving.concurrency`); `inspect.log_format: eval` writes the raw Inspect logs under
 `metadata/inspect/`. `uv run inspect view --log-dir output/petri/<run>/metadata/inspect`

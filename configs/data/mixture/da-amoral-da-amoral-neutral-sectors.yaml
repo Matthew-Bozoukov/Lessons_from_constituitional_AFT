@@ -1,0 +1,50 @@
+# ABOUTME: da-amoral-15 with every row an audit found morally charged left out, refilled from neutral-sector rows.
+# ABOUTME: Publishes as `<date>-da-amoral-da-amoral-neutral-sectors-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-amoral-da-amoral-neutral-sectors.yaml [synthetic_pct=15]
+#
+# Everything but `sources` and the output dir is da-amoral.yaml's: the same plain base at the same
+# revision, the same token-share swap, the same trait balancing. What changes is which rows can fill the 15%.
+# A 2026-11-05 strict audit (Opus subagents, full conversation, ANY moral consideration at any stakes counts,
+# because low-stakes moral dilemmas are their own arm) found 90 of da-amoral's 754 rows moral. Each source keeps
+# only its `neutral` pool of that audit (`splits/2026-11-05-da-amoral-moral-audit.json`, published in each repo):
+#   - da-amoral: 664 of 754 neutral.
+#   - da-amoral-neutral-sectors (configs/data/synth/da-amoral-neutral-sectors.yaml): 200 new rows dealt only
+#     the eight settings with no moral row in the first corpus; 185 neutral.
+# The name says only which corpora fill the share (a mix `variant:` is reserved for a supervision override);
+# the neutral-only selection is each source's `split:`, recorded with the mixture.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-amoral:
+    dataset: "${oc.env:HF_ORG}/2026-11-03-da-amoral-synth"
+    # The corpus as mixed before (ac8e1efe) plus the audit split; dataset.jsonl is unchanged.
+    revision: "352d203126fb276c725a3eb012f37b6f8c692f9f"
+    split: {file: splits/2026-11-05-da-amoral-moral-audit.json, keep: neutral}
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+  da-amoral-neutral-sectors:
+    dataset: "${oc.env:HF_ORG}/2026-11-05-da-amoral-neutral-sectors-synth"
+    revision: "12d55f586624c6df5a6a0ae0f270b4fd2a9986bb"
+    split: {file: splits/2026-11-05-da-amoral-moral-audit.json, keep: neutral}
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_amoral_audited"
+
+hf:
+  experiment: "amoral twin of the difficult-advice arm, audited: the plain base blend (2026-10-05-plain-mix) scaled around a synthetic share of morally neutral difficult advice, every row a strict audit found morally charged left out"
+  constitution: "none"
+  private: false

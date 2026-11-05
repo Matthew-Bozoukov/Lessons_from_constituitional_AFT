@@ -494,7 +494,7 @@ def main(argv: list[str] | None = None) -> None:
         type=Path,
         help="arm run dirs (hold results/results.json)",
     )
-    ap.add_argument("--config", default="configs/eval/colosseum_hospital/default.yaml")
+    ap.add_argument("--config", default="configs/eval/colosseum_hospital.yaml")
     ap.add_argument(
         "--env-logs-root",
         default=None,

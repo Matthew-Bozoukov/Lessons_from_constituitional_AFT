@@ -29,6 +29,9 @@ protocol: null       # launch argument; names a system-preamble arm (protocol=co
 system_preamble_file: null   # the constitution the target is shown first; requires protocol=
 resume_from: null    # out_dir of a run that FAILED; same target, revision, mode and --port
 allow_missing: []    # seed ids a publish may lack (the completeness gate refuses any other gap)
+retry_unscored: 1    # before that gate, re-run the unscored seeds in place this many times (eval_retry on the
+                     # newest log): a one-off 403 from OpenRouter's moderation or a dropped auditor turn
+                     # (2026-11-04) costs one seed's audit again, not a resume by hand; 0 = the gate alone
 constitution: none   # the card; a preamble arm's card names system_preamble_file instead
 
 # Liveness probes of the served endpoint: abort rather than pay the auditor to talk to nothing

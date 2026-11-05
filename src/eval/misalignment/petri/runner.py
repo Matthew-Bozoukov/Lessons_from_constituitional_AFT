@@ -221,8 +221,38 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     # The completeness gate: a limited run is a smoke and has no completeness to check.
     expected = None if limit else seed_ids
     summary = scores.summarize(by_seed, expected)
+    allowed = set(cfg.get("allow_missing") or [])
+    # A seed left unscored by a one-off failure (2026-11-04: OpenRouter's Anthropic moderation
+    # refusing ONE auditor call of a seed with a 403; an auditor turn the CLI dropped) is retried
+    # in place before the gate judges it: eval_retry re-runs only the unscored samples of the
+    # newest log, at most `retry_unscored` times. What the gate still finds missing after that
+    # is the error it always was -- resume_from or allow_missing, by a human.
+    retries = 0
+    while (expected is not None and retries < int(cfg.get("retry_unscored") or 0)
+           and (set(summary["missing_seeds"]) - allowed or summary["uneven_seeds"])):
+        retries += 1
+        newest = all_logs[-1]
+        print(f">>> petri: {len(summary['missing_seeds'])} seed(s) unscored (e.g. {summary['missing_seeds'][:3]}), "
+              f"{len(summary['uneven_seeds'])} uneven; retry {retries}/{int(cfg.retry_unscored)} of the "
+              f"unscored samples of {newest.name}", flush=True)
+        with _Watchdog(base_url, cfg.health.every_s, cfg.health.fails) as wd:
+            try:
+                logs = eval_retry(str(newest), log_dir=str(log_dir),
+                                  max_connections=int(cfg.inspect.max_connections),
+                                  retry_on_error=int(cfg.inspect.retry_on_error),
+                                  log_level=str(cfg.inspect.log_level), display="plain",
+                                  fail_on_error=False)
+            except KeyboardInterrupt:
+                if wd.tripped:
+                    raise SystemExit(f"petri: target stopped answering; {aborted}") from None
+                raise
+        if wd.tripped or any(log.status == "cancelled" for log in logs):
+            raise SystemExit(f"petri: {'target stopped answering' if wd.tripped else 'the retry was cancelled'}; "
+                             f"{aborted}")
+        all_logs = sorted(log_dir.glob("*.eval"))
+        by_seed = scores.valid_scores(all_logs)
+        summary = scores.summarize(by_seed, expected)
     if expected is not None:
-        allowed = set(cfg.get("allow_missing") or [])
         if set(summary["missing_seeds"]) != allowed or summary["uneven_seeds"]:
             raise RuntimeError(
                 f"petri: {len(summary['missing_seeds'])} seeds have no valid score (e.g. "
@@ -245,6 +275,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
             "auditor": str(cfg.auditor), "judge": str(cfg.judge), "max_turns": int(cfg.max_turns),
             "auditor_cache": auditor_cache,
             "passes": passes, "limit": limit, "seeds_dir": str(cfg.seeds),
+            "retry_unscored": int(cfg.get("retry_unscored") or 0), "unscored_retries": retries,
             "context_window": int(cfg.serving.context_window),
             "inspect_logs": "metadata/inspect",
             "inspect_status": {Path(log.location).name: log.status for log in logs},
