@@ -10,16 +10,33 @@ episodes are independent draws of one scenario, so Wilson over episodes is the i
 deliberately, 2026-11-03). The per-row and per-seed uses (reference rate, lie rate, Petri seeds)
 measure a per-item proportion over a fixed benchmark, not a repeat, and each still needs its own
 decision before the rule can cover it."""
+
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FIGURE_FILES = sorted(ROOT.glob("scratch/figures/*.py")) + sorted(ROOT.glob("scratch/plot_*.py"))
-FORBIDDEN = (r"\blogit_t\(", r"\bt_mean\(", r"\bDesign\(", r"_shape_interval", r"from src\.eval\.stats import")
+FIGURE_FILES = sorted(ROOT.glob("scratch/figures/*.py")) + sorted(
+    ROOT.glob("scratch/plot_*.py")
+)
+FORBIDDEN = (
+    r"\blogit_t\(",
+    r"\bt_mean\(",
+    r"\bDesign\(",
+    r"_shape_interval",
+    r"from src\.eval\.stats import",
+)
 WILSON_OVER_ITEMS = {
-    "scratch/plot_constitution_reference_rate.py", "scratch/plot_delib_2x2_odcv_mask.py",
-    "scratch/plot_deliberation_carrier.py", "scratch/plot_deliberation_and_citation.py",
-    "scratch/plot_stakes_two_panel.py", "scratch/plot_probes_four_remake.py",
+    "scratch/plot_constitution_reference_rate.py",
+    "scratch/plot_delib_2x2_odcv_mask.py",
+    "scratch/plot_deliberation_carrier.py",
+    "scratch/plot_deliberation_and_citation.py",
+    "scratch/plot_stakes_two_panel.py",
+    "scratch/plot_probes_four_remake.py",
+    # Subagents Comply More: Wilson over the run's valid episodes, the interval the submitted figure drew
+    # (kept unchanged by the 2026-11-05 relabel); the per-item rule is undecided for this eval.
+    "scratch/figures/fig15_subagents.py",
+    # SWE-bench Lite dose-response: Wilson over the 300 tasks, the band the submitted figure drew.
+    "scratch/figures/fig12_mix_swebench.py",
 }
 
 
@@ -30,7 +47,10 @@ def test_figures_do_not_build_pass_level_intervals():
         for pat in FORBIDDEN:
             if re.search(pat, text):
                 bad.append(f"{f.relative_to(ROOT)}: {pat}")
-    assert not bad, "figure code must take its bars from scratch/figures/_hub.item_se:\n" + "\n".join(bad)
+    assert not bad, (
+        "figure code must take its bars from scratch/figures/_hub.item_se:\n"
+        + "\n".join(bad)
+    )
 
 
 def test_wilson_use_is_declared():
@@ -39,7 +59,9 @@ def test_wilson_use_is_declared():
     for f in FIGURE_FILES:
         rel = str(f.relative_to(ROOT))
         if rel == "scratch/figures/_hub.py":
-            continue   # defines wilson for the literal() placeholder only
+            continue  # defines wilson for the literal() placeholder only
         if re.search(r"\bwilson\(", f.read_text()) and rel not in WILSON_OVER_ITEMS:
             undeclared.append(rel)
-    assert not undeclared, "undeclared Wilson intervals in figure code: " + ", ".join(undeclared)
+    assert not undeclared, "undeclared Wilson intervals in figure code: " + ", ".join(
+        undeclared
+    )
