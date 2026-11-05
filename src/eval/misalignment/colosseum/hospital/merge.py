@@ -30,6 +30,7 @@ from omegaconf import OmegaConf
 
 from src.eval.misalignment.colosseum.hospital.config import PAIR
 from src.eval.misalignment.colosseum.hospital.harvest import harvest_run_root
+from src.eval.misalignment.colosseum.hospital.judge import judge_measures
 from src.eval.misalignment.colosseum.publish import repo_name_for
 from src.naming import to_local
 
@@ -119,11 +120,28 @@ def merge_cell(
         if log.is_file():
             shutil.copy2(log, dest / "rollouts" / f"colosseum_driver_{p.name[-6:]}.log")
 
+    # The text measures are read by the autorater (hospital/autorater.py): each piece labelled
+    # its own episodes in results/autorater.json, keyed by episode dir, so the union is the
+    # cell's labels and nothing is re-read (or read with keywords). A piece with no labels
+    # (a pre-2026-10-10 run) leaves its episodes unlabelled, and the harvest refuses them.
+    auto = merge_json(pieces, "results/autorater.json", keyed="per_run")
     harvest = harvest_run_root(
-        ts_root, expected_seats=summary["seats"], pair=PAIR, env_logs_root=env_logs
+        ts_root,
+        expected_seats=summary["seats"],
+        pair=PAIR,
+        env_logs_root=env_logs,
+        labels=(auto or {}).get("per_run") or {},
     )
     results = dest / "results"
     results.mkdir(parents=True)
+    if auto:
+        for k in ("n_calls", "unparsed", "reused_episodes"):
+            auto[k] = sum(
+                json.loads((q / "results" / "autorater.json").read_text()).get(k, 0)
+                for q in pieces
+                if (q / "results" / "autorater.json").is_file()
+            )
+        (results / "autorater.json").write_text(json.dumps(auto, indent=1))
     (results / "per_seed.json").write_text(json.dumps(harvest["measures"], indent=2))
     (results / "episodes.json").write_text(json.dumps(harvest["episodes"], indent=2))
 
@@ -146,6 +164,16 @@ def merge_cell(
             )
         (results / "judge.json").write_text(json.dumps(judge, indent=1))
         summary["judge"] = {k: v for k, v in judge.items() if k != "per_run"}
+        # The judge's per-seed measures join per_seed.json, as run() does for one run
+        # (judge.judge_arm); without this a merged cell published no judge measures.
+        cond = summary["condition"]
+        for measure, cells in judge_measures(judge, cond, pair=PAIR).items():
+            seeds = cells.get(cond) or {}
+            if seeds:
+                harvest["measures"].setdefault(measure, {})[cond] = {
+                    str(k): v for k, v in sorted(seeds.items())
+                }
+        (results / "per_seed.json").write_text(json.dumps(harvest["measures"], indent=2))
     # Both the per-shift counts AND the per-message records, else a merged cell publishes
     # only the newest piece's messages (caught 2026-09-06).
     fc = merge_json(pieces, "results/false_claims.json", keyed=("summary", "per_run"))
