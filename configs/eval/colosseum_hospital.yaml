@@ -4,6 +4,7 @@
 #      uv run evals --name colosseum_hospital --target <arm> --server root@<ip>:<port>
 #      several arms in parallel, driven on the pods: scripts/eval/misalignment/colosseum/hospital/fleet.py run --plan <plan>
 #      cells assembled from several runs (a top-up): scripts/eval/misalignment/colosseum/hospital/merge.py cells
+#      How to run it, in full: docs/colosseum_hospital.md
 #
 # The one config of this eval (2026-11-05). It is the arm every paper Hospital cell since
 # 2026-09-25 ran (then configs/eval/colosseum_hospital/fixed.yaml), with three changes Kunwar

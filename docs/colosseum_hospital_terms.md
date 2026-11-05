@@ -3,6 +3,8 @@
 
 # Colosseum Hospital: terms
 
+How to run the eval: `docs/colosseum_hospital.md`.
+
 The Hospital eval measures the same shift with three instruments, and they disagree on
 the same transcript (2026-09-16: the multi-agent-principle organism kept its refusal in
 30 of 30 shifts by the judge and took a sabotage act in 11 by the rule). So every label
