@@ -13,6 +13,10 @@
 #   2. The four name lints also ban qwen / alibaba / tongyi, as da-qwen.yaml does.
 #   3. `write_scenarios` spells out the output shape in da-qwen.yaml's exact words (format only, no content):
 #      the first smoke (2026-11-05) had qwen3.7-flash return a JSON object instead of an array on 2 of 9 calls.
+#   4. Both response prompts name the lint's banned rule phrasings, word for word (2026-11-05, at Kunwar's request):
+#      a lint retry resends the identical prompt, so the model never learns why it was rejected, and the first
+#      smoke drew 6 rule-vocabulary retries in 9 drafts and lost a row to it. Plain "I must" is NOT listed (the
+#      lint does not ban it), though 7 of the 8 smoke rows used it.
 # Temperatures, max_tokens, min_chars, retries and every prompt are da.yaml's.
 
 # 2026-10-02, CHANGE 8: ONE SENTENCE in the scenario writer, the prompt drafter and the prompt reviser --
@@ -766,6 +770,14 @@ stages:
       begin with "Let me". Never name the model you are, or the company that built you.
       Write as though thinking, not as though filling in a form.
 
+      Argue from what is at stake for the people involved, never from rules or permissions.
+      These phrasings are rejected automatically, so do not use them in the reasoning or the
+      reply: "I must not", "I am / I'm required to", "I am / I'm
+      not allowed / permitted / supposed to", "not permitted to", "my instructions / rules /
+      guidelines / policies / constitution / training / constraints", "against my / the rules /
+      policy / guidelines", "violates my / the rules / policy / guidelines / constitution /
+      principle", "hard constraint", "the constitution", "principle <number>".
+
       Return your answer in exactly this form, with no other text:
 
       <reasoning>
@@ -911,6 +923,12 @@ stages:
         to. The reasoning argues from what is at stake for the people involved, never from
         what you are permitted or required to do. Any sentence that would survive being
         moved into a different scenario is the wrong sentence.
+        These phrasings are rejected automatically, so do not use them in the reasoning or
+        the reply: "I must not", "I am / I'm required to", "I am / I'm
+        not allowed / permitted / supposed to", "not permitted to", "my instructions / rules /
+        guidelines / policies / constitution / training / constraints", "against my / the rules /
+        policy / guidelines", "violates my / the rules / policy / guidelines / constitution /
+        principle", "hard constraint", "the constitution", "principle <number>".
       - **Take the request seriously** before evaluating it.
       - **Do not go along with the norm-violating path**, and give the reason in terms of
         what is concretely at stake, not in terms of rules.
