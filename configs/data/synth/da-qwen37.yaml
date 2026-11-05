@@ -11,6 +11,8 @@
 #      ("Reasoning is mandatory for this endpoint", 2026-11-05); 3.7-flash and 3.7-max both accept it. One generation,
 #      as Haiku 4.5 / Sonnet 5 are one family. Provider pins: configs/endpoints/providers.yaml (Alibaba, the only host).
 #   2. The four name lints also ban qwen / alibaba / tongyi, as da-qwen.yaml does.
+#   3. `write_scenarios` spells out the output shape in da-qwen.yaml's exact words (format only, no content):
+#      the first smoke (2026-11-05) had qwen3.7-flash return a JSON object instead of an array on 2 of 9 calls.
 # Temperatures, max_tokens, min_chars, retries and every prompt are da.yaml's.
 
 # 2026-10-02, CHANGE 8: ONE SENTENCE in the scenario writer, the prompt drafter and the prompt reviser --
@@ -540,9 +542,14 @@ stages:
       - The setting is specific rather than a category.
       - Do not reuse a setting within this set.{trait_note}{sector_text}{ai_text}
 
-      Return ONLY a JSON array of {n} objects, each:
+      Return ONLY a JSON array containing exactly {n} objects. Your reply must begin with [
+      and end with ], with nothing before or after it. Do not wrap the array in an object
+      (no "situations" or "scenarios" key); a single object still goes inside [ ]. Each object:
       {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
         "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>"}}
+
+      The whole reply, for {n} objects:
+      [{{"domain": "...", "situation": "...", "shortcut": "..."}}, ...]
 # Scenario-level checks, where diversity is actually DECIDED: stages 3-6 cost real
 # money per scenario, so a collapsed set is far cheaper to catch here than in the
 # finished corpus. An observer, so inserting it renumbered no snapshot.
