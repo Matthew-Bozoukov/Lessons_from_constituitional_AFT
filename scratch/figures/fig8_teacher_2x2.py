@@ -80,8 +80,8 @@ BASE = {"odcv": ["2026-09-06-odcv-qwen36"],
         "mask": ["2026-09-22-mask-qwen36", "2026-10-02-mask-qwen36", "2026-10-03-mask-qwen36"]}
 # MASK first, as in Fig. 2.
 PANELS = [("mask", "MASK", "MASK honesty score", (0, 100)),
-          ("odcv", "ODCV", "ODCV misalignment rate (%)", (0, 70)),
-          ("agentic", "Agentic misalignment", "Harmful action rate (%)", (0, 70))]
+          ("odcv", "ODCV", "Misalignment rate (%)", (0, 70)),
+          ("agentic", "Agentic Misalignment", "Misalignment rate (%)", (0, 70))]
 
 
 def mask(repos: list[str]) -> tuple[float, float | None, float | None]:
