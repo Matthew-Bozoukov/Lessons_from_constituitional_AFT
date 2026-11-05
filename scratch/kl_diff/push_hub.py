@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from scratch.kl_diff.common import ADAPTERS, BASE, RUNS
-from src.infra.huggingface import push_files
+from src.infra.huggingface import hf_org, push_files
 from src.naming import artifact_name
 
 
@@ -46,7 +46,7 @@ def main() -> None:
         ["git", "rev-parse", "HEAD"], capture_output=True, text=True
     ).stdout.strip()
     date = time.strftime("%Y-%m-%d")
-    name = artifact_name("kl-diff-da-tools-mask-hospital", date=date)
+    name = f"{hf_org()}/{artifact_name('kl-diff-da-tools-mask-hospital', date=date)}"
     paths = (
         [gz(Path(p)) for p in a.scores + a.steps]
         + [Path(a.results)]
