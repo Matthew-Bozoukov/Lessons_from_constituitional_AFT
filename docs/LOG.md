@@ -1,3 +1,21 @@
+## 2026-11-05: da-amoral audited for moral content; 12% was moral; an audited 15% mix refilled from neutral sectors
+
+Hypothesis: da-amoral is meant to be the morally NEUTRAL control. Low-stakes moral dilemmas are their own arm, so any moral consideration at any stakes contaminates it, and a contaminated control could explain part of da-amoral-15's gains (ODCV 27.5, MASK 62.7, AM 11.7).
+
+Method: local Claude Opus 5.5 subagents (Claude Code; no OpenRouter), one pass each.
+- First pass: user message only, 0/1/2 by stakes. 19 rows charged, 184 mild.
+- Second, strict pass: the whole conversation (system, user, CoT, reply), labelled moral if the answer depends at all on what the user owes someone (honesty or disclosure, fairness, a promise, another person's wishes or welfare), else neutral. Labels and a browsable page are in `output/2026-11-05_da_amoral_moral_charge/`, built by `scratch/da_amoral_moral_charge_viewer_20261105.py`.
+- Refill: 200 new scenarios from `configs/data/synth/da-amoral-neutral-sectors.yaml` (da-amoral with the sector deal cut to the eight settings that had 0 moral rows, t6 included), strict-rated the same way.
+- Both audits are published as `splits/2026-11-05-da-amoral-moral-audit.json` (neutral | moral) in each corpus repo (`scratch/da_amoral_neutral_split_20261105.py`). The mix keeps each source's neutral pool.
+
+Result:
+- da-amoral (`2026-11-03-da-amoral-synth`): **90 of 754 moral (11.9%)**, all 90 in the da-amoral-15 mix (about 1.9% of its supervised tokens). Where the moral content sits: 52 both user and reply, 31 reasoning or reply only, 7 user only. Worst sectors: nonprofits 45%, architecture/planning 35%, personal services 33%, higher education 32%, school teaching 30%. First-pass "mild" rows were 30% moral under the strict rule.
+- New corpus `dougalldeepmind/2026-11-05-da-amoral-neutral-sectors-synth`: 200 of 200 rows, corpus check PASS, $18.10. **15 of 200 moral (7.5%)**, mostly logistics and hospitality. The eight sectors' 0/147 in the first corpus was partly small counts.
+- Mix `dougalldeepmind/2026-11-05-da-amoral-da-amoral-neutral-sectors-15-mix` @ 88d4f793 (`configs/data/mixture/da-amoral-da-amoral-neutral-sectors.yaml`): da-amoral's plain base at the same revision, 737 synthetic rows (578 old, 159 new; 81-82 a trait), 15.09% of 4,999,693 supervised tokens. All 737 match a corpus row the audit rated neutral.
+- Both corpora mint the same scenario ids (`t1_b00_s000` ...). A join across them must key on (corpus, id) or on the conversation hash, never the id alone.
+
+Next steps: train the audited arm (seed 0, as da-amoral-15) and rerun ODCV, MASK and AM against da-amoral-15; a second rater on a sample of the strict labels for agreement.
+
 ## 2026-11-04: Agentic misalignment on da-amoral-15: 11.7%, much nearer da-15 than the control
 
 Hypothesis: as for ODCV and MASK (entry below), an amoral arm near the plain control would say DA's agentic gain comes from its moral content; near da-15, from the deliberative format.
