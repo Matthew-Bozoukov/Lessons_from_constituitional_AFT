@@ -352,8 +352,8 @@ def test_prior_pass_tree_accepts_single_and_multi_pass_work_trees(tmp_path):
     assert runner._prior_pass_tree(multi, 1, 3) is None
 
 
-def test_the_config_declares_passes_and_defaults_to_one():
-    assert int(CFG["passes"]) == 1
+def test_the_config_declares_passes_and_defaults_to_three():
+    assert int(CFG["passes"]) == 3   # three passes by default since 2026-11-06: every MASK bar carries a per-row interval
 
 
 def test_a_two_pass_run_scores_each_pass_and_publishes_them_nested(tmp_path, monkeypatch):
