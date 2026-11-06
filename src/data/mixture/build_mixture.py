@@ -1046,7 +1046,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             f"are {sorted(cfg.sources)}: the stem must be `{want}`"
             + (f"-{variant}" if variant else "") + ".yaml.")
 
-    sources: dict[str, dict] = OmegaConf.to_container(cfg.sources, resolve=True)
+    # throw_on_missing: a config may leave a launch-time value as `???` (which pool of a split a
+    # mixture is), and a build must not run with the literal string in its place.
+    sources: dict[str, dict] = OmegaConf.to_container(cfg.sources, resolve=True, throw_on_missing=True)
     # A source-level `supervise:` override is the whole intervention of a variant arm, and
     # the variant is the name's word for it — so the two must agree, both ways: a config
     # that overrides to `cot` without declaring `variant: cot` would publish a

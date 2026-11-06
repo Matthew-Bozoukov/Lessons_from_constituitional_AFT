@@ -272,9 +272,12 @@ def run_checks(
             )
         )
 
+    # A sampled run (a smoke) draws per trait and cannot keep the source order; a full run must.
+    sampled = bool((manifest.get("source") or {}).get("sample"))
+    rep["sampled"] = sampled
     rep["PASS"] = bool(
         not rep["ids_not_in_source"]
-        and rep["same_order_as_source"]
+        and (sampled or rep["same_order_as_source"])
         and not diff_msgs
         and not diff_meta
         and not rep["schema_problems"]
