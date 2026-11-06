@@ -1,0 +1,30 @@
+# ABOUTME: Fleet plan: the two da-tools-15 data-draw adapters (b, c; twins of the 2026-11-04 da-15 b/c arms) on the
+# ABOUTME: Hospital self-sacrificial cell under the eval's defaults (paper arm: plain-mix peer, rationale shown, 131k window).
+# Run: set -a; source .env; set +a; uv run python scripts/eval/misalignment/colosseum/hospital/fleet.py run --plan scratch/colosseum_hospital/2026-11-06_fleet_datools_bc.yaml
+#
+# Same cell and seeds as scratch/colosseum_hospital/2026-11-04_fleet_abc_seeds.yaml; the overrides that plan
+# passed are configs/eval/colosseum_hospital.yaml's defaults since 3f2d32a1, and the window is the 131,072 the
+# 2026-11-05 top-up served at, so no `extra:` here. One pod per arm, seeds 1-30, LASR team RunPod key (.env).
+date: "2026-11-06"
+branch: worktree-kn-da-tools-src
+out_root: output/colosseum_hospital/2026-11-06_datools_bc
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-10-05-qwen36-0-plain
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+rent_attempts: 6
+pods:
+  - name: kn-hosp-datools-b
+    group: datools-b
+    target: dougalldeepmind/2026-11-06-qwen36-0-da-tools-15-b
+    config: configs/eval/colosseum_hospital.yaml
+    jobs: ["self_sacrificial:1-30"]
+    cap_h: 5.0
+  - name: kn-hosp-datools-c
+    group: datools-c
+    target: dougalldeepmind/2026-11-06-qwen36-0-da-tools-15-c
+    config: configs/eval/colosseum_hospital.yaml
+    jobs: ["self_sacrificial:1-30"]
+    cap_h: 5.0

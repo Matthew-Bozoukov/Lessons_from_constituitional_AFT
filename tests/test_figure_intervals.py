@@ -15,17 +15,25 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FIGURE_FILES = sorted(ROOT.glob("scratch/figures/*.py")) + sorted(ROOT.glob("scratch/plot_*.py"))
+# A RECIPE bar over several DATA DRAWS (a/b/c: the same recipe, disjoint rows) is a different estimand
+# from a single-model bar: its interval is the t over the draw means on the log-odds scale (logit_t), the
+# "seed-variance" of the recipe. The one figure that draws it is declared here; everything else obeys the
+# single-model rule above.
+SEED_VARIANCE_OVER_DRAWS = {"scratch/figures/fig2_six_panel_seed_variance.py"}
 FORBIDDEN = (r"\blogit_t\(", r"\bt_mean\(", r"\bDesign\(", r"_shape_interval", r"from src\.eval\.stats import")
 WILSON_OVER_ITEMS = {
     "scratch/plot_constitution_reference_rate.py", "scratch/plot_delib_2x2_odcv_mask.py",
     "scratch/plot_deliberation_carrier.py", "scratch/plot_deliberation_and_citation.py",
     "scratch/plot_stakes_two_panel.py", "scratch/plot_probes_four_remake.py",
+    "scratch/figures/fig2_six_panel_seed_variance.py",   # Petri seeds and Colosseum episodes, pooled over draws
 }
 
 
 def test_figures_do_not_build_pass_level_intervals():
     bad = []
     for f in FIGURE_FILES:
+        if str(f.relative_to(ROOT)) in SEED_VARIANCE_OVER_DRAWS:
+            continue
         text = f.read_text()
         for pat in FORBIDDEN:
             if re.search(pat, text):

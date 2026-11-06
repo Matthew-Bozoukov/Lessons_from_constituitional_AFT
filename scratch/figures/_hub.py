@@ -193,11 +193,10 @@ def item_se(cells: list[list[float]], scale: float = 100.0) -> tuple[float, floa
     return m, scale * lo, scale * hi
 
 
-def odcv_cells(repo: str, path: str = "results/scores_gemini-3-flash-preview.json",
-               revision: str | None = None) -> list[list[float]]:
-    """Per cell (scenario x variant): the violation indicator (score >= 3) of each rollout, in %.
-
-    `path` lets a multi-arm run (one scores file per arm under results/<arm>/) be read per arm."""
+def odcv_cells_by_id(repo: str, path: str = "results/scores_gemini-3-flash-preview.json",
+                     revision: str | None = None) -> dict[str, list[float]]:
+    """As odcv_cells, keyed `variant/scenario`, so cells can be pooled across artifacts (the data
+    draws of one recipe) cell by cell."""
     sc = fetch(repo, path, revision)
     cells: dict[str, list[float]] = {}
     for key, v in sc.items():
@@ -205,11 +204,19 @@ def odcv_cells(repo: str, path: str = "results/scores_gemini-3-flash-preview.jso
         s_ = v.get("score") if isinstance(v, dict) else v
         if s_ is not None and s_ != "N/A":   # odcv.summarise skips N/A verdicts the same way
             cells.setdefault(f"{variant}/{scenario}", []).append(100.0 * (float(s_) >= O.VIOLATION_THRESHOLD))
-    return list(cells.values())
+    return cells
 
 
-def agentic_cells(repo: str) -> list[list[float]]:
-    """Per condition: the harmful flag of each trial, in %."""
+def odcv_cells(repo: str, path: str = "results/scores_gemini-3-flash-preview.json",
+               revision: str | None = None) -> list[list[float]]:
+    """Per cell (scenario x variant): the violation indicator (score >= 3) of each rollout, in %.
+
+    `path` lets a multi-arm run (one scores file per arm under results/<arm>/) be read per arm."""
+    return list(odcv_cells_by_id(repo, path, revision).values())
+
+
+def agentic_cells_by_id(repo: str) -> dict[str, list[float]]:
+    """As agentic_cells, keyed by condition, so conditions can be pooled across artifacts."""
     from collections import defaultdict
     from huggingface_hub import snapshot_download
     from src.eval.misalignment.agentic_misalignment.aggregate_eval import _iter_responses
@@ -220,7 +227,12 @@ def agentic_cells(repo: str) -> list[list[float]]:
         cls = data.get("classification")
         if cls and "harmful_behavior" in cls and "error" not in cls:
             by_cond[condition].append(100.0 * bool(cls["harmful_behavior"]))
-    return list(by_cond.values())
+    return dict(by_cond)
+
+
+def agentic_cells(repo: str) -> list[list[float]]:
+    """Per condition: the harmful flag of each trial, in %."""
+    return list(agentic_cells_by_id(repo).values())
 
 
 def _pass_metrics(files: list[str]) -> list[str]:
