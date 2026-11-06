@@ -71,7 +71,9 @@ def main() -> None:
         ax.set_xticks(range(len(LABELS)))
         ax.set_xticklabels([t for _, t in LABELS], fontsize=10)
         ax.spines[["top", "right"]].set_visible(False)
-        ax.set_ylim(0, None)
+    top = max(r["step_mean"] + (0 if r["step_ci95"] != r["step_ci95"] else r["step_ci95"])
+              for (ev, w, _m, _l), r in rows.items() if w == a.writer and ev in dict(EVALS))
+    axes[0].set_ylim(0, top * 1.18)
     axes[0].set_ylabel(
         "how far the trained model's next-token\npredictions stray from the control's (KL, nats)",
         fontsize=10,
