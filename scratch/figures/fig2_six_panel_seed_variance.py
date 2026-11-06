@@ -11,7 +11,8 @@ misalignment, Wilson over seeds or episodes for Petri and the Hospital.
 
 The panel layout, titles and legend are those of the 2026-11-06 Fig. 2 (2x3, Single-agent / Multi-agent
 brackets); the run lists are the ones that figure's PDF names, with the difficult-advice + tools arm on
-its 2026-11-06 b/c draws (configs/data/synth/da-tools.yaml) once those runs exist.
+its 2026-11-06 b/c draws (configs/data/synth/da-tools.yaml): two draws, so its interval is a t with one
+degree of freedom and reads wide.
 """
 
 import argparse
@@ -61,7 +62,7 @@ RUNS: dict[str, dict[str, list[str]]] = {
             "2026-11-02-mask-qwen36-0-da-15-b",
             "2026-11-02-mask-qwen36-0-da-15-c",
         ],
-        "da_tools": ["2026-10-11-mask-qwen36-0-da-tools-15"],
+        "da_tools": ["2026-11-06-mask-qwen36-0-da-tools-15-b", "2026-11-06-mask-qwen36-0-da-tools-15-c"],
     },
     "odcv": {
         "control": ["2026-10-06-odcv-qwen36-0-plain"],
@@ -72,7 +73,7 @@ RUNS: dict[str, dict[str, list[str]]] = {
             "2026-11-02-odcv-qwen36-0-da-15-b",
             "2026-11-02-odcv-qwen36-0-da-15-c",
         ],
-        "da_tools": ["2026-10-11-odcv-qwen36-0-da-tools-15"],
+        "da_tools": ["2026-11-06-odcv-qwen36-0-da-tools-15-b", "2026-11-06-odcv-qwen36-0-da-tools-15-c"],
     },
     "agentic": {
         "control": ["2026-10-08-am-qwen36-0-plain"],
@@ -87,7 +88,7 @@ RUNS: dict[str, dict[str, list[str]]] = {
             "2026-11-02-am-qwen36-0-da-15-b",
             "2026-11-02-am-qwen36-0-da-15-c",
         ],
-        "da_tools": ["2026-10-13-am-qwen36-0-da-tools-15"],
+        "da_tools": ["2026-11-06-am-qwen36-0-da-tools-15-b", "2026-11-06-am-qwen36-0-da-tools-15-c"],
     },
     "petri": {
         "control": ["2026-10-28-petri-qwen36-0-plain"],
@@ -102,7 +103,7 @@ RUNS: dict[str, dict[str, list[str]]] = {
             "2026-11-05-petri-qwen36-0-da-15-b",
             "2026-11-05-petri-qwen36-0-da-15-c",
         ],
-        "da_tools": ["2026-10-28-petri-qwen36-0-da-tools-15"],
+        "da_tools": ["2026-11-06-petri-qwen36-0-da-tools-15-b", "2026-11-06-petri-qwen36-0-da-tools-15-c"],
     },
     "hospital": {
         "control": ["2026-10-11-hospital-self-sacrificial-qwen36-0-plain"],
@@ -115,7 +116,10 @@ RUNS: dict[str, dict[str, list[str]]] = {
             "2026-11-05-hospital-self-sacrificial-qwen36-0-da-15-b",
             "2026-11-05-hospital-self-sacrificial-qwen36-0-da-15-c",
         ],
-        "da_tools": ["2026-10-14-hospital-self-sacrificial-qwen36-0-da-tools-15"],
+        "da_tools": [
+            "2026-11-06-hospital-self-sacrificial-qwen36-0-da-tools-15-b",
+            "2026-11-06-hospital-self-sacrificial-qwen36-0-da-tools-15-c",
+        ],
     },
 }
 BASE_RUNS = {
@@ -262,7 +266,7 @@ def main() -> None:
                 ax.errorbar(
                     i,
                     m,
-                    yerr=[[m - lo_c], [hi_c - m]],
+                    yerr=[[max(0.0, m - lo_c)], [max(0.0, hi_c - m)]],
                     fmt="none",
                     ecolor="#2b2523",
                     elinewidth=1.3,
