@@ -260,8 +260,15 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
             # `path:` is a split file not yet published, for a build that is checked
             # before anything is pushed; main() refuses to publish a mixture made from one.
             local = split.get("path")
+            # `repo:` + `revision:` name the corpus the split was published with, for a
+            # corpus derived from it row for row (same scenario ids: a re-export that adds
+            # `tools`) and carrying no split of its own. Both pinned here, neither inherited.
+            if split.get("repo") and not split.get("revision"):
+                raise ValueError(f"source {name!r}: `split.repo` needs `split.revision` "
+                                 "(an exact commit of that repo)")
             labels, meta = load_split(local or hf_download(
-                spec["dataset"], str(split["file"]), repo_type="dataset", revision=info.sha))
+                str(split.get("repo") or spec["dataset"]), str(split["file"]),
+                repo_type="dataset", revision=str(split.get("revision") or info.sha)))
             pool = select(pool, labels, str(split["keep"]), name=name)
             spec["split"] = {**split, "selected_rows": len(pool), "meta": meta}
             print(f"{name}: pool {split['keep']!r} of {local or split['file']} — {len(pool)} rows")
@@ -986,7 +993,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             * `split: {file: splits/<name>.json, keep: B}` — `dataset:` sources only:
               draw from ONE POOL of the corpus, as labelled by that file in the same
               repo at the same revision (src/data/mixture/split.py), so mixtures built
-              from different pools share no row.
+              from different pools share no row. `repo:` + `revision:` read the file
+              from another corpus instead: the one this dataset re-exports row for row
+              (a `tools` arm), whose split therefore labels these rows too.
         Optional `filter:` block — constitution, model, workers?, max_chars?,
             keep_examples? (stratified downsample of the kept rows).
         Optional `hf:` block — experiment, constitution?, private? (the REPO is

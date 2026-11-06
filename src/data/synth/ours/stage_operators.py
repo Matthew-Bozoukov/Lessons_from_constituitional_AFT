@@ -2554,6 +2554,69 @@ def op_corpus_filter(sc: dict, cfg: dict) -> Stage:
 # --- model-eval-model operators (structure in model_eval_model_cells.py, wording in the config) ------
 
 
+def import_chat_rows(rows: list[dict], spec: dict) -> list[dict]:
+    """A published chat_export corpus (`dataset.jsonl`: `{messages, metadata}` rows) as stage
+    records: every metadata field at the top level, each turn's content under the field
+    `spec` names for its role (`{system: system, user: user, assistant: response}`), and
+    the assistant turn's `reasoning_content` under `spec["reasoning"]` (default `reasoning`).
+
+    chat_export run backwards. A recipe that re-exports these records with the same
+    templates reproduces the published rows byte for byte, which is how an arm that changes
+    nothing but a side field (a `tools` list) is built from the corpus another arm trained
+    on: the stage snapshots behind a corpus made by a run plus its extensions live at
+    several revisions, the published dataset is the one file that holds every row.
+
+    Raises:
+        ValueError: a turn's role is not in `spec`, a role appears twice in one row (which
+            field would hold the second?), or a metadata field already uses a named field.
+    """
+    roles = {str(k): str(v) for k, v in spec.items() if k != "reasoning"}
+    reasoning = str(spec.get("reasoning") or "reasoning")
+    out: list[dict] = []
+    for i, row in enumerate(rows):
+        md = dict(row.get("metadata") or {})
+        taken = set(roles.values()) | {reasoning}
+        clash = sorted(taken & set(md))
+        if clash:
+            raise ValueError(f"chat_import: row {i} metadata already holds {clash}")
+        rec = dict(md)
+        seen: set[str] = set()
+        for m in row["messages"]:
+            role = str(m.get("role"))
+            if role not in roles:
+                raise ValueError(f"chat_import: row {i} has a {role!r} turn; the spec names "
+                                 f"only {sorted(roles)}")
+            if role in seen:
+                raise ValueError(f"chat_import: row {i} has two {role!r} turns")
+            seen.add(role)
+            rec[roles[role]] = m.get("content") or ""
+            if role == "assistant":
+                rec[reasoning] = m.get("reasoning_content") or ""
+        out.append(rec)
+    return out
+
+
+def _source_split_labels(split: dict, spec: dict) -> tuple[dict[str, str], dict, str]:
+    """(labels, meta, where-from) for a `source.split:` -- the labels file published beside the
+    source corpus (`file:`), read at the source's own revision unless the split names its own
+    (`revision:`, the commit that added the file to the repo)."""
+    from src.data.mixture.split import load_split
+
+    file = str(split["file"])
+    if spec.get("local_dir"):
+        path = Path(spec["local_dir"]) / file
+        labels, meta = load_split(path)
+        return labels, meta, str(path)
+    from src.infra.huggingface import hf_download
+
+    repo = str(spec["hf_repo"])
+    rev = str(split.get("revision") or spec.get("revision") or "")
+    if not rev:
+        raise ValueError("source split: pin a `revision:` on the source (or on the split)")
+    labels, meta = load_split(hf_download(repo, file, repo_type="dataset", revision=rev))
+    return labels, meta, f"{repo}@{rev[:8]}:{file}"
+
+
 def op_load_source_run(sc: dict, cfg: dict) -> Stage:
     """Load a completed source run's final records, with constitution-sha provenance.
 
@@ -2563,6 +2626,12 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
     because the operator is generic: a source run with a different stage list numbers its
     final snapshot differently, and baking one document type's filename into the operator
     would be exactly the hardcoding the engine is not allowed to do.
+
+    Two more `source:` keys, for a recipe that re-exports a PUBLISHED corpus rather than a
+    stage snapshot: `chat_import:` turns `dataset.jsonl` rows back into stage records
+    (`import_chat_rows`), and `split: {file, keep[, revision]}` keeps only the rows of the
+    named pool(s) of the corpus's published split (src/data/mixture/split.py), so a derived
+    corpus holds exactly the rows the mixtures it is matched to could draw from.
     """
     default_snapshot = str((cfg.get("source") or {}).get("snapshot") or "stage_6_final.jsonl")
 
@@ -2644,6 +2713,24 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
             runs_meta.append({"source_run": label, "n_records": len(recs),
                               "source_git_sha": src_manifest.get("git_sha"),
                               "source_constitution_sha256": src_sha})
+        if src_cfg.get("chat_import"):
+            source = import_chat_rows(source, dict(src_cfg["chat_import"]))
+        split_rec = None
+        if src_cfg.get("split"):
+            if len(specs) != 1:
+                raise ValueError("source split: one source only; `runs:` would need a split "
+                                 "per revision")
+            from src.data.mixture.split import select
+
+            split = dict(src_cfg["split"])
+            labels, split_meta, where = _source_split_labels(split, specs[0])
+            keep = [str(split["keep"])] if isinstance(split["keep"], str) else [str(k) for k in split["keep"]]
+            before = len(source)
+            source = select(source, labels, keep, name="source")
+            split_rec = {"file": str(split["file"]), "read_from": where, "keep": keep,
+                         "kept": len(source), "of": before, "meta": split_meta}
+            print(f">>> load_source_run: split {where} -- pools {keep}: {len(source)} of "
+                  f"{before} rows kept", flush=True)
         ids = [str(r.get("scenario_id") or r.get("record_id") or "") for r in source]
         dup = {i for i in ids if ids.count(i) > 1} if len(specs) > 1 else set()
         assert not dup, f"source runs share scenario ids ({sorted(dup)[:3]} ...); every id-keyed join would take the wrong row"
@@ -2667,6 +2754,9 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
             "source_git_sha": runs_meta[0]["source_git_sha"],
             "source_constitution_sha256": runs_meta[0]["source_constitution_sha256"],
             "runs": runs_meta,
+            "snapshot": str(specs[0].get("snapshot") or default_snapshot),
+            "chat_import": dict(src_cfg["chat_import"]) if src_cfg.get("chat_import") else None,
+            "split": split_rec,
             "set_aside_prior_ids": set_aside,
             "sample": ({**dict(src_cfg["sample"]), "n_drawn": len(source),
                         "drawn_ids": [str(r.get("scenario_id") or r.get("record_id") or "") for r in source]}

@@ -1,0 +1,54 @@
+# ABOUTME: The difficult-advice + unused-tools arm: da.yaml's base, share and seed with the synthetic source
+# ABOUTME: swapped for the same da rows carrying tool schemas. Publishes as `<date>-da-tools-<pct>-<suffix>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-tools.yaml sources.da-tools.split.keep=B name_suffix=b
+#      uv run mix --config configs/data/mixture/da-tools.yaml sources.da-tools.split.keep=C name_suffix=c
+#
+# Matched to 2026-10-30-da-15-b-mix @ 8d260a9e and 2026-10-30-da-15-c-mix @ a1eeaf04 (what
+# 2026-10-30-qwen36-0-da-15-b and -c trained on) in everything but the tools: the same published base,
+# the same 15% share of supervised tokens, the same seed, the same split file and pool, and a synthetic
+# corpus whose messages are byte-identical to theirs (configs/data/synth/da-tools.yaml). Row selection
+# reads only supervised tokens, seed and trait, and the tool schemas sit in the masked system turn, so
+# each build should pick the same rows as its da-15 twin -- scripts/data/mixture/compare_mixes.py
+# checks that it did.
+#
+# `split.keep` has no value here on purpose: the corpus holds pools B and C together, and a mixture
+# is ONE pool, named at launch with the suffix that tells the two mixtures apart.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+# THE fixed non-synthetic blend, as da.yaml pins it (2026-10-05: the `plain` base, 1,832 rows /
+# 5,000,005 supervised tokens, a published reasoning trace on every row).
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+
+sources:
+  da-tools:
+    # The tools corpus: pools B and C of 2026-10-30-da-synth @ 8fadea62 with tools on every row
+    # (configs/data/synth/da-tools.yaml, 2026-11-06).
+    dataset: "${oc.env:HF_ORG}/2026-11-06-da-tools-synth"
+    revision: ???
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+    # The a/b/c split published with the SOURCE corpus labels these rows too (same scenario ids),
+    # so the pool is read from there, pinned, rather than copied into the tools corpus.
+    split:
+      repo: "${oc.env:HF_ORG}/2026-10-30-da-synth"
+      revision: "8fadea6299915605d0b270feddfd85d91344e58f"
+      file: "splits/2026-10-30-da-15-abc-split.json"
+      keep: ???
+
+output_dir: "output/mixture_da_tools"
+
+hf:
+  experiment: "difficult advice + benign tools: the plain base blend (2026-10-05-plain-mix) scaled around a 15% supervised-token share of one pool (B or C) of the da corpus, every synthetic row carrying 2-4 unused, operator-matched tool schemas (messages identical to the matching da-15 mixture)"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

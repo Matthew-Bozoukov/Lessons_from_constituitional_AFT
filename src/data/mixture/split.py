@@ -127,25 +127,29 @@ def load_split(path: str | Path) -> tuple[dict[str, str], dict]:
     return dict(doc["labels"]), dict(doc.get("meta") or {})
 
 
-def select(rows, labels: dict[str, str], keep: str, *, name: str) -> list:
-    """The rows of one pool. Every row must carry a label: a split that does not cover the
-    corpus it is applied to was made for another revision of it.
+def select(rows, labels: dict[str, str], keep: str | list[str], *, name: str) -> list:
+    """The rows of one pool, or of several (`keep` a list: a synth run re-exporting pools B
+    and C together). Every row must carry a label: a split that does not cover the corpus
+    it is applied to was made for another revision of it. A row's id is `metadata.scenario_id`
+    (a published corpus row) or `scenario_id` (a stage record of the run that made it).
 
     Raises:
-        ValueError: a row has no label, or no row has `keep`.
+        ValueError: a row has no label, or no row is in `keep`.
     """
+    keeps = [str(keep)] if isinstance(keep, str) else [str(k) for k in keep]
     out, unlabelled = [], 0
     for raw in rows:
-        sid = str((raw.get("metadata") or {}).get("scenario_id") or "")
+        md = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
+        sid = str(md.get("scenario_id") or raw.get("scenario_id") or "")
         lab = labels.get(sid)
         if lab is None:
             unlabelled += 1
-        elif lab == keep:
+        elif lab in keeps:
             out.append(raw)
     if unlabelled:
         raise ValueError(f"source {name!r}: {unlabelled} rows carry no split label; the split "
                          "was made for a different revision of this corpus")
     if not out:
-        raise ValueError(f"source {name!r}: no row is in pool {keep!r} (labels: "
+        raise ValueError(f"source {name!r}: no row is in pool(s) {keeps} (labels: "
                          f"{sorted(set(labels.values()))})")
     return out
