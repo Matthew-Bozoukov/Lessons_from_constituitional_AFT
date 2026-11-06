@@ -34,7 +34,7 @@ sources:
     # The tools corpus: pools B and C of 2026-10-30-da-synth @ 8fadea62 with tools on every row
     # (configs/data/synth/da-tools.yaml, 2026-11-06).
     dataset: "${oc.env:HF_ORG}/2026-11-06-da-tools-synth"
-    revision: ???
+    revision: "9bfe8f6daddb50557a21b6f0fb1e0569791d1a84"
     examples: 1
     reasoning: native
     balance_by: trait_id
