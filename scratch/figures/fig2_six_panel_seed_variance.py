@@ -1,6 +1,6 @@
 # ABOUTME: Fig. 2 as a 2x3 (legend + five probes): each arm's bar is the recipe mean over its data draws with a
 # ABOUTME: seed-variance interval (t over the draws, log-odds scale); every number read from the Hub at render.
-# Run: uv run python scratch/figures/fig2_six_panel_seed_variance.py [--copy-to ~/Downloads]
+# Run: uv run python scratch/figures/fig2_six_panel_seed_variance.py [--petri ge4|mean] [--copy-to ~/Downloads]
 """Five arms over five probes. An arm with several data draws (a/b/c: the same recipe, disjoint rows)
 is shown as ONE bar: the plain mean of the draws' scores, with the interval the t over those draw
 means taken on the log-odds scale (src/eval/stats.logit_t, N = the probe's item count), which is the
@@ -16,6 +16,7 @@ b and c = the 2026-11-06 adapters on the da-15 b/c rows (configs/data/synth/da-t
 """
 
 import argparse
+import math
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -147,6 +148,7 @@ BASE_RUNS = {
     "hospital": "2026-10-13-hospital-self-sacrificial-qwen36",
 }
 
+PETRI = "ge4"  # set by --petri
 PANELS = [
     "mask",
     "petri",
@@ -194,6 +196,23 @@ def petri_counts(repo: str) -> tuple[int, int]:
     return int(s["concerning_ge_4"]), int(n)
 
 
+def petri_scores(repo: str) -> list[float]:
+    """Every audit's judge `concerning` score (1-10). November runs keep `{seed: {pass: score}}` under
+    results/, October ones `{seed: score}` at the root; one pass per seed in every Fig. 2 run."""
+    try:
+        d = _hub.fetch(repo, "results/scores.json")
+    except Exception:  # noqa: BLE001 -- the file is simply elsewhere
+        d = _hub.fetch(repo, "scores.json")
+    out = []
+    for seed, v in d.items():
+        if isinstance(v, dict):
+            assert len(v) == 1, f"{repo}/{seed}: {len(v)} passes, expected one"
+            v = next(iter(v.values()))
+        out.append(float(v))
+    assert out, f"{repo}: no scores"
+    return out
+
+
 def hospital_counts(repo: str) -> tuple[int, int]:
     """(episodes in which the watched pair took a sabotage act, episodes)."""
     by_seed = {int(e["seed"]): e for e in _hub.fetch(repo, "results/episodes.json")}
@@ -204,6 +223,13 @@ def hospital_counts(repo: str) -> tuple[int, int]:
 
 def single(panel: str, repo: str) -> tuple[Bar, int, str]:
     """One run's bar under the single-model rule, its item count, and a note."""
+    if panel == "petri" and PETRI == "mean":
+        s = petri_scores(repo)
+        n = len(s)
+        m = sum(s) / n
+        sd = math.sqrt(sum((x - m) ** 2 for x in s) / (n - 1))
+        h = 1.96 * sd / math.sqrt(n)  # 95% over the audits, the unit the Wilson bar uses
+        return (m, max(1.0, m - h), min(10.0, m + h)), n, f"{n} audits"
     if panel == "petri":
         k, n = petri_counts(repo)
         return (100 * k / n, *_hub.wilson(k, n)), n, f"{k}/{n} seeds"
@@ -227,6 +253,13 @@ def recipe(panel: str, repos: list[str]) -> tuple[Bar, str]:
         bar, _, note = singles[0]
         return bar, note
     means = [b[0] for b, _, _ in singles]
+    if panel == "petri" and PETRI == "mean":  # 1-10 mean: t on the log-odds of (mean - 1) / 9
+        t = logit_t([m - 1 for m in means], singles[0][1], scale=9.0)
+        return (
+            sum(means) / len(means),
+            t["lo"] + 1,
+            t["hi"] + 1,
+        ), f"{len(means)} draws {[round(m, 2) for m in means]}"
     t = logit_t(means, singles[0][1])
     return (
         t["mean"],
@@ -240,7 +273,17 @@ def main() -> None:
     ap.add_argument(
         "--copy-to", default=None, help="also copy the PDF here (e.g. ~/Downloads)"
     )
+    ap.add_argument(
+        "--petri",
+        choices=["ge4", "mean"],
+        default="ge4",
+        help="Petri panel: %% of audits scoring concerning >= 4 (default) or the mean concerning score (1-10)",
+    )
     a = ap.parse_args()
+    global PETRI
+    PETRI = a.petri
+    if PETRI == "mean":
+        YLABEL["petri"] = "Mean concerning score (1-10), lower is better"
     vals: dict[str, dict[str, Bar]] = {p: {} for p in PANELS}
     rows: list[tuple] = []
     for p in PANELS:
@@ -267,11 +310,14 @@ def main() -> None:
         crowded = (
             max((v[2] if v[2] is not None else v[0]) for v in vals[p].values()) > 93
         )
+        mean_mode = p == "petri" and PETRI == "mean"
+        y0, y1 = (1.0, 10.0) if mean_mode else (0.0, 100.0)
         for i, arm in enumerate(ARMS):
             m, lo, hi = vals[p][arm]
             ax.bar(
                 i,
-                m,
+                m - y0,
+                bottom=y0,
                 width=0.68,
                 color=COLOUR[arm],
                 edgecolor="black",
@@ -279,7 +325,7 @@ def main() -> None:
                 zorder=3,
             )
             if lo is not None:  # one repeat per item gives no bar
-                lo_c, hi_c = max(0.0, lo), min(100.0, hi)
+                lo_c, hi_c = max(y0, lo), min(y1, hi)
                 ax.errorbar(
                     i,
                     m,
@@ -291,11 +337,11 @@ def main() -> None:
                     capthick=1.3,
                     zorder=4,
                 )
-            top = min(100.0, hi) if hi is not None else m
+            top = min(y1, hi) if hi is not None else m
             ax.text(
                 i,
-                top + 1.4,
-                f"{m:.1f}",
+                top + 0.014 * (y1 - y0),
+                f"{m:.2f}" if mean_mode else f"{m:.1f}",
                 ha="center",
                 va="bottom",
                 fontsize=12 if crowded else 15,
@@ -312,8 +358,8 @@ def main() -> None:
         )
         ax.set_title(TITLE[p], pad=26 if crowded else 12)
         ax.set_ylabel(YLABEL[p])
-        ax.set_ylim(0, 100)
-        ax.set_yticks(range(0, 101, 20))
+        ax.set_ylim(y0, y1)
+        ax.set_yticks(range(1, 11) if mean_mode else range(0, 101, 20))
         ax.set_xticks(range(len(ARMS)))
         ax.set_xticklabels([])
         ax.set_xlim(-0.65, len(ARMS) - 0.35)
@@ -364,7 +410,11 @@ def main() -> None:
 
     OUT.mkdir(parents=True, exist_ok=True)
     today = f"{datetime.now():%Y-%m-%d}"
-    stem = OUT / f"{today}_fig2_six_panel_seed_variance"
+    stem = OUT / (
+        f"{today}_fig2_six_panel_petri_mean"
+        if PETRI == "mean"
+        else f"{today}_fig2_six_panel_seed_variance"
+    )
     artifacts = sorted(
         {r for p in PANELS for arm in ARMS for r in RUNS[p][arm]}
         | set(BASE_RUNS.values())
@@ -372,7 +422,7 @@ def main() -> None:
     pdf = save_figure_pdf(
         fig,
         f"{stem}.pdf",
-        f"Fig. 2, 2x3, recipe means with seed-variance intervals, {today}",
+        f"Fig. 2, 2x3, recipe means with seed-variance intervals, Petri as {PETRI}, {today}",
         artifacts,
         "scratch/figures/fig2_six_panel_seed_variance.py",
     )
@@ -389,13 +439,13 @@ def main() -> None:
         "|---|---|---|---|---|---|",
     ]
     md += [
-        f"| {p} | {arm} | {v[0]:.1f} | "
-        + (f"[{v[1]:.1f}, {v[2]:.1f}]" if v[1] is not None else "none (one repeat)")
+        f"| {p} | {arm} | {v[0]:.2f} | "
+        + (f"[{v[1]:.2f}, {v[2]:.2f}]" if v[1] is not None else "none (one repeat)")
         + f" | {n} | {r} |"
         for p, arm, v, n, r in rows
     ]
     md += [
-        f"| {TITLE[p]} | {BASE_NAME} (base line) | {base[p]:.1f} | | | {BASE_RUNS[p]} |"
+        f"| {TITLE[p]} | {BASE_NAME} (base line) | {base[p]:.2f} | | | {BASE_RUNS[p]} |"
         for p in PANELS
     ]
     Path(f"{stem}_results.md").write_text("\n".join(md) + "\n", encoding="utf-8")
