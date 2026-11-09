@@ -311,7 +311,7 @@ def main() -> None:
             max((v[2] if v[2] is not None else v[0]) for v in vals[p].values()) > 93
         )
         mean_mode = p == "petri" and PETRI == "mean"
-        y0, y1 = (1.0, 10.0) if mean_mode else (0.0, 100.0)
+        y0, y1 = (1.0, 3.5) if mean_mode else (0.0, 100.0)
         for i, arm in enumerate(ARMS):
             m, lo, hi = vals[p][arm]
             ax.bar(
@@ -359,7 +359,7 @@ def main() -> None:
         ax.set_title(TITLE[p], pad=26 if crowded else 12)
         ax.set_ylabel(YLABEL[p])
         ax.set_ylim(y0, y1)
-        ax.set_yticks(range(1, 11) if mean_mode else range(0, 101, 20))
+        ax.set_yticks([1 + 0.5 * k for k in range(6)] if mean_mode else range(0, 101, 20))
         ax.set_xticks(range(len(ARMS)))
         ax.set_xticklabels([])
         ax.set_xlim(-0.65, len(ARMS) - 0.35)
