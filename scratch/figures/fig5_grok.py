@@ -40,7 +40,7 @@ matplotlib.use("Agg")
 BASE_NAME = "Qwen3.6-27B"
 ARMS = ["control", "da", "grok", "qwen", "qwen37", "gpt"]
 ARM = {"control": "+ Control (Standard SFT)", "da": "+ Difficult Advice mix",
-       "grok": "+ Grok mix", "qwen": "+ Qwen mix", "qwen37": "+ Qwen 3.7 mix", "gpt": "+ GPT mix"}
+       "grok": "+ Grok 4.3 / 4.6 mix", "qwen": "+ Qwen3.6-27B (self) mix", "qwen37": "+ Qwen3.7 Flash / Max mix", "gpt": "+ GPT mix"}
 COLOUR = {"control": "#5a6472", "da": "#7e22ce", "grok": "#e8762b", "qwen": "#1e3a5f",   # the submitted figure's hues
           "qwen37": "#6f8fb8", "gpt": "#2a9d8f"}
 BASE_COLOUR = "#c1121f"
@@ -148,9 +148,9 @@ def main(out_dir: str = "output/figures") -> None:
             ax.spines[sp].set_visible(False)
     handles = [Line2D([0], [0], color=BASE_COLOUR, linestyle=(0, (2.5, 2.5)), linewidth=1.8, label=BASE_NAME)]
     handles += [Patch(facecolor=COLOUR[a], edgecolor="black", label=ARM[a]) for a in ARMS]
-    fig.legend(handles=handles, frameon=False, loc="upper center", ncol=len(handles), bbox_to_anchor=(0.5, 1.0),
+    fig.legend(handles=handles, frameon=False, loc="upper center", ncol=4, bbox_to_anchor=(0.5, 1.0),
                fontsize=18, columnspacing=1.6, handlelength=1.8, handleheight=1.0)
-    fig.subplots_adjust(top=0.80, bottom=0.14, wspace=0.30)
+    fig.subplots_adjust(top=0.74, bottom=0.14, wspace=0.30)
     bands(fig, axes, PANELS)
 
     png = figure_path(out_dir, "fig5-generators", ext="png")
