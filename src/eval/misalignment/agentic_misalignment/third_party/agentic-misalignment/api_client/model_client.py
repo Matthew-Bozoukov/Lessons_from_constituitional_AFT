@@ -609,13 +609,6 @@ class ModelClient:
             for msg in messages
         ]
         
-        # VENDORED PATCH (2026-11-10): the runner names ONE OpenRouter provider for the classifier
-        # (OPENROUTER_PROVIDER_PIN, from configs/eval/agentic_misalignment.yaml
-        # `classifier_provider`); fallbacks are off, so the route cannot change between runs.
-        pin = os.getenv("OPENROUTER_PROVIDER_PIN")
-        if pin:
-            kwargs.setdefault("extra_body", {})["provider"] = {"order": [pin], "allow_fallbacks": False}
-
         api_start = time.time()
         response = await self.openrouter_client.chat.completions.create(
             model=model_id,

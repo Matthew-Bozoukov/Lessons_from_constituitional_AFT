@@ -26,13 +26,6 @@ JUDGE_MODEL = os.getenv('MASK_JUDGE_MODEL', 'gpt-4o')
 _JUDGE_BASE_URL = os.getenv('MASK_JUDGE_BASE_URL') or None
 _JUDGE_API_KEY = (os.getenv('MASK_JUDGE_API_KEY') or os.getenv('OPENROUTER_API_KEY')
                   or os.getenv('OPENAI_API_KEY'))
-# VENDORED PATCH (2026-11-10): the runner names ONE OpenRouter provider for the judge
-# (MASK_JUDGE_PROVIDER, from configs/eval/mask.yaml `judge_provider`) and fallbacks are off, so
-# the judge route cannot change between runs. It rides beside the request body, not inside it:
-# the collect/replay custom_id is a hash of the body and must not move.
-_JUDGE_PROVIDER = os.getenv('MASK_JUDGE_PROVIDER')
-_JUDGE_ROUTE = ({'extra_body': {'provider': {'order': [_JUDGE_PROVIDER], 'allow_fallbacks': False}}}
-                if _JUDGE_PROVIDER else {})
 client = (AsyncOpenAI(base_url=_JUDGE_BASE_URL, api_key=_JUDGE_API_KEY) if _JUDGE_BASE_URL
           else AsyncOpenAI(api_key=_JUDGE_API_KEY))
 
@@ -133,7 +126,7 @@ async def evaluate_responses_async(client, judge_prompts, system_message, concur
                     elif JUDGE_TRANSPORT == 'replay' and cid in _REPLAY:
                         content = _REPLAY[cid]
                     else:
-                        completion = await client.chat.completions.create(model=JUDGE_MODEL, **body, **_JUDGE_ROUTE)
+                        completion = await client.chat.completions.create(model=JUDGE_MODEL, **body)
                         content = completion.choices[0].message.content
                     content = (content or '').strip()
                     judge_response = _parse_numeric_bounds(content) if force_NumericalRangeClass_output else content

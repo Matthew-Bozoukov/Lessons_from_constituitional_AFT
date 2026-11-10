@@ -11,10 +11,6 @@
 # Provider Might Invalidate Your Research", LessWrong 2026). One provider per model,
 # exact ids only — no prefix inference, no per-config overrides. The provider that
 # actually served each response is recorded on ChatResult.provider.
-# Two evals do not read this file, because their vendored harnesses call OpenRouter
-# themselves: MASK (configs/eval/mask.yaml `judge_provider`) and agentic misalignment
-# (configs/eval/agentic_misalignment.yaml `classifier_provider`). Each names its one
-# provider in its own config, pinned 2026-11-10 to the route its earlier runs used.
 #
 # Only models ACTUALLY IN USE are listed — an unlisted model fails fast with
 # instructions, and its entry is added when it first comes into real use. (Eval API

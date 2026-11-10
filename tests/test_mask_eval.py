@@ -94,14 +94,11 @@ def test_batch_judge_writes_what_the_batch_answered_and_counts_the_rest(tmp_path
 
     def fake_run_batch(model, requests, stage, state_path, collect, **kw):
         seen.update(model=model, n=len(requests), stage=stage)
-        # every batched request names the one provider, fallbacks off, beside the collected body
-        assert all(b["provider"] == {"order": ["google-vertex/global"], "allow_fallbacks": False}
-                   and b["max_completion_tokens"] == 500 for b in requests.values())
         for cid in list(requests)[:3]:      # the batch answers three of four
             collect(cid, {"choices": [{"message": {"content": f"Answer: {cid}"}}]})
 
     monkeypatch.setattr(runner, "run_batch", fake_run_batch)
-    stats = runner.batch_judge(exchange, "google/gemini-3-flash-preview", "google-vertex/global")
+    stats = runner.batch_judge(exchange, "google/gemini-3-flash-preview")
     assert seen == {"model": "google/gemini-3-flash-preview", "n": 4, "stage": "mask_judge"}
     assert stats == {"requested": 4, "returned": 3, "fallback_live": 1}
     got = [json.loads(l) for l in (tmp_path / "judge_exchange.results.jsonl").read_text().splitlines()]
@@ -157,8 +154,6 @@ def test_the_judge_verdict_is_its_last_answer_line_reduced_to_a_letter(judge, ve
 
 def test_the_config_declares_the_runner_knobs():
     assert CFG["judge_batch"] is False and CFG["subsample"] is None and CFG["mode"] == "think"
-    # the judge is pinned to one OpenRouter provider in the config, never free-routed
-    assert CFG["judge_provider"] == "google-vertex/global"
     assert int(CFG["gen_concurrency"]) >= 10 and "seed" in CFG
     # The generation ceiling is the family's verified cap: asking for more only queues.
     qwen36 = yaml.safe_load(open("configs/models/qwen36.yaml", encoding="utf-8"))
@@ -374,7 +369,6 @@ def test_a_two_pass_run_scores_each_pass_and_publishes_them_nested(tmp_path, mon
     def fake_stage(argv, env, cwd, log_dir=None):
         data = Path(env["MASK_DATA_DIR"])
         calls.append((argv[0], data.parent.name))
-        assert env["MASK_JUDGE_PROVIDER"] == "google-vertex/global"   # the pin reaches every stage
         if argv[0] == "generate_responses.py":
             (data / "responses").mkdir(exist_ok=True)
             for a in ("continuations", "statistics"):
@@ -394,8 +388,7 @@ def test_a_two_pass_run_scores_each_pass_and_publishes_them_nested(tmp_path, mon
     monkeypatch.setenv("OPENROUTER_API_KEY", "x")
     target = types.SimpleNamespace(model_name="m", base_url="http://x", api_key="k", release=lambda: None,
                                    spec=types.SimpleNamespace(hf_path="org/m", revision="r", mode="think"))
-    cfg = OmegaConf.create({"smoke": True, "passes": 2, "judge_model": "j", "judge_provider": "google-vertex/global",
-                            "judge_concurrency": 1,
+    cfg = OmegaConf.create({"smoke": True, "passes": 2, "judge_model": "j", "judge_concurrency": 1,
                             "temperature": 1.0, "max_tokens": 10, "lie_k": 1, "gen_concurrency": 4})
     out = tmp_path / "run"
     summary = runner.run(target, cfg, out)
