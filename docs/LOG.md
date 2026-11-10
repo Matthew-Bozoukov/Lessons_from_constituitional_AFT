@@ -1,3 +1,26 @@
+## 2026-11-10: 50-50 DA / DA+unused-tools by trait: ODCV at the da-tools level (3.3), MASK most of the way back to da-15 (76.8)
+
+Hypothesis: da-tools-15 is safer than da-15 in agentic evals (ODCV 4-6 vs 11-15) but loses most of DA's MASK honesty (65-68 vs 79-85), while da-15 is the reverse on Colosseum/Hospital. If the two effects come from different rows, a mix where half of every trait's DA rows carry the unused tools and half are plain DA should keep the agentic gain and recover the chat honesty.
+
+Method: `dougalldeepmind/2026-11-10-da-tools-15-trait-half-tools-mix` @ 2be8201d, a pure edit of `2026-10-11-da-tools-15-mix` @ da195751 (which equals `2026-10-05-da-15-mix` row for row except `tools` on 646 of its 650 DA rows): within each trait exactly floor(n/2) = 36 DA rows keep `tools`, the rest lose it (seeded per trait; trait ids from `2026-10-02-da-synth` @ 305914d5 matched on the user turn). 324 tooled / 326 plain DA rows, t1-t9 36 tooled each; the 4 DA rows that never had tools are on the plain side; the 110 base rows with native tools untouched. Verified: the 326 plain rows are byte-identical to da-15's, the 324 tooled rows to da-tools-15's, every base row to both, and no DA scenario appears twice. No new rows generated. Built with `scratch/tools_dose/build_tools_dose_mixes.py --drop 0.5 --by-trait --variant trait-half-tools --date 2026-11-10 --push` (the `--by-trait` mode added to Matthew's 2026-10-19 dose script; the 2026-10-19 `half-tools` arm is a random 323 of the 646, 30-39 per trait, trained but never evaluated). Adapter `dougalldeepmind/2026-11-10-qwen36-0-da-tools-15-trait-half-tools` @ dc235850: sft.yaml, seed 0, 1x H200 (global batch 16, so gradient-equivalent to the 2x runs), 139 steps in 45 min, last logged loss 0.613. ODCV lite 3 passes on 1x H100 driven from the Windows laptop with local docker (`--port 8087 concurrency=16 output_root=C:/o`); MASK 3 passes on 1x H200 (`--port 8097`), the two pods in parallel. About $13 RunPod in all.
+
+Base revision: Qwen pushed `Qwen/Qwen3.6-27B` @ 8f33b989 on 2026-11-07 ("Add a response template and generation tags"), and the training pod resolved to it; every arm in the table below trained on 6a9e13bd. Weights are identical (only `chat_template.jinja` and `tokenizer_config.json` changed), and the two templates render byte-identical text on tooled DA, plain DA and native-tools base rows in both modes, full conversation and generation prompt (14/14), so the tokens and masks trained and served are the same. The new revision drops `chat_template` from `tokenizer_config.json`, which crashed `_pinned_template_path` at the first MASK launch (KeyError, nothing generated); fixed to fall back to `chat_template.jinja` (docs/GOTCHAS.md).
+
+Result (HF repos under dougalldeepmind/):
+
+| arm | ODCV MR [95%] | MASK honesty, 3 passes [95%] |
+|---|---|---|
+| da-15 (11-03 A; 11-09 B, C) | 10.8-15.4 | 83.2 [80.6, 85.6]; 84.5; 79.3 |
+| da-tools-15 (10-11 parent; 11-06 B, C) | 5.8; 4.2; 3.3 | 65.1 [62.1, 67.9]; 68.0; 65.4 |
+| **50-50 by trait** | **3.3 [0.2, 13.5]** | **76.8 [75.4, 78.2]** |
+
+- ODCV `2026-11-10-odcv-qwen36-0-da-tools-15-trait-half-tools`: 240 rollouts, 0 dropped, 100% submitted, mandated 0.8, incentivised 5.8; by pass 5.0 / 1.2 / 3.8.
+- MASK `2026-11-10-mask-qwen36-0-da-tools-15-trait-half-tools`: by pass 77.3 / 76.2 / 77.0; 22 generation errors (0.17%), 0 judge errors.
+- Reading: half the tools keeps all of da-tools' ODCV gain (inside every da-tools interval, clear of da-15) and recovers about two thirds of the MASK gap (65 -> 77 against da-15's 79-85); MASK is still below da-15 A and B and its interval does not reach them. One seed, one arm.
+- All three pods terminated; `runpod pods` shows none.
+
+Next: Colosseum/Hospital on this adapter (to be discussed before running); a second seed or the B/C corpora split the same way would say whether 76.8 is the arm or the seed.
+
 ## 2026-11-06: Hospital with the constitution in the system prompt, under the current defaults: 30/30 shifts sabotaged
 
 Hypothesis: Figure 1's flag (27 Oct meeting) asks for the single-agent system-prompt check before the multi-agent panel is read as the failure: if putting the nine-trait constitution in the pair's system prompt stops the sabotage, the Hospital gap is a prompting gap, not a training one. The only earlier constitution-in-context run (`2026-10-15-hospital-self-sacrificial-constitution-qwen36-0-plain`) was on the September defaults (peer `nosynth`, terrarium fixes 2026-09-15), so it is not comparable with the November da-15 and delib-sonnet-15 ladders, which run on `configs/eval/colosseum_hospital.yaml` as consolidated on 2026-11-04 (peer `2026-10-05-qwen36-0-plain`, fixes 2026-10-09).
