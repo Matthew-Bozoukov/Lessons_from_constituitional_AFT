@@ -3,6 +3,28 @@
 
 # GOTCHAS
 
+## Adapters trained after 2026-11-07 sit on a different Qwen3.6 commit from every earlier one (2026-11-10)
+
+Training records the base repo's head, so an adapter trained after Qwen's 2026-11-07 template commit
+records `8f33b989`, while every earlier adapter (the Hospital/Colosseum plain peer included) records
+`6a9e13bd`. A multi-agent eval co-serves both on one vLLM server, which loads one revision, so it
+restarted back and forth between the two (4 restarts, 1 EngineDeadError, no shifts). Fixed in
+`ServedTarget.sibling`: an adapter on another commit of the same base is served on the caller's
+commit when the Hub's content hashes match for every file but `chat_template.jinja`,
+`tokenizer_config.json` and `README.md` (true for these two commits), and refused otherwise.
+The Hospital summary records `peer_base_revision_from`. A future Qwen commit that touches the
+weights or tokenizer will be refused, not silently mixed.
+
+## The Hospital `fleet.py` does not run from Windows: `pgrep` is missing (2026-11-10)
+
+`fleet.py run` rented the pod, pushed the HF env, then died in bring-up with
+`FileNotFoundError: [WinError 2]` and terminated the pod (3 min, no cost). `watchdog_alive` shells
+out to `pgrep`, which Git for Windows does not ship; the keeper (`sleep` + `start_new_session`) and
+`alive(pid)` assume POSIX too. From a Windows driver, use the single-pod path instead:
+`runpod up <name> --eval colosseum_hospital --target <arm> --clone-repo --push_env`, add
+`OPENROUTER_API_KEY` to the pod's `/root/work/.env`, and run `uv run evals --name colosseum_hospital
+--target <arm>` on the box under nohup (the 2026-11-06 constitution cell's method, docs/LOG.md).
+
 ## Qwen3.6-27B moved its chat template out of `tokenizer_config.json` on 2026-11-07 (2026-11-10)
 
 `Qwen/Qwen3.6-27B` @ 8f33b989 ("Add a response template and generation tags") deletes the
