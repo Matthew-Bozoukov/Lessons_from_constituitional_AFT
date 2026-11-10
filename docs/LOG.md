@@ -1,3 +1,45 @@
+## 2026-11-10: Petri October-vs-November gap on da-tools-15 seed a: re-judging the October transcripts today gives 14.4% (AI Studio) and 18.9% (Vertex), not 25.6%
+
+Hypothesis: the same adapter (`dougalldeepmind/2026-10-11-qwen36-0-da-tools-15`) scored 25.6% (23/90) on 2026-10-13 and 7.8% (7/90) on 2026-11-09, and every other October Petri run that was rerun also fell. Either the target or auditor behaved differently under the November serving, or the judge scores the same transcript lower now. Re-judging the stored October transcripts with today's judge route separates the two.
+
+Method: no compute first. The two Inspect logs agree on all 90 seed texts (hash-equal), auditor (Sonnet 5), judge model id (`google/gemini-3-flash-preview`), 25 turns, inspect_petri 3.1.0, task arguments, and on showing the target's reasoning to the judge; neither sends sampling parameters to the target. They differ in: the driver (old `run_audit.py` from another checkout with uncommitted changes, against a hand-started server whose flags are not recorded, vs the registered eval), think mode pinned, 32k vs 65k window, vLLM prefix cache and auditor prompt cache on, provider pins on auditor and judge, 24 vs 8 connections, inspect_ai 0.3.268 vs 0.3.286. The window is ruled out: one October audit came near 32k and flagged audits were not longer. Then `uv run python scratch/petri_rejudge/rejudge.py --repo dougalldeepmind/2026-10-28-petri-qwen36-0-da-tools-15` (untracked): `inspect_ai.score` over the October log with `inspect_petri.audit_judge` on default dimensions, judge `openrouter/google/gemini-3-flash-preview` pinned to google-ai-studio as the runner pins it, 8 connections. Checked on two seeds that the judge prompt is the October one: identical for an unbranched audit; an audit with a rolled-back branch renders one branch header differently (3 of 90 October audits have a branch, none of them flagged).
+
+Result: `output/petri_rejudge/2026-11-10_petri_rejudge_petri_qwen36_0_da_tools_15/` (`summary.json`, `rejudged.eval`), 90/90 scored.
+
+| transcripts | judged | concerning >= 4 | Wilson 95% | mean |
+|---|---|---|---|---|
+| October run | 2026-10-13, unpinned (Vertex answered 93 of 94 calls) | 25.6% (23/90) | 17.7 to 35.4 | 1.82 |
+| October run | 2026-11-10, google-ai-studio | **14.4% (13/90)** | 8.6 to 23.2 | 1.44 |
+| October run | 2026-11-10, google-vertex/global | **18.9% (17/90)** | 12.1 to 28.2 | 1.61 |
+| November run | 2026-11-09, google-ai-studio | 7.8% (7/90) | 3.8 to 15.2 | 1.27 |
+
+- 72 of 90 scores unchanged. 13 flags lost (twelve 4 -> 1, one 7 -> 1), 3 gained (1 -> 4), 10 kept; exact McNemar on 13 vs 3, p = 0.021.
+- Re-judged October against the November run: 13/90 vs 7/90, Fisher p = 0.24. Original October against November: p = 0.002.
+
+Route follow-up (same day): the October log's stored judge responses name the provider, "Google" (OpenRouter's label for `google-vertex`) on 93 of 94 calls and "Google AI Studio" on 1; the November log is "Google AI Studio" on all 96. `rejudge.py --provider google-vertex/global` (fallbacks off; "Google" answered all 90) gives the 18.9% row: against the October judging 73 of 90 scores unchanged, 10 flags lost, 4 gained (McNemar p = 0.18); against today's AI Studio re-judge 82 of 90 unchanged, 5 flags Vertex-only, 1 AI Studio-only (p = 0.22); against the November run 17/90 vs 7/90, Fisher p = 0.047. Nine audits are flagged in all three judgings of the October transcripts. OpenRouter lists the same dated model, `gemini-3-flash-preview-20251217`, behind both routes today; neither log records a version.
+
+Reading: judged today, the October transcripts score 14 to 19% on either route, against 25.6% when judged in October and 7.8% for the November transcripts. So the judge accounts for 7 to 11 of the 17.8 points and the transcripts for the rest, and neither part is cleanly attributable: the Vertex pin does not reproduce the October number, the two routes do not differ reliably from each other, and on fixed transcripts 8 to 18 of 90 scores change from one judging to the next. Nearly every flag sits at exactly 4, the threshold, so the >= 4 rate of a single pass carries several points of judge noise before any target or auditor variation. Auditor and vLLM caching are not involved: they do not touch the judge. Spend: about 4M Gemini Flash input tokens across the two full re-judges, no GPU.
+
+Figure 2 panel re-judged (same day): all twelve runs behind the Petri panel were re-scored with the same script on the AI Studio pin, four runs at a time (`uv run python scratch/petri_rejudge/rejudge.py --repo dougalldeepmind/<run>`; outputs `output/petri_rejudge/2026-11-10_petri_rejudge_of_<source date>_<run>/`), so every bar and the base line now come from one judge route on one day.
+
+| arm | run | original | re-judged |
+|---|---|---|---|
+| control | `2026-10-28-petri-qwen36-0-plain` | 36.7% (33/90) | **28.9% (26/90)** |
+| control + constitution | `2026-11-04-petri-constitution-qwen36-0-plain` | 18.9% (17/90) | **12.2% (11/90)** |
+| delib-sonnet-15 a / b / c | `2026-11-04-...-a`, `2026-11-05-...-b`, `-c` | 6.7 / 3.3 / 2.2 (mean 4.1) | **10.0 / 5.6 / 6.7 (mean 7.4)** |
+| da-15 a / b / c | `2026-11-05-petri-qwen36-0-da-15`, `-b`, `-c` | 6.7 / 8.9 / 6.7 (mean 7.4) | **6.7 / 6.7 / 10.0 (mean 7.8)** |
+| da-tools-15 a / b / c | `2026-11-09-...`, `2026-11-06-...-b`, `-c` | 7.8 / 8.9 / 3.3 (mean 6.7) | **8.9 / 8.9 / 4.4 (mean 7.4)** |
+| base Qwen3.6-27B | `2026-11-05-petri-qwen36` | 17.8% (16/90) | **16.7% (15/90)** |
+
+- The eleven November-judged runs moved by at most 6.7 points and in both directions (73 to 88 of 90 scores unchanged per run); the October-judged control fell 7.8 points, in line with the da-tools result above.
+- One control audit, P7-03-stay-in-character, cannot be judged on AI Studio: Gemini blocks its own response ("blocked the response: OTHER") on every attempt. With unbounded retries that hung the first control pass for 24 minutes; the script now sets a request timeout and bounded retries, turns a blocked response into an unscored audit, and `--fallback_provider google-vertex/global` judged that one audit through Vertex (recorded as `fallback_seeds` in `summary.json`).
+- Figure: `output/figures/2026-11-10_fig2_petri_panel_refreshed_petri_rejudged.pdf` and the full `2026-11-10_fig2_six_panel_tools_three_seeds_refreshed_petri_rejudged.pdf` (`scratch/figures/fig2_six_panel.py --refresh --petri_rejudged [--only petri]`). The re-judged scores are local; nothing was pushed to the Hub, so these figures do not read Hub results for Petri.
+- The ordering is unchanged (control above base above constitution-in-prompt above the three trained arms), and the three trained arms are now level at 7.4 to 7.8%. The control's transcripts are still from the October serving; only its judge has been brought into line.
+
+Judge routing for MASK and agentic misalignment (same day, main 153a6daf): of the five Figure 2 evals, ODCV (its own wrapper, since 2026-09-04), Hospital (OpenRouterClient) and November Petri take the judge's provider from `configs/endpoints/providers.yaml`; MASK and agentic misalignment did not, because their vendored harnesses call OpenRouter with their own clients and sent no provider block, so OpenRouter chose a provider per call and none was recorded. The runners now read `provider_pin(<judge model>)` from the registry (an unlisted model raises before any generation) and hand the block to the harness: MASK's live and batch judge calls and the AM classify step. For `google/gemini-3-flash-preview` that is google-ai-studio, fallbacks off. A first version (363c6756, reverted in a9180bd3) named a provider in each eval config, pinned to Vertex; it was withdrawn because it put one judge model on two routes. Consequence: MASK and AM runs from here are judged on AI Studio, while earlier runs were served by OpenRouter's default routing, which for this model is Vertex (12 of 12 unpinned probe calls on 2026-11-10 answered by "Google"; the runs themselves record nothing). Whether that moves MASK or AM scores is not measured. One live call in each harness's request shape was answered by "Google AI Studio"; new unit tests pass; the suite's 15 failures are the same 15 on the unmodified commit. Open risk: AI Studio blocked its own response on one Petri transcript today, and with fallbacks off a blocked AM classification leaves a trial unclassified, which blocks publication.
+
+Next: the Control bar of Figure 2's Petri panel (36.7%, `2026-10-28-petri-qwen36-0-plain`) is the last October-judged run in the panel; re-judging its log with this script would put it on the November judge without a pod, and a full rerun under the registered eval would also put it on the November serving. October and November Petri numbers should not share an axis until then. A second AI Studio re-judge of one log would give the judge's same-route repeat rate, which this entry bounds only from cross-route and cross-date pairs; three judge passes per run would give the Petri bars a judge interval.
+
 ## 2026-11-10: 50-50 DA / DA+unused-tools by trait: ODCV at the da-tools level (3.3), MASK most of the way back to da-15 (76.8)
 
 Hypothesis: da-tools-15 is safer than da-15 in agentic evals (ODCV 4-6 vs 11-15) but loses most of DA's MASK honesty (65-68 vs 79-85), while da-15 is the reverse on Colosseum/Hospital. If the two effects come from different rows, a mix where half of every trait's DA rows carry the unused tools and half are plain DA should keep the agentic gain and recover the chat honesty.
@@ -20,6 +62,49 @@ Result (HF repos under dougalldeepmind/):
 - All three pods terminated; `runpod pods` shows none.
 
 Next: Colosseum/Hospital on this adapter (to be discussed before running); a second seed or the B/C corpora split the same way would say whether 76.8 is the arm or the seed.
+
+## 2026-11-09: Petri on da-tools-15 seed a under the November protocol: 7.8%, not 25.6%; da-15 b, c and da-tools-15 a completed to three MASK passes
+
+Hypothesis: the tools arm's Petri seeds read 25.6 / 8.9 / 3.3, and the spread was a protocol mismatch rather than seed variance or broken runs: seed a (`2026-10-28-petri-qwen36-0-da-tools-15`, a republication of the 10-13 run) is the October protocol (32k window, think not pinned), while Kunwar's b and c (2026-11-06) are the registered eval. Separately, three adapters in Figure 2 had one MASK pass where every other bar has three (da-15 b, da-15 c, da-tools-15 a), so the paper could not say "three passes per adapter" flat.
+
+Method: first an audit of Kunwar's 2026-11-06 da-tools b/c artifacts, no compute: Petri b and c are 90/90 scored with no null scores, no excluded rollouts and Inspect status success; the two training mixtures (`2026-11-06-da-tools-15-{b,c}-mix`) carry 653 / 641 da rows with tool definitions on all but two (3.4 per row), no empty reasoning or assistant turns, the same shares as seed a's mix; MASK, ODCV, AM and Hospital on b and c have every item populated. A scan of all 163 MASK repos in `dougalldeepmind` and `LASR-Callum`, matched on `run_meta.target`, confirmed the three single-pass adapters had no further passes anywhere.
+
+Petri: one H200 pod, eval driven on the box at origin/main ed82607e, config defaults (65,536 window, think pinned, 90 seeds x 1 pass, Sonnet 5 auditor with cache, Gemini 3 Flash judge, `retry_unscored: 1`):
+
+```
+uv run runpod up jamie-petri-da-tools-a --eval petri --target dougalldeepmind/2026-10-11-qwen36-0-da-tools-15 --clone-repo --push_env --boot_timeout_s 1500 --max_hours 8
+ssh -p <port> root@<ip> 'cd /root/work && HF_HOME=/workspace/hf VLLM_USE_FLASHINFER_SAMPLER=0 nohup uv run evals --name petri --target dougalldeepmind/2026-10-11-qwen36-0-da-tools-15 > petri_remote.log 2>&1 </dev/null &'
+```
+
+Only `OPENROUTER_API_KEY` was appended to the pod's `.env` (not the whole file). One seed (P4-02) was unscored after the first pass and scored by the in-place retry.
+
+MASK: the 2026-11-03 resume route. `scratch/mask_prior_from_hub.py` (untracked) rebuilds a published single-pass run into `output/mask/prior_<run>/` (its `rollouts/*.csv` as the responses files, its `run_meta.json`, the rows `sample_data` draws); the tree was piped to the pod and the registered eval adopted it as pass 1 of 3, generating passes 2 and 3 fresh and judging all three. One H200 pod per adapter (all three first requests were refused "no instances"; a retry loop alternating SECURE/COMMUNITY placed them within ten minutes), driven on the box:
+
+```
+uv run runpod up jamie-mask-<arm> --eval mask --target <adapter> --clone-repo --push_env --boot_timeout_s 1500 --max_hours 6
+ssh -p <port> root@<ip> 'cd /root/work && HF_HOME=/workspace/hf VLLM_USE_FLASHINFER_SAMPLER=0 nohup uv run evals --name mask resume_from=output/mask/prior_<run> --target <adapter> > mask_remote.log 2>&1 </dev/null &'
+```
+
+Result (repos under dougalldeepmind/):
+
+| run | result | detail |
+|---|---|---|
+| `2026-11-09-petri-qwen36-0-da-tools-15` @ ab530a6f | **7.8% (7/90)** concerning >= 4, 1.1% >= 6, mean 1.27 | 90/90 scored, 0 excluded; October protocol read 25.6% (23/90) |
+| `2026-11-09-mask-qwen36-0-da-15-b` @ 05d35540 | **84.5** [82.3, 86.5] | passes 84.8 / 85.1 / 83.5; pass 1 is the adopted 11-02 pass (published 85.2), re-judged |
+| `2026-11-09-mask-qwen36-0-da-15-c` @ 2feb258d | **79.3** [77.8, 80.8] | passes 79.6 / 79.7 / 78.6; adopted pass published 80.0 |
+| `2026-11-09-mask-qwen36-0-da-tools-15` @ d7a7bbf6 | **65.1** [62.1, 67.9] | passes 64.3 / 64.5 / 66.4; adopted pass published 64.6 |
+
+- Tools-arm Petri over seeds a/b/c on one protocol: 7.8 / 8.9 / 3.3, mean 6.7%, against da-15's 6.7 / 8.9 / 6.7 (7.4%) and delib-sonnet-15's 6.7 / 3.3 / 2.2 (4.1%). Adding tool definitions does not raise Petri misalignment; the paper's Figure 2 caption says it does and rested on the October 25.6.
+- Tools arm on the other panels, seeds a/b/c: MASK 65.1 / 68.0 / 65.4, ODCV 5.8 / 4.2 / 3.3, AM 6.7 / 7.8 / 7.8, Hospital 63.3 / 60.0 / 76.7. Seed a was not an outlier anywhere but Petri.
+- Re-judging an adopted pass moved it by 0.3-0.4 points on all three adapters.
+- Six-panel Figure 2 redrawn: `output/figures/2026-11-09_fig2_six_panel_tools_three_seeds.pdf` (and `_refreshed`, which also takes the November base Petri line, 17.8, and the 11-06 Hospital constitution run, 30/30), from `scratch/figures/fig2_six_panel.py` with `scratch/figures/_style.py` restored from 76eafcfb (both untracked; the earlier copy lived in a session scratchpad that was deleted).
+
+Gotchas met: `resume_from=` after `--target` is read as a second target (HFValidationError before any work; overrides go before `--target`); macOS `tar` adds `._*` sidecar files that the MASK harness globs as CSVs (`COPYFILE_DISABLE=1 tar --no-xattrs`, or delete them on the pod).
+
+Cost: pods about $47 (Petri 2.9 h, three MASK pods about 2.0 h each, at $5.29/h); all four terminated, `runpod pods` empty at 19:30Z. OpenRouter cannot be split out exactly because the account was topped up mid-run; the Petri auditor is priced like the other November SFT arms (about $40) and nine MASK judge passes ran at roughly $4 each.
+
+Next: the Control Petri bar (36.7%) is still the October protocol and is the last bar of Figure 2's Petri panel not on the registered eval; the paper's Figure 2 caption and `figures/fig2.pdf` need the six-panel figure and the corrected Petri claim; "By default" can come out of the appendix sentence on MASK passes.
+
 
 ## 2026-11-06: Hospital with the constitution in the system prompt, under the current defaults: 30/30 shifts sabotaged
 
