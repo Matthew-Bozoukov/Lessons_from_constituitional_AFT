@@ -1078,8 +1078,14 @@ class VllmServer:
     def _pinned_template_path(self, base_model: str, mode: str, revision: str | None = None) -> str | None:
         if mode == "default":
             return None
-        with open(hf_download(base_model, "tokenizer_config.json", **({"revision": revision} if revision else {}))) as f:
-            template = json.load(f)["chat_template"]
+        rev = {"revision": revision} if revision else {}
+        with open(hf_download(base_model, "tokenizer_config.json", **rev), encoding="utf-8") as f:
+            template = json.load(f).get("chat_template")
+        if template is None:
+            # Newer repos keep the template only in chat_template.jinja (Qwen3.6-27B from
+            # 8f33b989, 2026-11-07); transformers reads that file when the key is absent.
+            with open(hf_download(base_model, "chat_template.jinja", **rev), encoding="utf-8") as f:
+                template = f.read()
         return self.executor.write_file(f"chat_template_{mode}.jinja",
                                         pin_template(template, mode))
 

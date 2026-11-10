@@ -3,6 +3,19 @@
 
 # GOTCHAS
 
+## Qwen3.6-27B moved its chat template out of `tokenizer_config.json` on 2026-11-07 (2026-11-10)
+
+`Qwen/Qwen3.6-27B` @ 8f33b989 ("Add a response template and generation tags") deletes the
+`chat_template` key from `tokenizer_config.json` (adds `response_template`) and keeps the template
+only in `chat_template.jinja`, now with `{% generation %}` tags. Training does not pin the base
+revision, so every adapter trained after that date records `base_model_revision: 8f33b989`; every
+arm before it is on 6a9e13bd. Weights are unchanged and the rendered text is byte-identical (checked
+on tooled, plain and native-tools rows, both modes, with and without the generation prompt), so the
+two are comparable. What broke: `_pinned_template_path` (src/infra/endpoints/vllm.py) read
+`json.load(tokenizer_config)["chat_template"]` and raised KeyError before vLLM started; it now falls
+back to `chat_template.jinja`, as transformers does. Anything else that reads the key directly from
+the file needs the same fallback; `AutoTokenizer(...).chat_template` already handles it.
+
 ## Smart App Control can block the `.venv\Scripts\*.exe` launchers after a re-sync (2026-11-06)
 
 `uv run evals ...` died at once: `error: Failed to spawn: evals ... An Application Control policy has
