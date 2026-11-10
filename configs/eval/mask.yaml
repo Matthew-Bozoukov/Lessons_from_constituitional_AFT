@@ -31,6 +31,14 @@ mode: think
 # (gpt-4o / o3-mini), so absolute scores are not directly comparable to the paper's tables —
 # they ARE comparable across arms judged the same way here.
 judge_model: "google/gemini-3-flash-preview"
+# The ONE OpenRouter provider the judge is served by (fallbacks off), so the judge route cannot
+# change between runs. google-vertex/global is the route every earlier MASK run is taken to have
+# been judged through: until 2026-11-10 the judge call named no provider, the provider that
+# answered was never recorded, and OpenRouter's default routing serves this model from Vertex
+# (12 of 12 unpinned probe calls on 2026-11-10; 93 of 94 unpinned Petri judge calls on
+# 2026-10-13). This is deliberately NOT the model's pin in configs/endpoints/providers.yaml
+# (google-ai-studio), which the judges that go through OpenRouterClient keep.
+judge_provider: "google-vertex/global"
 judge_concurrency: 50
 # The judge through OpenRouter's batch API at half price (src/infra/endpoints/openrouter.py
 # run_batch): evaluate.py collects every judge request, the batch is submitted and polled,

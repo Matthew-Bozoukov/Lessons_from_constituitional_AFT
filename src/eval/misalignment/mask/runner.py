@@ -272,21 +272,23 @@ def _run_stage(argv: list[str], env: dict, cwd: Path, log_dir: Path | None = Non
     return result.stdout
 
 
-def batch_judge(exchange: Path, judge_model: str) -> dict:
+def batch_judge(exchange: Path, judge_model: str, judge_provider: str) -> dict:
     """Push the judge requests evaluate.py collected through OpenRouter's batch API.
 
     Reads `<exchange>.requests.jsonl` ({custom_id, body}), writes `<exchange>.results.jsonl`
     ({custom_id, content}) for every request the batch answered. A request the batch did
     not return (a failed or expired job, a refused item) is simply absent, and evaluate.py's
     `replay` transport judges it live. Submission state sits beside the exchange, so a
-    killed run resumes the same jobs.
+    killed run resumes the same jobs. Every request carries the `judge_provider` pin (fallbacks
+    off), the same route evaluate.py's live call takes.
     """
+    pin = {"order": [judge_provider], "allow_fallbacks": False}
     requests = {}
     with (exchange.parent / f"{exchange.name}.requests.jsonl").open(encoding="utf-8") as fh:
         for line in fh:
             if line.strip():
                 rec = json.loads(line)
-                requests[rec["custom_id"]] = rec["body"]
+                requests[rec["custom_id"]] = {**rec["body"], "provider": pin}
     results: dict[str, str] = {}
 
     def collect(cid: str, payload: dict) -> None:
@@ -462,7 +464,7 @@ def _score_pass(gen: dict, target, cfg: DictConfig, modelname: str, release_targ
         print(f">>> MASK pass {k}: collecting judge requests for {cfg.judge_model} (batch)", flush=True)
         _run_stage(judge_argv, {**env, "MASK_JUDGE_TRANSPORT": "collect",
                                 "MASK_JUDGE_EXCHANGE": str(exchange)}, _HARNESS, logs)
-        batch_stats = batch_judge(exchange, str(cfg.judge_model))
+        batch_stats = batch_judge(exchange, str(cfg.judge_model), str(cfg.judge_provider))
         print(f">>> MASK pass {k}: replaying the batch's verdicts (live fallback for the rest)", flush=True)
         _run_stage(judge_argv, {**env, "MASK_JUDGE_TRANSPORT": "replay",
                                 "MASK_JUDGE_EXCHANGE": str(exchange)}, _HARNESS, logs)
@@ -567,6 +569,10 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     env["MASK_TARGET_BASE_URL"] = target.base_url
     env["MASK_TARGET_API_KEY"] = target.api_key
     env["MASK_JUDGE_MODEL"] = str(cfg.judge_model)
+    # One provider for the judge, fallbacks off (configs/eval/mask.yaml `judge_provider`).
+    assert cfg.get("judge_provider"), "mask: judge_provider is required (configs/eval/mask.yaml); the judge is never free-routed"
+    judge_provider = str(cfg.judge_provider)
+    env["MASK_JUDGE_PROVIDER"] = judge_provider
     env["MASK_JUDGE_BASE_URL"] = OPENROUTER_BASE_URL
     env["MASK_JUDGE_API_KEY"] = os.environ["OPENROUTER_API_KEY"]
     env["MASK_GEN_CONCURRENCY"] = str(gen_concurrency)
@@ -621,6 +627,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         "model": modelname,
         "mode": target.spec.mode,
         "judge": str(cfg.judge_model),
+        "judge_provider": str(cfg.judge_provider),
         "overall_honesty_score": combined["overall_honesty_score"],
         "honesty_ci95": combined["honesty_ci95"],       # t over passes, log-odds scale; None for one pass
         "ci_method": combined["ci_method"],

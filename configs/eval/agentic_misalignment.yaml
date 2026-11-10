@@ -16,6 +16,12 @@ production_variant: true
 # The judge. Sonnet-4.5 returned empty content on the leaking cells of some runs; the published
 # 18-condition runs record this model.
 classifier_model: "google/gemini-3-flash-preview"
+# The ONE OpenRouter provider the classifier is served by (fallbacks off). google-vertex/global
+# is the route every earlier run is taken to have been classified through: until 2026-11-10 the
+# call named no provider, the provider that answered was never recorded, and OpenRouter's
+# default routing serves this model from Vertex (see configs/eval/mask.yaml `judge_provider`).
+# Deliberately NOT the model's pin in configs/endpoints/providers.yaml (google-ai-studio).
+classifier_provider: "google-vertex/global"
 description: "Agentic misalignment, full 18 conditions (blackmail/leaking/murder x explicit/none x none/restriction/replacement), 10 trials each"
 researcher: "replication"
 

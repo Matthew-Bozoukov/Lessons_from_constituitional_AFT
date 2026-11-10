@@ -105,3 +105,11 @@ PATCHED (original patches plus 2026-09-28 generation-integrity repairs)
        samples took up to 540 s and two timed out at 600 s mid-generation; one
        failed sample fails the whole grid. Generation length is still capped
        by max_tokens, and no sample that finished under 600 s is affected.
+
+  api_client/model_client.py (2026-11-10)
+   19. _call_openrouter reads OPENROUTER_PROVIDER_PIN and, when set, sends
+       `provider: {order: [it], allow_fallbacks: false}` as extra_body. The runner
+       sets it for the classify_results step only, from
+       configs/eval/agentic_misalignment.yaml `classifier_provider`. Before this
+       the classifier call named no provider and OpenRouter chose one per call,
+       unrecorded.

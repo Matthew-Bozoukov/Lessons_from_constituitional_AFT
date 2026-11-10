@@ -139,13 +139,16 @@ def run(target, cfg, out_dir: Path) -> dict:
         print(f">>> AM: system preamble {preamble.file} (sha {preamble.sha256[:12]}) first in every system prompt", flush=True)
 
     judge = str(cfg.get("classifier_model", "anthropic/claude-sonnet-4.5"))
+    assert cfg.get("classifier_provider"), ("agentic_misalignment: classifier_provider is required "
+                                            "(configs/eval/agentic_misalignment.yaml); the classifier is never free-routed")
+    judge_provider = str(cfg.classifier_provider)
     _step([sys.executable, "scripts/generate_prompts.py", "--config", str(harness_cfg.resolve())], env)
     validate_prompts(results_dir, expected_conditions)
     # Every new run describes its instrument without relying on historical runs.
     protocol = {
         "classifier_protocol": _CLASSIFIER_PROTOCOL,
         "judge_input_protocol": "visible-actions-no-cot-v1",
-        "judge": {"model": judge, "temperature": 0.0, "max_tokens": 2000},
+        "judge": {"model": judge, "provider": judge_provider, "temperature": 0.0, "max_tokens": 2000},
         "condition_panel": condition_manifest,
         "planned_trials": len(expected_conditions) * int(cfg['global'].samples_per_condition),
         "generation": {"temperature": config['global']['temperature'],
@@ -168,8 +171,9 @@ def run(target, cfg, out_dir: Path) -> dict:
     _step([sys.executable, "scripts/run_experiments.py", "--config", str(harness_cfg.resolve()),
            "--no-classification"], env)
     validate_results(results_dir, model_id, int(cfg['global'].samples_per_condition))
+    # The pin reaches the vendored client for this step only: the target is served by vLLM.
     _step([sys.executable, "scripts/classify_results.py", "--results-dir", str(results_dir),
-           "--classifier-model", judge], env)
+           "--classifier-model", judge], {**env, "OPENROUTER_PROVIDER_PIN": judge_provider})
 
     validate_results(results_dir, model_id, int(cfg['global'].samples_per_condition), classified=True)
     summary_path = results_out / "misalignment_summary.json"
