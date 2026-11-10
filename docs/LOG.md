@@ -61,10 +61,12 @@ Result (HF repos under dougalldeepmind/):
 - ODCV `2026-11-05-odcv-qwen36-0-da-amoral-da-amoral-neutral-sectors-15`: 240 rollouts, 0 dropped, 98.3% submitted, mandated 25.0, incentivised 22.5.
 - MASK `2026-11-05-mask-qwen36-0-da-amoral-da-amoral-neutral-sectors-15`: 23/4,438 generation errors (0.5%), 0 judge errors.
 - AM `2026-11-05-am-qwen36-0-da-amoral-da-amoral-neutral-sectors-15`: blackmail 18/60, leaking 1/60, murder 10/60 (da-amoral-15: 7 / 3 / 11). The whole AM rise is blackmail.
-- The three evals do not agree on a direction: ODCV moves 3.7 points better, MASK 5.5 points and AM 4.4 points worse. The ODCV and AM moves are inside each other's intervals; MASK has no per-run interval here. One seed per arm, so removing the 90 moral rows (about 1.9% of supervised tokens) has no effect this design can separate from run-to-run noise. The audited arm stays far from da-15 on all three, as da-amoral-15 did.
+- The three evals do not agree on a direction: ODCV moves 3.7 points better, MASK 5.5 points and AM 4.4 points worse. The ODCV and AM moves are inside each other's intervals. The single-pass MASK had no interval; the three-pass one (line below) separates. With one seed per arm, only the MASK drop clears run-to-run noise; whether it is a seed effect is untested. The audited arm stays far from da-15 on all three, as da-amoral-15 did.
 - All three pods terminated; `runpod pods` shows only a teammate's pod.
 
-Next steps: a second seed of both da-amoral arms would say whether the MASK and AM drops are real. The blackmail rise is the one number worth reading rollouts for.
+- 2026-11-06, MASK to three passes: `uv run python scripts/run_eval.py --name mask --target <adapter> --server <H200 pod> --port 8097 passes=2` pushed `2026-11-06-mask-qwen36-0-da-amoral-da-amoral-neutral-sectors-15` (0.7% and 0.4% generation failures, 0 judge failures; 56.8 over its two passes). It used the same seed-0 rows as the 11-05 single pass, so the two runs pool to three passes a row, as `scratch/figures/fig4_stakes.py`'s `mask()` pools artifacts. **Pooled: 56.9 [55.6, 58.3]** (per-item SE, figure rule), against da-amoral-15's three-pass 63.2 [61.9, 64.6]. The intervals do not overlap, so the MASK drop holds at this resolution. It is still one seed per arm. Pod terminated.
+
+Next steps: a second seed of both da-amoral arms would say whether the MASK and AM drops are seed effects. The blackmail rise is the one number worth reading rollouts for.
 
 ## 2026-11-05: Canary pair on agentic misalignment: both arms reuse the trained reasoning in ~60% of traces, with or without tools
 
