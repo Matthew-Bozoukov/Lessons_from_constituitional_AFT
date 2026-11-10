@@ -609,6 +609,14 @@ class ModelClient:
             for msg in messages
         ]
         
+        # VENDORED PATCH (2026-11-10): the runner hands over the classifier model's OpenRouter
+        # provider pin (OPENROUTER_PROVIDER_PIN, the JSON `provider` block from
+        # configs/endpoints/providers.yaml), so the classifier is served by one provider with
+        # fallbacks off, as every judge that goes through OpenRouterClient is.
+        pin = os.getenv("OPENROUTER_PROVIDER_PIN")
+        if pin:
+            kwargs.setdefault("extra_body", {})["provider"] = json.loads(pin)
+
         api_start = time.time()
         response = await self.openrouter_client.chat.completions.create(
             model=model_id,

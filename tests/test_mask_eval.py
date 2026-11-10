@@ -94,6 +94,9 @@ def test_batch_judge_writes_what_the_batch_answered_and_counts_the_rest(tmp_path
 
     def fake_run_batch(model, requests, stage, state_path, collect, **kw):
         seen.update(model=model, n=len(requests), stage=stage)
+        # every batched request carries the registry's pin for the judge model, beside the collected body
+        assert all(b["provider"] == runner.provider_pin(model) and b["max_completion_tokens"] == 500
+                   for b in requests.values())
         for cid in list(requests)[:3]:      # the batch answers three of four
             collect(cid, {"choices": [{"message": {"content": f"Answer: {cid}"}}]})
 
@@ -369,6 +372,8 @@ def test_a_two_pass_run_scores_each_pass_and_publishes_them_nested(tmp_path, mon
     def fake_stage(argv, env, cwd, log_dir=None):
         data = Path(env["MASK_DATA_DIR"])
         calls.append((argv[0], data.parent.name))
+        # the registry's pin for the judge model reaches every stage
+        assert json.loads(env["MASK_JUDGE_PROVIDER"]) == runner.provider_pin("google/gemini-3-flash-preview")
         if argv[0] == "generate_responses.py":
             (data / "responses").mkdir(exist_ok=True)
             for a in ("continuations", "statistics"):
@@ -388,7 +393,8 @@ def test_a_two_pass_run_scores_each_pass_and_publishes_them_nested(tmp_path, mon
     monkeypatch.setenv("OPENROUTER_API_KEY", "x")
     target = types.SimpleNamespace(model_name="m", base_url="http://x", api_key="k", release=lambda: None,
                                    spec=types.SimpleNamespace(hf_path="org/m", revision="r", mode="think"))
-    cfg = OmegaConf.create({"smoke": True, "passes": 2, "judge_model": "j", "judge_concurrency": 1,
+    cfg = OmegaConf.create({"smoke": True, "passes": 2, "judge_model": "google/gemini-3-flash-preview",
+                            "judge_concurrency": 1,
                             "temperature": 1.0, "max_tokens": 10, "lie_k": 1, "gen_concurrency": 4})
     out = tmp_path / "run"
     summary = runner.run(target, cfg, out)

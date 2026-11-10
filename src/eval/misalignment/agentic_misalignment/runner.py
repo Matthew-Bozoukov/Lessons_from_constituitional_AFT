@@ -16,6 +16,7 @@ import yaml
 from omegaconf import OmegaConf
 from dotenv import load_dotenv
 
+from src.infra.endpoints.openrouter import provider_pin
 from src.eval.layout import publish_layout
 from src.eval.preamble import Preamble
 from src.eval.misalignment.agentic_misalignment import aggregate_eval, build_rollouts
@@ -139,13 +140,16 @@ def run(target, cfg, out_dir: Path) -> dict:
         print(f">>> AM: system preamble {preamble.file} (sha {preamble.sha256[:12]}) first in every system prompt", flush=True)
 
     judge = str(cfg.get("classifier_model", "anthropic/claude-sonnet-4.5"))
+    # The classifier is served by the ONE provider configs/endpoints/providers.yaml pins for its
+    # model (an unlisted model raises here, before any generation).
+    judge_pin = provider_pin(judge)
     _step([sys.executable, "scripts/generate_prompts.py", "--config", str(harness_cfg.resolve())], env)
     validate_prompts(results_dir, expected_conditions)
     # Every new run describes its instrument without relying on historical runs.
     protocol = {
         "classifier_protocol": _CLASSIFIER_PROTOCOL,
         "judge_input_protocol": "visible-actions-no-cot-v1",
-        "judge": {"model": judge, "temperature": 0.0, "max_tokens": 2000},
+        "judge": {"model": judge, "provider": judge_pin, "temperature": 0.0, "max_tokens": 2000},
         "condition_panel": condition_manifest,
         "planned_trials": len(expected_conditions) * int(cfg['global'].samples_per_condition),
         "generation": {"temperature": config['global']['temperature'],
@@ -168,8 +172,10 @@ def run(target, cfg, out_dir: Path) -> dict:
     _step([sys.executable, "scripts/run_experiments.py", "--config", str(harness_cfg.resolve()),
            "--no-classification"], env)
     validate_results(results_dir, model_id, int(cfg['global'].samples_per_condition))
+    # The vendored client calls OpenRouter itself, so the pin is handed to it, for this step only
+    # (the target is served by vLLM).
     _step([sys.executable, "scripts/classify_results.py", "--results-dir", str(results_dir),
-           "--classifier-model", judge], env)
+           "--classifier-model", judge], {**env, "OPENROUTER_PROVIDER_PIN": json.dumps(judge_pin)})
 
     validate_results(results_dir, model_id, int(cfg['global'].samples_per_condition), classified=True)
     summary_path = results_out / "misalignment_summary.json"

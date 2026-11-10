@@ -1,5 +1,5 @@
 # ABOUTME: THE provider registry — one OpenRouter provider per model id, read by
-# ABOUTME: src/endpoints/openrouter.py on every call; an unlisted model is a hard error.
+# ABOUTME: src/infra/endpoints/openrouter.py on every call; an unlisted model is a hard error.
 # Consumed automatically; there is no script to run against this file.
 #
 # Why: hosts of the same weights are NOT interchangeable — they differ in quantization
@@ -11,6 +11,9 @@
 # Provider Might Invalidate Your Research", LessWrong 2026). One provider per model,
 # exact ids only — no prefix inference, no per-config overrides. The provider that
 # actually served each response is recorded on ChatResult.provider.
+# Evals whose vendored harness calls OpenRouter with its own client (ODCV, MASK, agentic
+# misalignment) do not pass through OpenRouterClient: their runners read `provider_pin`
+# from this file and hand the block to the harness. A new vendored harness must do the same.
 #
 # Only models ACTUALLY IN USE are listed — an unlisted model fails fast with
 # instructions, and its entry is added when it first comes into real use. (Eval API

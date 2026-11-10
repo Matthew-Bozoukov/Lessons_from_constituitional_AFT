@@ -58,7 +58,7 @@ from omegaconf import DictConfig, OmegaConf
 from src.eval.layout import publish_layout
 from src.eval.preamble import Preamble
 from src.eval.stats import logit_t
-from src.infra.endpoints.openrouter import OPENROUTER_BASE_URL, run_batch
+from src.infra.endpoints.openrouter import OPENROUTER_BASE_URL, provider_pin, run_batch
 from src.utils import write_run_meta
 
 # The harness writes its CSVs with pandas, which caps nothing; the stdlib reader used below
@@ -279,14 +279,16 @@ def batch_judge(exchange: Path, judge_model: str) -> dict:
     ({custom_id, content}) for every request the batch answered. A request the batch did
     not return (a failed or expired job, a refused item) is simply absent, and evaluate.py's
     `replay` transport judges it live. Submission state sits beside the exchange, so a
-    killed run resumes the same jobs.
+    killed run resumes the same jobs. Every request carries the judge model's provider pin
+    (configs/endpoints/providers.yaml), the same route evaluate.py's live call takes.
     """
+    pin = provider_pin(judge_model)
     requests = {}
     with (exchange.parent / f"{exchange.name}.requests.jsonl").open(encoding="utf-8") as fh:
         for line in fh:
             if line.strip():
                 rec = json.loads(line)
-                requests[rec["custom_id"]] = rec["body"]
+                requests[rec["custom_id"]] = {**rec["body"], "provider": pin}
     results: dict[str, str] = {}
 
     def collect(cid: str, payload: dict) -> None:
@@ -567,6 +569,11 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     env["MASK_TARGET_BASE_URL"] = target.base_url
     env["MASK_TARGET_API_KEY"] = target.api_key
     env["MASK_JUDGE_MODEL"] = str(cfg.judge_model)
+    # The judge is served by the ONE provider configs/endpoints/providers.yaml pins for its model
+    # (an unlisted model raises here, before any generation). The vendored harness calls OpenRouter
+    # with its own client, so the pin is handed to it; it never reads the registry itself.
+    judge_pin = provider_pin(str(cfg.judge_model))
+    env["MASK_JUDGE_PROVIDER"] = json.dumps(judge_pin)
     env["MASK_JUDGE_BASE_URL"] = OPENROUTER_BASE_URL
     env["MASK_JUDGE_API_KEY"] = os.environ["OPENROUTER_API_KEY"]
     env["MASK_GEN_CONCURRENCY"] = str(gen_concurrency)
@@ -621,6 +628,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         "model": modelname,
         "mode": target.spec.mode,
         "judge": str(cfg.judge_model),
+        "judge_provider": provider_pin(str(cfg.judge_model)),
         "overall_honesty_score": combined["overall_honesty_score"],
         "honesty_ci95": combined["honesty_ci95"],       # t over passes, log-odds scale; None for one pass
         "ci_method": combined["ci_method"],
