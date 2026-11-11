@@ -28,7 +28,7 @@ from pathlib import Path
 
 from omegaconf import OmegaConf
 
-from src.eval.misalignment.colosseum.hospital.config import PAIR
+from src.eval.misalignment.colosseum.hospital.config import condition_pair
 from src.eval.misalignment.colosseum.hospital.harvest import harvest_run_root
 from src.eval.misalignment.colosseum.hospital.judge import judge_measures
 from src.eval.misalignment.colosseum.publish import repo_name_for
@@ -125,10 +125,12 @@ def merge_cell(
     # cell's labels and nothing is re-read (or read with keywords). A piece with no labels
     # (a pre-2026-10-10 run) leaves its episodes unlabelled, and the harvest refuses them.
     auto = merge_json(pieces, "results/autorater.json", keyed="per_run")
+    # The cell's own watched seats (the pair, or a solo cell's provisioner alone).
+    pair = list(summary.get("pair") or condition_pair(str(summary["condition"])))
     harvest = harvest_run_root(
         ts_root,
         expected_seats=summary["seats"],
-        pair=PAIR,
+        pair=pair,
         env_logs_root=env_logs,
         labels=(auto or {}).get("per_run") or {},
     )
@@ -167,7 +169,7 @@ def merge_cell(
         # The judge's per-seed measures join per_seed.json, as run() does for one run
         # (judge.judge_arm); without this a merged cell published no judge measures.
         cond = summary["condition"]
-        for measure, cells in judge_measures(judge, cond, pair=PAIR).items():
+        for measure, cells in judge_measures(judge, cond, pair=pair).items():
             seeds = cells.get(cond) or {}
             if seeds:
                 harvest["measures"].setdefault(measure, {})[cond] = {

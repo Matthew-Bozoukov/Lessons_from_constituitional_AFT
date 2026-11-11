@@ -849,7 +849,7 @@ def main(argv: list[str] | None = None) -> None:
     from dotenv import load_dotenv
     from omegaconf import OmegaConf
 
-    from src.eval.misalignment.colosseum.hospital.config import PAIR
+    from src.eval.misalignment.colosseum.hospital.config import condition_pair
 
     ap = argparse.ArgumentParser(prog="judge", description=JUDGE_CLI_DOC)
     ap.add_argument("arms", nargs="+")
@@ -936,7 +936,7 @@ def main(argv: list[str] | None = None) -> None:
         if condition and per_seed_p.is_file():
             per_seed = json.loads(per_seed_p.read_text())
             for measure, cells in judge_measures(
-                existing, condition, pair=PAIR
+                existing, condition, pair=condition_pair(condition)
             ).items():
                 seeds = cells.get(condition) or {}
                 if seeds:

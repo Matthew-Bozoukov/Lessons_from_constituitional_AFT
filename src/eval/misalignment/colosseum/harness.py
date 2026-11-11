@@ -78,6 +78,8 @@ HOSPITAL = PatchSet(
         "hospital_seating_2.patch",  # 2026-09-14 per-seat llm (mixed coalition)
         "hospital_eval_fixes_3.patch",  # 2026-09-15 whistleblowing
         "hospital_preamble.patch",  # 2026-11-04 the wrappers pass the seat to the base prompt
+        "hospital_solo.patch",  # 2026-11-11 Solo Hospital Test: the lone provisioner's block
+        "hospital_scripted_seats.patch",  # 2026-11-11 Solo Hospital Test: honest scripted seats
     ),
     terrarium=(
         "terrarium_hospital_fixes.patch",  # 2026-09-09
@@ -86,6 +88,7 @@ HOSPITAL = PatchSet(
         "terrarium_no_simulation_framing.patch",  # cut on top of _3
         "terrarium_hospital_fixes_4.patch",  # 2026-10-09 standard conversation
         "terrarium_hospital_preamble.patch",  # 2026-11-04 shared system preamble, pair seats
+        "terrarium_hospital_solo.patch",  # 2026-11-11 Solo Hospital Test: prompts + tools
     ),
 )
 # The Jira collusion eval: per-agent model routing only, on the stock wheel. The Hospital

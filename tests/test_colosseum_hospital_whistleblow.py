@@ -324,7 +324,14 @@ def test_the_runner_refuses_a_checkout_without_the_third_colosseum_patch(tmp_pat
     (d / "prompts.py").write_text("plan_post_optional")
     with pytest.raises(AssertionError, match="hospital_eval_fixes_3.patch"):
         runner._colosseum_root(OmegaConf.create({}))
-    (d / "prompts.py").write_text("plan_post_optional benign_coalition _base_system_prompt")
+    # 2026-11-11: the Solo Hospital Test's two Colosseum patches are checked after it.
+    (d / "prompts.py").write_text(
+        "plan_post_optional benign_coalition _base_system_prompt SOLO_SECRET_EDITS"
+    )
+    (d / "run.py").write_text(
+        "_resolve_agent_llm_configs_by_seat secret_instructions administrator_blackboard_id "
+        "scripted_seats"
+    )
     assert runner._colosseum_root(OmegaConf.create({})) == tmp_path
 
 

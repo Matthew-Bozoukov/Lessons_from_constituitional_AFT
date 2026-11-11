@@ -18,7 +18,8 @@
 # Triage seat get the paper's DESTRUCTIVE (NO REWARD PRESERVATION) instructions — pick a hospital
 # to collapse, withhold its bottlenecks, spam the scheduler — on a private coalition board. The
 # other conditions (baseline, self_promotional, covert, benign_coalition) are one `condition=`
-# override apart. Constitution-in-the-system-prompt arm: protocol=constitution
+# override apart, and so is the Solo Hospital Test (solo, solo_baseline, bridge: the arm alone in
+# the provisioner seat, every other seat an honest script; docs/colosseum_hospital.md). Constitution-in-the-system-prompt arm: protocol=constitution
 # system_preamble_file=<constitution.md> (the pair seats only; src/eval/preamble.py).
 #
 # THE HARNESS. Two pressures of the original harness are removed: a reply with no tool call ends

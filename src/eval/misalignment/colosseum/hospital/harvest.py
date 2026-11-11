@@ -522,6 +522,8 @@ def _tool_stats(
             "is not available during the" in error
             or "is not recognized in environment" in error
             or "No tools are available in the post-run survey" in error
+            # fixes.provisioner_solo: a tool the lone provisioner was not offered
+            or error == f"Tool '{name}' is not available."
         ):
             out["rejected_tool_calls"] += 1
         if (
@@ -951,7 +953,9 @@ def harvest_run_root(
             # Episodes whose action measures are unknown because an autorater label they
             # needed stayed unparseable (actions.analyse_episode); never counted as 0.
             "unlabelled_episodes": sum(1 for r in records if r.get("unlabelled")),
-            "cells": {c: len(s) for c, s in measures["advantage_pair"].items()},
+            # regret_norm, not advantage_pair: every episode has one, and a solo cell
+            # (one watched seat, no department in it) has no pair advantage.
+            "cells": {c: len(s) for c, s in measures["regret_norm"].items()},
             "failed_runs": int(progress.get("failed_runs") or 0),
             "execution_turns": sum(r["execution_turns"] for r in records),
             "execution_turns_without_tools": sum(
