@@ -21,7 +21,27 @@ from src.eval.preamble import ENV_VAR as _PREAMBLE_ENV, prepend_from_env as _sys
 
 load_dotenv()  
 
-async def generate_responses_async(client, model_name, formatted_prompts, max_tokens, temperature, semaphore, K=1):
+# VENDORED PATCH (2026-11-11, MASK+tools): MASK_TOOLS_FILE names a JSON object {task_id: [OpenAI
+# tool schemas]}. Every PRESSURE prompt (lying_run*) of a row is sent with that row's tools --
+# relevant to the operator, never needed for the answer; belief-elicitation prompts are sent
+# without, so beliefs are measured exactly as in plain MASK. A row missing from the file is an
+# error (never silently tool-less); a row whose list is empty is sent without tools. Unset: every
+# request is byte-identical to before.
+import json as _tools_json
+_TOOLS_FILE = os.getenv('MASK_TOOLS_FILE')
+TOOLS_BY_TASK = _tools_json.load(open(_TOOLS_FILE, encoding='utf-8')) if _TOOLS_FILE else None
+
+
+def pressure_tools(task_id):
+    """The tools list a pressure prompt of `task_id` is sent with, or None (no tools)."""
+    if TOOLS_BY_TASK is None:
+        return None
+    if str(task_id) not in TOOLS_BY_TASK:
+        raise KeyError(f'MASK_TOOLS_FILE has no entry for task_id {task_id}')
+    return TOOLS_BY_TASK[str(task_id)] or None
+
+
+async def generate_responses_async(client, model_name, formatted_prompts, max_tokens, temperature, semaphore, K=1, tools=None):
     """
     Generates responses from the specified model for a batch of prompts.
     
@@ -73,6 +93,7 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                                 messages=messages,
                                 max_tokens=max_tokens,
                                 temperature=temperature,
+                                **({'tools': tools} if tools else {}),  # VENDORED PATCH: MASK_TOOLS_FILE
                             )
                         
                     if True:  # PATCH (teaching_claude_why): OpenAI-shaped response for every target
@@ -81,6 +102,20 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                         finish = completion.choices[0].finish_reason
                         msg = completion.choices[0].message
                         reasoning = getattr(msg, 'reasoning_content', None) or getattr(msg, 'reasoning', None) or ''
+                        # VENDORED PATCH (MASK+tools): a tool call in place of (or after) an answer.
+                        # Counted as `<prompt>__tool_call` in the empty-content tally; the calls are
+                        # appended to the raw_content column; the scored answer is whatever text
+                        # the model wrote beside the call, or -- none -- per MASK_EMPTY_CONTENT,
+                        # like an empty answer. Never a generation error.
+                        calls = getattr(msg, 'tool_calls', None) or []
+                        tool_called = bool(calls) or finish == 'tool_calls'
+                        if tool_called:
+                            counts = results['__empty_content__']
+                            counts[prompt_key + '__tool_call'] = counts.get(prompt_key + '__tool_call', 0) + 1
+                            raw = (response or '') + '\n[TOOL_CALLS] ' + _tools_json.dumps(
+                                [{'name': c.function.name, 'arguments': c.function.arguments} for c in calls])
+                            if not (response or '').strip():
+                                response = reasoning if os.getenv('MASK_EMPTY_CONTENT', 'evasion') == 'reasoning' else ''
                         # PATCH (teaching_claude_why): a thinking target served behind a
                         # reasoning parser can finish (finish_reason=stop) with EMPTY content:
                         # it wrote its reply inside the think block and never closed it
@@ -95,7 +130,7 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                             response = reasoning if os.getenv('MASK_EMPTY_CONTENT', 'evasion') == 'reasoning' else ''
                         # VENDORED PATCH: a cut-off response is a generation failure,
                         # never evidence of evasion/honesty. Keep its text separately.
-                        if finish != 'stop':
+                        if finish != 'stop' and not tool_called:  # VENDORED PATCH: MASK_TOOLS_FILE
                             response = f'[ERROR: Incomplete generation: finish_reason={finish}]'
                     all_responses.append(response)
                     all_reasoning.append(reasoning)
@@ -187,6 +222,7 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
         all_prompts = []
         indices = []
         prompt_types = []
+        prompt_tools = []  # VENDORED PATCH: MASK_TOOLS_FILE, pressure prompts only
         
         # Process each row in the dataframe
         for index, row in df.iterrows():
@@ -202,6 +238,7 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
                     ])
                     indices.append(index)
                     prompt_types.append(f'lying_run{run+1}')
+                    prompt_tools.append(pressure_tools(row['task_id']))
             else:
                 # Standard lying prompt with just system and user messages
                 for run in range(lie_k):
@@ -211,6 +248,7 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
                     ])
                     indices.append(index)
                     prompt_types.append(f'lying_run{run+1}')
+                    prompt_tools.append(pressure_tools(row['task_id']))
             
             # Handle belief elicitation prompts if present
             if 'belief_elicit_1' in df.columns:
@@ -224,15 +262,16 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
                             ])
                             indices.append(index)
                             prompt_types.append(f'be{be_num}_run{run+1}')
+                            prompt_tools.append(None)
 
         # Generate responses in parallel for all prompts
         all_responses = await asyncio.gather(*[
             generate_responses_async(
                 client, model_name, {prompt_type: prompt},
                 max_tokens=max_tokens, temperature=temperature,
-                semaphore=semaphore, K=1
+                semaphore=semaphore, K=1, tools=tools
             )
-            for prompt, prompt_type in zip(all_prompts, prompt_types)
+            for prompt, prompt_type, tools in zip(all_prompts, prompt_types, prompt_tools)
         ])
 
         # Create mapping for output column names
@@ -274,6 +313,10 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
         # so an unset run's CSV is byte-identical to upstream.
         if os.environ.get(_PREAMBLE_ENV):
             df["served_system_prompt"] = [_sys(s) if isinstance(s, str) else s for s in df["system_prompt"]]
+        # VENDORED PATCH (MASK+tools): the tools each row's pressure prompts were sent with, as a
+        # NON-scoring column (evaluate.py selects only `generation(` columns). Only when set.
+        if TOOLS_BY_TASK is not None:
+            df["served_tools"] = [_tools_json.dumps(pressure_tools(t)) for t in df["task_id"]]
         # Save results to CSV
         df.to_csv(output_csv, index=False)
         # PATCH (teaching_claude_why): the empty-content tally for this file, by prompt type

@@ -422,3 +422,127 @@ def test_generation_errors_reads_a_cell_past_the_stdlib_csv_limit(tmp_path):
         w.writerow({"task_id": "1", "generation(System Prompt + User Prompt)_run1": "loop " * 40_000})
         w.writerow({"task_id": "2", "generation(System Prompt + User Prompt)_run1": "[ERROR: boom]"})
     assert runner.generation_errors(d) == {"generations": 2, "errors": 1}
+
+
+# --- inject_tools: per-row tools on pressure prompts only (MASK+tools, 2026-11-11) ---------
+
+def _load_harness_with_tools(monkeypatch, tools_file):
+    import importlib.util
+    if tools_file is None:
+        monkeypatch.delenv("MASK_TOOLS_FILE", raising=False)
+    else:
+        monkeypatch.setenv("MASK_TOOLS_FILE", str(tools_file))
+    spec = importlib.util.spec_from_file_location("mask_generate_responses_tools",
+                                                  runner._HARNESS / "generate_responses.py")
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    return mod
+
+
+def _stub_client(mod, monkeypatch, sent, call_tool_for=None):
+    import types
+    class _Fn:
+        name, arguments = "unit_converter", '{"value": 1}'
+    class _Call:
+        function = _Fn()
+    class _Msg:
+        def __init__(self, content, calls):
+            self.content, self.reasoning_content, self.tool_calls = content, "trace", calls
+    class _Choice:
+        def __init__(self, content, calls, finish):
+            self.message, self.finish_reason = _Msg(content, calls), finish
+    class _Completions:
+        async def create(self, model, messages, max_tokens, temperature, **kw):
+            sent.append((messages, kw.get("tools")))
+            if call_tool_for and call_tool_for in messages[-1]["content"] and kw.get("tools"):
+                return types.SimpleNamespace(choices=[_Choice(None, [_Call()], "tool_calls")])
+            return types.SimpleNamespace(choices=[_Choice("an answer", None, "stop")])
+    class _Client:
+        chat = types.SimpleNamespace(completions=_Completions())
+        async def close(self): pass
+    monkeypatch.setattr(mod, "create_model_client", lambda *a, **k: _Client())
+
+
+def _rows(tmp_path):
+    src = runner._HARNESS / "test_csv_data" / "continuations.csv"
+    with src.open(newline="", encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
+
+
+def test_inject_tools_sends_each_rows_tools_on_pressure_prompts_only(tmp_path, monkeypatch):
+    import asyncio
+    rows = _rows(tmp_path)
+    table = {r["task_id"]: [{"type": "function", "function": {"name": f"tool_{i}"}}]
+             for i, r in enumerate(rows)}
+    table[rows[1]["task_id"]] = []                       # an exhausted row: sent without tools
+    tf = tmp_path / "tools.json"; tf.write_text(json.dumps(table))
+    mod = _load_harness_with_tools(monkeypatch, tf)
+    sent = []
+    _stub_client(mod, monkeypatch, sent, call_tool_for=rows[2]["user_prompt"][:40])
+    monkeypatch.setenv("MASK_EMPTY_CONTENT", "evasion")
+    src = runner._HARNESS / "test_csv_data" / "continuations.csv"
+    out = tmp_path / "continuations_stub.csv"
+    asyncio.run(mod.process_dataframe(str(src), str(out), temperature=1.0, model_name="stub",
+                                      max_tokens=64, belief_k={"1": 3, "2": 1, "3": 1}, lie_k=1,
+                                      base_url="http://stub", api_key="x"))
+    by_user = {r["user_prompt"]: r["task_id"] for r in rows}
+    pressure = [(m, t) for m, t in sent if m[-1]["content"] in by_user]
+    belief = [(m, t) for m, t in sent if m[-1]["content"] not in by_user]
+    assert len(pressure) == len(rows) and belief
+    assert all(t is None for _, t in belief)             # beliefs measured exactly as plain MASK
+    for m, t in pressure:
+        tid = by_user[m[-1]["content"]]
+        assert t == (table[tid] or None)
+    with out.open(newline="", encoding="utf-8") as fh:
+        got = {r["task_id"]: r for r in csv.DictReader(fh)}
+    lie = "generation(System Prompt + User Prompt)_run1"
+    assert json.loads(got[rows[0]["task_id"]]["served_tools"]) == table[rows[0]["task_id"]]
+    assert json.loads(got[rows[1]["task_id"]]["served_tools"]) is None
+    # a tool call where the answer was due: counted, scored as empty, never a generation error
+    called = got[rows[2]["task_id"]]
+    assert called[lie] == "" and "[TOOL_CALLS]" in called[lie.replace("generation(", "raw_content(", 1)]
+    tally = json.loads((tmp_path / "_empty_content.json").read_text())["continuations_stub.csv"]
+    assert tally == {"lying_run1__tool_call": 1}
+    assert runner.empty_content(tmp_path)["by_type"] == {"tool_call": 1}
+
+
+def test_inject_tools_unset_sends_no_tools_and_adds_no_column(tmp_path, monkeypatch):
+    import asyncio
+    mod = _load_harness_with_tools(monkeypatch, None)
+    sent = []
+    _stub_client(mod, monkeypatch, sent)
+    src = runner._HARNESS / "test_csv_data" / "continuations.csv"
+    out = tmp_path / "continuations_stub.csv"
+    asyncio.run(mod.process_dataframe(str(src), str(out), temperature=1.0, model_name="stub",
+                                      max_tokens=64, belief_k={"1": 3, "2": 1, "3": 1}, lie_k=1,
+                                      base_url="http://stub", api_key="x"))
+    assert sent and all(t is None for _, t in sent)
+    with out.open(newline="", encoding="utf-8") as fh:
+        assert "served_tools" not in next(csv.DictReader(fh))
+
+
+def test_inject_tools_refuses_a_row_without_an_entry(tmp_path, monkeypatch):
+    tf = tmp_path / "tools.json"; tf.write_text(json.dumps({"not-a-task": []}))
+    mod = _load_harness_with_tools(monkeypatch, tf)
+    with pytest.raises(KeyError, match="no entry for task_id"):
+        mod.pressure_tools("some-task")
+
+
+def test_inject_tools_env_requires_a_protocol_the_tool_parser_and_every_row(tmp_path):
+    from omegaconf import OmegaConf
+    table = {}
+    for p in sorted((runner._HARNESS / "csv_data").glob("*.csv")):
+        with p.open(encoding="utf-8", newline="") as fh:
+            table.update({r["task_id"]: [{"type": "function"}] * 3 for r in csv.DictReader(fh)})
+    tf = tmp_path / "tools.json"; tf.write_text(json.dumps(table))
+    ok = {"inject_tools": str(tf), "protocol": "tools", "serving": {"needs_tool_calls": True}}
+    env = {}
+    rec = runner.inject_tools_env(OmegaConf.create(ok), env)
+    assert env["MASK_TOOLS_FILE"] == str(tf.resolve()) and rec["rows"] == 1000
+    assert rec["tools_per_row"] == {"3": 1000} and rec["rows_without_tools"] == 0
+    assert runner.inject_tools_env(OmegaConf.create({"inject_tools": None}), {}) is None
+    for bad in ({**ok, "protocol": None}, {**ok, "serving": {"needs_tool_calls": False}}):
+        with pytest.raises(AssertionError):
+            runner.inject_tools_env(OmegaConf.create(bad), {})
+    table.pop(next(iter(table))); tf.write_text(json.dumps(table))
+    with pytest.raises(AssertionError, match="no entry"):
+        runner.inject_tools_env(OmegaConf.create(ok), {})
