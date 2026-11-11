@@ -32,11 +32,22 @@ def main() -> None:
     ap.add_argument("--empty", nargs="*", default=[],
                     help="task_ids the writer could never serve (content filter): sent without tools")
     a = ap.parse_args()
-    rows = load(a.src) + [r for extra in a.also for r in load(extra)]
+    rows = load(a.src)
+    ids = [r["metadata"]["scenario_id"] for r in rows]
+    assert len(ids) == len(set(ids)), "duplicate task_id in the corpus"
+    by_id = {r["metadata"]["scenario_id"]: r for r in rows}
+    # A redraw replaces a row only when it found tools (a redrawn row that is still exhausted
+    # keeps the first run's record); a row the first run never wrote is added either way.
+    for extra in a.also:
+        for r in load(extra):
+            tid = r["metadata"]["scenario_id"]
+            if tid not in by_id or r["tools"]:
+                by_id[tid] = r
     for tid in a.empty:
-        rows.append({"metadata": {"scenario_id": tid, "tools_status": "content_filter"}, "tools": []})
+        assert tid not in by_id, f"--empty {tid} is already in the corpus"
+        by_id[tid] = {"metadata": {"scenario_id": tid, "tools_status": "content_filter"}, "tools": []}
+    rows = list(by_id.values())
     table = {r["metadata"]["scenario_id"]: r["tools"] or [] for r in rows}
-    assert len(table) == len(rows), "duplicate task_id in the corpus"
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps(table, ensure_ascii=False, indent=0), encoding="utf-8")
     status = collections.Counter(r["metadata"]["tools_status"] for r in rows)
