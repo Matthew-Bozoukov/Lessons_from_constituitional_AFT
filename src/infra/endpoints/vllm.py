@@ -33,7 +33,7 @@ def check_mix_subject_ok(model_subject: str) -> bool:
         return False
 from huggingface_hub.errors import EntryNotFoundError, RepositoryNotFoundError
 
-from src.model_profile import serving_params
+from src.model_profile import pinned_revision, serving_params
 
 # The Weights & Biases variables a training pod may carry (src/train/launch.py reads them);
 # pushed by `push_hf_env` only when set locally, never invented.
@@ -174,11 +174,6 @@ class ServedTarget:
         this server's base is already loaded, at the commit this arm was trained against;
         resolve_target would pin it to the repo's head, which can differ and would restart
         the server, evicting the caller's adapter. So the caller's base revision wins.
-
-        The same holds for an ADAPTER trained against another commit of this base repo,
-        provided the two commits hold identical weights, config and tokenizer files
-        (`_base_files_that_differ`; only the chat template and card may differ): it is served
-        on the caller's revision and its `base_revision_from` records both commits.
         """
         assert not self.is_api, (
             f"{self.spec.hf_path} is an API endpoint — there is no server to seat a sibling on"
@@ -196,29 +191,6 @@ class ServedTarget:
                 # base-model-in-every-seat run (target `mode=think`, peer the same full
                 # model) would trip the mode assert below (Hospital, 2026-09-18).
                 spec = replace(spec, mode=self.spec.mode)
-        if (spec.adapter and spec.base_model == self.spec.base_model
-                and spec.base_revision != self.spec.base_revision):
-            # An adapter trained against another commit of the same base repo. One server
-            # loads one revision, so serving it as-is restarts the server back and forth
-            # between the two (Hospital, 2026-11-10: arm on Qwen3.6-27B 8f33b989, peer on
-            # 6a9e13bd, four restarts and no shifts). When the two commits hold the same
-            # weights, the sibling is served on the caller's revision and run_meta says so;
-            # when they do not, it is refused.
-            differ = _base_files_that_differ(spec.base_model, spec.base_revision,
-                                             self.spec.base_revision)
-            assert not differ, (
-                f"cannot co-serve {hf_path} (trained on {spec.base_model}@"
-                f"{(spec.base_revision or '?')[:8]}) with {self.spec.hf_path} (@"
-                f"{(self.spec.base_revision or '?')[:8]}): the two base commits differ in "
-                f"{differ}, and one vLLM server loads one revision"
-            )
-            print(f">>> co-serving {hf_path} on {spec.base_model}@"
-                  f"{self.spec.base_revision[:8]} (trained on @{spec.base_revision[:8]}; "
-                  "weights, config and tokenizer files identical)")
-            spec = replace(spec, base_revision=self.spec.base_revision,
-                           base_revision_from=(f"{spec.base_revision_from or 'training_meta'} "
-                                               f"{spec.base_revision}; served on "
-                                               f"{self.spec.base_revision} (same weights)"))
         assert spec.base_model == self.spec.base_model, (
             f"cannot co-serve {hf_path} (base {spec.base_model}) with "
             f"{self.spec.hf_path} (base {self.spec.base_model}): one vLLM server holds "
@@ -374,29 +346,6 @@ def resolve_answers_target(hf_path: str, revision: str | None = None) -> TargetS
     )
 
 
-# Files two commits of one base repo may differ in and still be served as one: the chat
-# template (the server pins the caller's, `pin_template`) and the model card. Everything
-# else -- weights, shard index, config, generation config, tokenizer -- must be identical.
-_SERVE_AS_ONE_EXEMPT = frozenset({"chat_template.jinja", "tokenizer_config.json", "README.md"})
-
-
-def _base_files_that_differ(base_model: str, rev_a: str | None, rev_b: str | None) -> list[str]:
-    """Files outside _SERVE_AS_ONE_EXEMPT whose content differs between two commits of
-    `base_model`, compared by the Hub's content hashes (LFS sha256, else git blob id).
-    Two API calls, nothing downloaded; patched in tests."""
-    if rev_a is None or rev_b is None:
-        return ["<unrecorded revision>"]
-    from src.infra.huggingface import hf_api
-
-    def ids(rev: str) -> dict[str, str]:
-        info = hf_api().model_info(base_model, revision=rev, files_metadata=True)
-        return {s.rfilename: (s.lfs.sha256 if s.lfs else s.blob_id) for s in info.siblings}
-
-    a, b = ids(rev_a), ids(rev_b)
-    return sorted(f for f in a.keys() | b.keys()
-                  if f not in _SERVE_AS_ONE_EXEMPT and a.get(f) != b.get(f))
-
-
 def _repo_sha(hf_path: str, repo_type: str = "model", *, revision: str | None = None) -> str:
     """The commit sha an HF repo resolves to right now (one API call; patched in tests)."""
     from src.infra.huggingface import hf_api
@@ -440,9 +389,10 @@ def resolve_target(hf_path: str, revision: str | None = None) -> TargetSpec:
         spec = resolve_answers_target(hf_path, revision=revision)
         if spec:
             return spec
-        sha = revision or _repo_sha(hf_path)
+        pin = None if revision else pinned_revision(hf_path)
+        sha = revision or pin or _repo_sha(hf_path)
         return replace(_spec_from_files(hf_path, None, None), revision=sha,
-                       base_revision=sha, base_revision_from="target")
+                       base_revision=sha, base_revision_from="profile pin" if pin else "target")
     try:
         with open(hf_download(hf_path, "training_meta.json", **({"revision": revision} if revision else {}))) as f:
             training_meta = json.load(f)
@@ -456,6 +406,14 @@ def resolve_target(hf_path: str, revision: str | None = None) -> TargetSpec:
         subject = legacy_subject(hf_path)
         if subject:
             spec = replace(spec, model_key=subject.replace("-", "_"))
+    pin = pinned_revision(spec.base_model)
+    if pin and spec.base_revision != pin:
+        # The profile pins ONE commit for every arm of this base (configs/models/<key>.yaml),
+        # so arms stamped with different commits still share a server. The stamp stays on
+        # record beside the commit actually served.
+        spec = replace(spec, base_revision=pin, base_revision_from=(
+            f"profile pin (training_meta {spec.base_revision})" if spec.base_revision
+            else "profile pin"))
     if spec.base_revision is None:
         # An adapter from before the stamp existed: nothing recorded which base commit it
         # was trained against, so the best that can be done is to serve the head and SAY

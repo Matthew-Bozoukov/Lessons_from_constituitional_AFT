@@ -54,7 +54,7 @@ from typing import Any, Callable, Sequence
 import requests
 
 from src.infra.endpoints.vllm import POD_VENV, pin_prefix, ssh_argv
-from src.model_profile import gpu_entry, gpu_for
+from src.model_profile import gpu_entry, gpu_for, pinned_revision
 
 REST = "https://api.runpod.io/v2"
 # The host CUDA versions a pod may be scheduled on. RunPod's `allowedCudaVersions` matches the
@@ -420,6 +420,8 @@ def bootstrap_script(
         reasoning_parser: vLLM `--reasoning-parser` (think-mode only, see plan_serving).
         tool_call_parser: vLLM `--tool-call-parser` (agentic harnesses only).
     """
+    rev = pinned_revision(base)     # the profile's base commit; None = the head
+    rev_flag = f" --revision {rev}" if rev else ""
     downloads = "\n".join(
         f"$VENV/bin/hf download {repo} --local-dir /workspace/adapter{i}"
         for i, (_, repo) in enumerate(mods)
@@ -447,7 +449,7 @@ def bootstrap_script(
             "$VENV/bin/python - <<'PYEOF'\n"
             "import pathlib\n"
             "from transformers import AutoTokenizer\n"
-            f"tok = AutoTokenizer.from_pretrained('{base}', trust_remote_code=True)\n"
+            f"tok = AutoTokenizer.from_pretrained('{base}', revision={rev!r}, trust_remote_code=True)\n"
             "t = tok.chat_template\n"
             "assert t, 'no chat_template on the tokenizer'\n"
             f"pinned = {prefix!r} + t\n"
@@ -496,13 +498,13 @@ export VENV=/workspace/vllmenv
 uv venv $VENV --python 3.12
 uv pip install --python $VENV/bin/python -q '{_pinned_vllm()}' ninja huggingface_hub hf_transfer transformers
 $VENV/bin/python -c "import sys; print('venv python', sys.version)"
-$VENV/bin/hf download {base} >/dev/null
+$VENV/bin/hf download {base}{rev_flag} >/dev/null
 {downloads}
 ls -la /workspace/adapter0
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 {pin_block}
 echo SERVE_STARTING
-nohup $VENV/bin/python -m vllm.entrypoints.openai.api_server --model {base} --served-model-name base --enable-lora --lora-modules {lora_modules} --max-lora-rank {lora_rank} --max-model-len {max_len} --max-num-seqs {max_num_seqs}{parser_flags}{template_flag} --host 0.0.0.0 --port 8000 </dev/null > /workspace/vllm.log 2>&1 &
+nohup $VENV/bin/python -m vllm.entrypoints.openai.api_server --model {base}{rev_flag} --served-model-name base --enable-lora --lora-modules {lora_modules} --max-lora-rank {lora_rank} --max-model-len {max_len} --max-num-seqs {max_num_seqs}{parser_flags}{template_flag} --host 0.0.0.0 --port 8000 </dev/null > /workspace/vllm.log 2>&1 &
 for i in $(seq 1 120); do curl -sf http://localhost:8000/v1/models > /workspace/models.json && {{ echo VLLM_HEALTHY after ${{i}} polls; break; }}; sleep 15; done
 cat /workspace/models.json || echo "NO MODELS RESPONSE"
 echo SERVE_READY

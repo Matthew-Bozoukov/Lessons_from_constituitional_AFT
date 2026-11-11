@@ -3,17 +3,17 @@
 
 # GOTCHAS
 
-## Adapters trained after 2026-11-07 sit on a different Qwen3.6 commit from every earlier one (2026-11-10)
+## Every Qwen3.6 run is on the base commit the profile pins, whatever the adapter's stamp says (2026-11-11)
 
-Training records the base repo's head, so an adapter trained after Qwen's 2026-11-07 template commit
-records `8f33b989`, while every earlier adapter (the Hospital/Colosseum plain peer included) records
-`6a9e13bd`. A multi-agent eval co-serves both on one vLLM server, which loads one revision, so it
-restarted back and forth between the two (4 restarts, 1 EngineDeadError, no shifts). Fixed in
-`ServedTarget.sibling`: an adapter on another commit of the same base is served on the caller's
-commit when the Hub's content hashes match for every file but `chat_template.jinja`,
-`tokenizer_config.json` and `README.md` (true for these two commits), and refused otherwise.
-The Hospital summary records `peer_base_revision_from`. A future Qwen commit that touches the
-weights or tokenizer will be refused, not silently mixed.
+Adapters trained before Qwen's 2026-11-07 template commit are stamped `6a9e13bd`, later ones
+`8f33b989`. One vLLM server loads one revision, so an eval seating both (Hospital, 2026-11-10)
+restarted back and forth and ran nothing. `revision:` in `configs/models/qwen36.yaml` is now the one
+commit training and serving use (`pinned_revision`, src/model_profile.py); `run_meta` records
+`base_revision_from: profile pin (training_meta <stamp>)` when it overrides a stamp. Nothing checks
+the weights when the pin moves: compare the two commits' file hashes on the Hub before editing it.
+A half-finished run that recorded the old commit (an Arena arm, a swebench fleet campaign) refuses
+to resume under the new one. Not pinned: internalization's own in-process loader and merge scripts
+(`src/eval/misalignment/internalization/`), which still load the head.
 
 ## The Hospital `fleet.py` does not run from Windows: `pgrep` is missing (2026-11-10)
 
@@ -29,8 +29,8 @@ out to `pgrep`, which Git for Windows does not ship; the keeper (`sleep` + `star
 
 `Qwen/Qwen3.6-27B` @ 8f33b989 ("Add a response template and generation tags") deletes the
 `chat_template` key from `tokenizer_config.json` (adds `response_template`) and keeps the template
-only in `chat_template.jinja`, now with `{% generation %}` tags. Training does not pin the base
-revision, so every adapter trained after that date records `base_model_revision: 8f33b989`; every
+only in `chat_template.jinja`, now with `{% generation %}` tags. Training did not pin the base
+revision then, so every adapter trained after that date records `base_model_revision: 8f33b989`; every
 arm before it is on 6a9e13bd. Weights are unchanged and the rendered text is byte-identical (checked
 on tooled, plain and native-tools rows, both modes, with and without the generation prompt), so the
 two are comparable. What broke: `_pinned_template_path` (src/infra/endpoints/vllm.py) read

@@ -784,6 +784,51 @@ def test_an_adapter_is_served_on_the_base_commit_it_was_trained_against():
     assert unstamped.base_revision is None and unstamped.base_revision_from is None
 
 
+def _resolve_with(monkeypatch, files: dict, pin: str | None):
+    """resolve_target over fake Hub files, with the base's profile pin set to `pin`."""
+    from src.infra.endpoints import vllm
+
+    def download(repo, name, **kw):
+        if name not in files:
+            raise EntryNotFoundError(name)
+        return files[name]
+
+    monkeypatch.setattr(vllm, "hf_download", download)
+    monkeypatch.setattr(vllm, "resolve_answers_target", lambda path, revision=None: None)
+    monkeypatch.setattr(vllm, "_repo_sha", lambda path, *a, **kw: "head")
+    monkeypatch.setattr(vllm, "pinned_revision", lambda model: pin)
+    return vllm.resolve_target
+
+
+def test_the_profile_pin_is_the_base_commit_every_target_is_served_on(monkeypatch, tmp_path):
+    """Arms stamped with different commits of one base must share a server (Hospital,
+    2026-11-10), so the profile's `revision:` wins over the stamp and over the head, and
+    run_meta keeps the stamp it replaced."""
+    files = {"adapter_config.json": tmp_path / "a.json", "training_meta.json": tmp_path / "t.json"}
+    files["adapter_config.json"].write_text(json.dumps(ADAPTER_CONFIG))
+    files["training_meta.json"].write_text(json.dumps({"thinking": True, "base_model_revision": "old"}))
+    name = "org/2026-09-04-qwen36-8-da-10"
+
+    pinned = _resolve_with(monkeypatch, files, "pin")(name)
+    assert pinned.base_revision == "pin"
+    assert pinned.base_revision_from == "profile pin (training_meta old)"
+    unpinned = _resolve_with(monkeypatch, files, None)(name)
+    assert (unpinned.base_revision, unpinned.base_revision_from) == ("old", "training_meta")
+
+    base = _resolve_with(monkeypatch, {}, "pin")
+    assert base("Qwen/Qwen3.6-27B").base_revision == "pin"
+    assert base("Qwen/Qwen3.6-27B", revision="asked").base_revision == "asked"
+
+
+def test_a_profile_pins_only_its_own_hf_id():
+    from src.model_profile import pinned_revision, profiles
+
+    qwen36 = next(p for p in profiles() if p.key == "qwen36")
+    assert qwen36.revision and pinned_revision(qwen36.model) == qwen36.revision
+    assert pinned_revision("/root/qwen36") is None
+    assert pinned_revision("org/qwen36-merged") is None
+
+
 def test_docker_network_capacity_reads_the_daemon_pools_and_refuses_an_overcommit(
     monkeypatch,
 ):

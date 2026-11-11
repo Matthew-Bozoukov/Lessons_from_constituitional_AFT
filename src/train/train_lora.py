@@ -43,7 +43,7 @@ from src.train.launch import (  # noqa: E402
     write_back_pins,
 )
 from src.train.mask_gate import gate_generation_boundary  # noqa: E402
-from src.model_profile import render_chat, train_memory_entry  # noqa: E402
+from src.model_profile import pinned_revision, render_chat, train_memory_entry  # noqa: E402
 from src.naming import (  # noqa: E402
     check_hub_name, derive_artifact_name_from_legacy, legacy_subject, mix_subject_from,
     model_name, to_local)
@@ -479,9 +479,11 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # Pin the base model to the exact commit this run resolves, the way the dataset is
     # pinned above: an HF id names a moving head, and a rerun a month later should load
     # the weights that were trained on, not the ones that are there now. A stamped
-    # train_config.yaml already carries the pin and it is honoured; a local path
+    # train_config.yaml already carries the pin and it is honoured; otherwise the profile's
+    # `revision:` decides, and the head only when it states none. A local path
     # (`/root/qwen36`) has no commit to pin and is recorded as given.
-    base_revision = str(cfg.get("base_model_revision") or "") or _repo_sha(model_id)
+    base_revision = (str(cfg.get("base_model_revision") or "") or pinned_revision(model_id)
+                     or _repo_sha(model_id))
     # Everything resolved so far goes back INTO the config, so the train_config.yaml this
     # run saves re-runs it with no other argument (the token budget follows below).
     write_back_pins(cfg, model_id=model_id, base_revision=base_revision,

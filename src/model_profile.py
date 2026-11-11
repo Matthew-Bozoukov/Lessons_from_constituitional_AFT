@@ -47,6 +47,10 @@ class ModelProfile:
     Attributes:
         key: The file stem — the token every name spells this model with (`qwen36`).
         model: The HF id (or path) `model=<key>` resolves to.
+        revision: The ONE commit of `model` every run trains and serves on, adapters
+            stamped with another commit included (`pinned_revision`). None = unpinned:
+            training takes the head and serving follows each adapter's stamp. Check the
+            weights are unchanged before moving it.
         match: Squeezed substring (letters and digits, lowercased) that identifies the
             model in any id, path or served name. Defaults to the key.
         family: Display name (`Qwen3.6`), used in messages only.
@@ -92,6 +96,7 @@ class ModelProfile:
     model: str
     match: str
     family: str
+    revision: str | None = None
     gpu: dict = field(default_factory=dict)
     serving: dict | None = None
     # Whether this family is trained, served and evaluated in its thinking mode. A fact
@@ -143,7 +148,9 @@ class ModelProfile:
             f"of module names, got {type(targets).__name__}")
         return cls(
             key=key, model=str(data["model"]), match=str(data.get("match") or key),
-            family=str(data.get("family") or key), gpu=dict(data.get("gpu") or {}),
+            family=str(data.get("family") or key),
+            revision=str(data["revision"]) if data.get("revision") else None,
+            gpu=dict(data.get("gpu") or {}),
             serving=dict(data["serving"]) if data.get("serving") else None,
             thinking=bool(data.get("thinking", True)),
             assistant_header=str(tpl.get("assistant_header") or ""),
@@ -162,6 +169,8 @@ class ModelProfile:
         """The YAML's shape again, plus `key` — what a train run stamps into its config."""
         out: dict = {"key": self.key, "model": self.model, "match": self.match,
                      "family": self.family, "gpu": dict(self.gpu), "thinking": self.thinking}
+        if self.revision:
+            out["revision"] = self.revision
         if self.serving:
             out["serving"] = dict(self.serving)
         if self.verified:
@@ -219,6 +228,15 @@ def find_profile(model: str) -> ModelProfile | None:
         if p.match in squeezed:
             return p
     return None
+
+
+def pinned_revision(model_id: str) -> str | None:
+    """The commit a profile pins for exactly this HF id, or None.
+
+    Matched on the id itself, never by `match`: a local path or a merged model that merely
+    contains the key has commits of its own (or none), and must not be handed this one.
+    """
+    return next((p.revision for p in profiles() if p.model == str(model_id)), None)
 
 
 def _unregistered(model_id: str) -> ValueError:

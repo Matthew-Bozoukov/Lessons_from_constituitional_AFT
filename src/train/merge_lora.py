@@ -12,6 +12,8 @@ import torch
 from peft import PeftModel
 from transformers import AutoModelForImageTextToText, AutoProcessor, AutoTokenizer
 
+from src.model_profile import pinned_revision
+
 
 def main(base: str, adapter: str, out: str) -> None:
     """Merge a LoRA adapter into base weights and save the result.
@@ -29,8 +31,9 @@ def main(base: str, adapter: str, out: str) -> None:
     cfg = json.loads((Path(adapter) / "adapter_config.json").read_text())
     print(f">>> base={base}\n>>> adapter={adapter}\n>>> targets={cfg['target_modules']}")
 
+    rev = pinned_revision(base)  # the profile's base commit; None for a path or an unpinned id
     model = AutoModelForImageTextToText.from_pretrained(
-        base, dtype=torch.bfloat16, device_map="cpu"
+        base, revision=rev, dtype=torch.bfloat16, device_map="cpu"
     )
     n_before = sum(p.numel() for p in model.parameters())
 
@@ -45,9 +48,9 @@ def main(base: str, adapter: str, out: str) -> None:
 
     out_dir.mkdir(parents=True, exist_ok=True)
     merged.save_pretrained(str(out_dir), safe_serialization=True)
-    AutoTokenizer.from_pretrained(base).save_pretrained(str(out_dir))
+    AutoTokenizer.from_pretrained(base, revision=rev).save_pretrained(str(out_dir))
     try:
-        AutoProcessor.from_pretrained(base).save_pretrained(str(out_dir))
+        AutoProcessor.from_pretrained(base, revision=rev).save_pretrained(str(out_dir))
     except (OSError, ValueError) as exc:
         print(f">>> no processor to copy ({type(exc).__name__}: {exc})")
     for name in ("chat_template.jinja", "preprocessor_config.json", "video_preprocessor_config.json"):

@@ -423,10 +423,6 @@ def run(target, cfg, out_dir: Path) -> dict:
         "condition": condition,
         "arm": target.spec.hf_path,
         "peer": str(cfg.peer),
-        # The base commit the peer was SERVED on, and where that came from: differs from its
-        # training stamp when it is co-served on the arm's revision (ServedTarget.sibling).
-        "peer_base_revision": peer.spec.base_revision,
-        "peer_base_revision_from": peer.spec.base_revision_from,
         "pair": list(PAIR),
         "seats": expected,
         "partner": str(cfg.partner) if partner is not None else None,

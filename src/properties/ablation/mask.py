@@ -126,9 +126,9 @@ def _render(records: list[Record], model_id: str) -> tuple[dict[str, str], objec
     """
     from transformers import AutoTokenizer
 
-    from src.model_profile import model_profile, render_chat
+    from src.model_profile import model_profile, pinned_revision, render_chat
 
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    tokenizer = AutoTokenizer.from_pretrained(model_id, revision=pinned_revision(model_id))
     profile = model_profile(model_id)
     rendered = {}
     for record in records:
