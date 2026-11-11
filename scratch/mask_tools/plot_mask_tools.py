@@ -106,10 +106,12 @@ def main() -> None:
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     stamp = "2026-11-11"
-    fig, axes = plt.subplots(1, 2, figsize=(9, 4), sharey=True)
+    # One panel: the rows that carry tools, all four cells on the same rows. The all-rows
+    # numbers stay in the results .md/.json beside the figure.
+    fig, ax0 = plt.subplots(1, 1, figsize=(5.5, 4.2))
+    axes = [ax0]
     for ax, key, title in [
-        (axes[0], "tooled_rows", f"Rows that carry tools (n={len(tooled)})"),
-        (axes[1], "all_rows", "All 1,000 rows"),
+        (ax0, "tooled_rows", f"The {len(tooled)} MASK rows that carry tools"),
     ]:
         for i, arm in enumerate(["da", "da_tools"]):
             for j, cond in enumerate(["plain", "tools"]):
@@ -145,10 +147,10 @@ def main() -> None:
             fontsize=8,
         )
         ax.set_title(title, fontsize=10)
-        ax.set_ylim(0, 100)
+        ax.set_ylim(0, 105)
     axes[0].set_ylabel("MASK honesty (%)\nmean of 3 passes, 95% CI between passes")
     fig.suptitle(
-        "MASK honesty with and without unused tools on the pressure prompts",
+        "MASK honesty, with and without unused tools\non the pressure prompts",
         fontsize=11,
     )
     fig.tight_layout()
