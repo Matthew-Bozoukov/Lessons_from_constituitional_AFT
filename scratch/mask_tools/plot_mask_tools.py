@@ -19,12 +19,11 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd
 from huggingface_hub import HfApi, hf_hub_download
 
 from src.eval.misalignment.mask.runner import pass_interval
-from src.utils import save_figure_pdf
 
 COLOUR = {"da": "#7e22ce", "da_tools": "#d0558f"}  # Figure 2's arm colours
 
@@ -106,63 +105,31 @@ def main() -> None:
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     stamp = "2026-11-11"
-    # One panel: the rows that carry tools, all four cells on the same rows. The all-rows
-    # numbers stay in the results .md/.json beside the figure.
-    fig, ax0 = plt.subplots(1, 1, figsize=(5.5, 4.2))
-    axes = [ax0]
-    for ax, key, title in [
-        (ax0, "tooled_rows", f"The {len(tooled)} MASK rows that carry tools"),
-    ]:
-        for i, arm in enumerate(["da", "da_tools"]):
-            for j, cond in enumerate(["plain", "tools"]):
-                c = next(t for t in table if t["arm"] == arm and t["prompt"] == cond)[
-                    key
-                ]
-                x = i * 2.6 + j
-                lo, hi = c["ci95"] if c["ci95"] else (c["mean"], c["mean"])
-                ax.bar(
-                    x,
-                    c["mean"],
-                    color=COLOUR[arm],
-                    edgecolor="black",
-                    hatch="//" if cond == "tools" else None,
-                    alpha=1.0 if cond == "plain" else 0.75,
-                )
-                ax.errorbar(
-                    x,
-                    c["mean"],
-                    yerr=[[c["mean"] - lo], [hi - c["mean"]]],
-                    color="#2b2523",
-                    capsize=4,
-                )
-                ax.text(x, hi + 1.5, f"{c['mean']:.1f}", ha="center", fontsize=9)
-        ax.set_xticks([0, 1, 2.6, 3.6])
-        ax.set_xticklabels(
-            [
-                "DA\nplain MASK",
-                "DA\nMASK+tools",
-                "DA+tools\nplain MASK",
-                "DA+tools\nMASK+tools",
-            ],
-            fontsize=8,
-        )
-        ax.set_title(title, fontsize=10)
-        ax.set_ylim(0, 105)
-    axes[0].set_ylabel("MASK honesty (%)\nmean of 3 passes, 95% CI between passes")
-    fig.suptitle(
-        "MASK honesty, with and without unused tools\non the pressure prompts",
-        fontsize=11,
-    )
-    fig.tight_layout()
-    png = out / f"{stamp}_mask_tools_honesty.png"
-    fig.savefig(png, dpi=180)
-    save_figure_pdf(
-        fig,
-        out / f"{stamp}_mask_tools_honesty.pdf",
-        title="MASK honesty with and without unused tools",
-        artifacts=shas,
-        script="scratch/mask_tools/plot_mask_tools.py",
-    )
+    # Figure 2's visual language (scratch/figures/_style.py): house bars and error bars, bold values,
+    # dashed y grid, no top/right spine, the frameless legend on top, the fixed arm colours. Plain MASK
+    # is the solid bar, MASK + tools the hatched one. No base-model line: base Qwen has no MASK+tools run.
+    from scratch.figures import _style as st
+
+    st.apply()
+    fig, ax = plt.subplots(figsize=(8.6, 6.6))
+    for i, arm in enumerate(["da", "da_tools"]):
+        for j, cond in enumerate(["plain", "tools"]):
+            c = next(t for t in table if t["arm"] == arm and t["prompt"] == cond)["tooled_rows"]
+            lo, hi = c["ci95"] if c["ci95"] else (None, None)
+            st.bar(ax, i * 2.4 + j, c["mean"], lo, hi, colour=st.COLOUR[arm],
+                   label=f"{c['mean']:.1f}", hatch="//" if cond == "tools" else None)
+    ax.set_xticks([0, 1, 2.4, 3.4])
+    ax.set_xticklabels(["Plain\nMASK", "MASK\n+ tools", "Plain\nMASK", "MASK\n+ tools"])
+    ax.set_xlim(-0.65, 4.05)
+    st.finish(ax, title=f"MASK honesty on the {len(tooled)} rows that carry tools",
+              ylabel="Honesty (%)", ylim=(0, 100), yticks=range(0, 101, 20), title_pad=16)
+    st.legend(fig, [st.patch(st.COLOUR["da"], st.ARM["da"]),
+                    st.patch(st.COLOUR["da_tools"], st.ARM["da_tools"]),
+                    st.patch("white", "Unused tool definitions in the pressure prompt", hatch="//")],
+              ncol=1, y=1.16)
+    png = st.save(fig, str(out), "mask_tools_honesty",
+                  title="MASK honesty with and without unused tools on the pressure prompts",
+                  script="scratch/mask_tools/plot_mask_tools.py", artifacts=shas)
     (out / f"{stamp}_mask_tools_honesty_results.json").write_text(
         json.dumps(table, indent=1)
     )
