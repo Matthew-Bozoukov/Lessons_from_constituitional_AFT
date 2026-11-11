@@ -2,7 +2,8 @@
 # ABOUTME: {task_id: [tools]} JSON the MASK eval's inject_tools switch reads, and reports counts.
 """Run: uv run python scratch/mask_tools/export_tools.py <dataset.jsonl | org/repo@revision> --out FILE
 
-Every one of MASK's 1,000 task_ids must be in the corpus (the eval refuses a missing row). A row
+`--also` adds rows redrawn in a separate run; `--empty` adds task_ids the writer never served (the
+content filter refused them), sent without tools. Every one of MASK's 1,000 task_ids must be in the corpus (the eval refuses a missing row). A row
 whose tools never passed the judges (`tools_status: exhausted`) keeps its empty list, so the eval
 sends it without tools; the count is printed.
 """
@@ -26,8 +27,14 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("src")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--also", nargs="*", default=[],
+                    help="more export jsonls (rows redrawn in a separate run), added to src")
+    ap.add_argument("--empty", nargs="*", default=[],
+                    help="task_ids the writer could never serve (content filter): sent without tools")
     a = ap.parse_args()
-    rows = load(a.src)
+    rows = load(a.src) + [r for extra in a.also for r in load(extra)]
+    for tid in a.empty:
+        rows.append({"metadata": {"scenario_id": tid, "tools_status": "content_filter"}, "tools": []})
     table = {r["metadata"]["scenario_id"]: r["tools"] or [] for r in rows}
     assert len(table) == len(rows), "duplicate task_id in the corpus"
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
