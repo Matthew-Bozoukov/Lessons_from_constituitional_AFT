@@ -118,6 +118,13 @@ lie_k: 1
 # seed run launched without an override is comparable with the three-pass runs it sits beside.
 # A single-pass smoke passes `passes=1` on the command line.
 passes: 3
+# MASK+tools (2026-11-11): a JSON file {task_id: [OpenAI tool schemas]} -- each row's own 2-4
+# relevant, unused tools (scratch/mask_tools/, written with the DA+tools recipe). The row's
+# PRESSURE prompts are sent with them; belief prompts without. Requires protocol=tools (so the run
+# is named apart from plain MASK) and serving.needs_tool_calls=true (vLLM rejects tools= without
+# a tool parser). A tool call where an answer was due is tallied `tool_call` in empty_content and
+# scored like an empty answer. null = requests unchanged.
+inject_tools: null
 
 constitution: none      # MASK is an external honesty instrument, not tied to a constitution
                         # of ours; a shift measured in it is evidence of transfer.

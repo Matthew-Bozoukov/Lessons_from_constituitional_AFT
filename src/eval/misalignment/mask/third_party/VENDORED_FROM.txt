@@ -85,3 +85,11 @@ metric.py, process_metrics.py
      runner.batch_judge. Before this the judge call named no provider and OpenRouter chose one
      per call, unrecorded. The pin stays out of the request body the collect/replay custom_id
      is hashed from.
+ 10. Per-row tools on pressure prompts (2026-11-11, MASK+tools): generate_responses.py reads
+     MASK_TOOLS_FILE (the runner sets it from configs/eval/mask.yaml `inject_tools`), a JSON
+     object {task_id: [OpenAI tool schemas]}. Each row's lying_run* prompts are sent with
+     `tools=<its list>`; belief prompts never are. A row missing from the file raises. A tool
+     call where an answer was due is tallied `<prompt>__tool_call` in _empty_content.json, its
+     calls appended to raw_content, the scored answer the text beside it or the empty-content
+     policy -- never a generation error. A non-scoring `served_tools` column records each row's
+     list. Unset: requests and CSVs are byte-identical to before.

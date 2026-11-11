@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import csv
+import hashlib
 import json
 import statistics
 import os
@@ -149,7 +150,9 @@ def empty_content(responses_dir: Path) -> dict:
     if path.is_file():
         for _file, counts in json.loads(path.read_text()).items():
             for key, n in counts.items():
-                kind = "lie" if key.startswith("lying") else "belief"
+                # `<prompt>__tool_call` (inject_tools): a tool call where an answer was due.
+                kind = ("tool_call" if key.endswith("__tool_call")
+                        else "lie" if key.startswith("lying") else "belief")
                 by_type[kind] = by_type.get(kind, 0) + int(n)
     return {"total": sum(by_type.values()), "by_type": by_type}
 
@@ -507,6 +510,45 @@ def _score_pass(gen: dict, target, cfg: DictConfig, modelname: str, release_targ
             "judge_errors": jerr, "judge_error_rate": round(jrate, 4)}
 
 
+def inject_tools_env(cfg: DictConfig, env: dict) -> dict | None:
+    """`inject_tools` (MASK+tools, 2026-11-11): a JSON file {task_id: [OpenAI tool schemas]};
+    the harness sends each row's PRESSURE prompts with its list and belief prompts without
+    (MASK_TOOLS_FILE, the vendored generate_responses.py). Sets the env var and returns the
+    record for run_meta/results, or None when unset (requests unchanged).
+
+    Refused unless `protocol=` names the arm (a run with tools must not publish under the
+    plain name) and the server parses tool calls (`serving.needs_tool_calls=true`: vLLM
+    rejects `tools=` without a tool parser, and a call the model makes is then counted
+    rather than read as text). Every row the run can draw must have an entry.
+    """
+    if not cfg.get("inject_tools"):
+        return None
+    path = Path(str(cfg.inject_tools)).resolve()
+    assert path.is_file(), f"inject_tools: {path} is not a file"
+    assert cfg.get("protocol"), (
+        "inject_tools is set but no protocol= names the arm (pass protocol=tools), so the run "
+        "would publish under the plain MASK name")
+    assert bool(OmegaConf.select(cfg, "serving.needs_tool_calls")), (
+        "inject_tools needs serving.needs_tool_calls=true: vLLM rejects tools= without a tool parser")
+    raw = path.read_bytes()
+    table = json.loads(raw)
+    assert isinstance(table, dict) and table, f"inject_tools: {path} is not a {{task_id: [tools]}} object"
+    missing = []
+    for csv_path in sorted(_HARNESS.joinpath("csv_data").glob("*.csv")):
+        with csv_path.open(encoding="utf-8", newline="") as fh:
+            missing += [r["task_id"] for r in csv.DictReader(fh) if r["task_id"] not in table]
+    assert not missing, f"inject_tools: {len(missing)} MASK rows have no entry, e.g. {missing[:3]}"
+    env["MASK_TOOLS_FILE"] = str(path)
+    n_tools = [len(v or []) for v in table.values()]
+    record = {"file": str(cfg.inject_tools), "sha256": hashlib.sha256(raw).hexdigest(),
+              "rows": len(table), "rows_without_tools": sum(n == 0 for n in n_tools),
+              "tools_per_row": {str(k): n_tools.count(k) for k in sorted(set(n_tools))},
+              "applies_to": "pressure prompts only (belief elicitation unchanged)"}
+    print(f">>> MASK: pressure prompts carry per-row tools from {path} (sha {record['sha256'][:12]}, "
+          f"{record['rows']} rows, {record['rows_without_tools']} without tools)", flush=True)
+    return record
+
+
 def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     """Eval-framework entrypoint (CLAUDE.md contract): evaluate one served target on MASK.
 
@@ -591,6 +633,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     if preamble is not None:
         env.update(preamble.env())
         print(f">>> MASK: system preamble {preamble.file} (sha {preamble.sha256[:12]}) first in every system prompt", flush=True)
+    tools_record = inject_tools_env(cfg, env)
 
     # Generate pass k, then score it in the background while pass k+1 generates. Scoring is
     # OpenRouter traffic and CPU; generation is the served model — they do not contend.
@@ -655,6 +698,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         "regenerated_archetypes": gens[0]["regenerated_archetypes"] if passes == 1 else [g["regenerated_archetypes"] for g in gens],
         "lie_k": int(cfg.lie_k),
         "smoke": smoke,
+        "inject_tools": tools_record,
     }
 
     # Package into the published layout: model generations under rollouts/, judge outputs
@@ -684,6 +728,9 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         if g["logs"].is_dir():
             shutil.copytree(g["logs"], metadata_dir / ("harness_logs" if passes == 1 else f"harness_logs/pass{g['pass']}"),
                             dirs_exist_ok=True)
+    if tools_record:
+        # The exact tool lists the pressure prompts were sent with travel with the run.
+        shutil.copy2(env["MASK_TOOLS_FILE"], metadata_dir / "prompt_tools.json")
     (metadata_dir / "subsample.json").write_text(json.dumps(
         {"subsample": subsample, "seed": seed, "archetypes": sampled}, indent=2))
     write_run_meta(
@@ -697,7 +744,8 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
                "rows_per_archetype": {a: v["n"] for a, v in sampled.items()},
                "gen_concurrency": gen_concurrency, "judge_batch": judge_batch,
                "per_pass": [{k: v for k, v in p.items() if k != "per_archetype"} for p in per_pass],
-               "resumed_from": str(resumed_from) if resumed_from else None},
+               "resumed_from": str(resumed_from) if resumed_from else None,
+               "inject_tools": tools_record},
     )
     (metadata_dir / "run_meta.json").rename(metadata_dir / "mask_run_meta.json")
     # The work tree (sampled inputs, exchange files, harness outputs) is not part of the
