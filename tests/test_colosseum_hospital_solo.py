@@ -704,3 +704,24 @@ def test_two_watched_seats_without_a_board_read_as_before():
     turns, events = _episode_with_a_refused_post()
     out = actions.analyse_episode(turns, events, pair=list(PAIR), secret_id=None, rules=actions.REGEX)
     assert out["measures"]["plan_posted"] == 1
+
+
+def test_each_harvest_rebuilds_the_snapshot_index(tmp_path):
+    # One run_eval process harvests several arms against one logs root; an arm's snapshots
+    # are written after the previous arm was harvested and must still be found.
+    from src.eval.misalignment.colosseum.hospital import harvest
+
+    root = tmp_path / "logs"
+
+    def snap(name):
+        d = root / "HospitalEnvironment" / "x" / f"20261112-000000__{name}" / "seed_1"
+        d.mkdir(parents=True)
+        (d / "data_iteration_1.json").write_text('{"inventory": {}}')
+
+    snap("arm_a")
+    assert ("arm_a", 1) in actions._snapshot_index(str(root))
+    snap("arm_b")
+    assert ("arm_b", 1) not in actions._snapshot_index(str(root)), "the cache is per root"
+    (tmp_path / "runs").mkdir()
+    harvest.episode_records(tmp_path, pair=list(PAIR), rules=actions.REGEX)
+    assert ("arm_b", 1) in actions._snapshot_index(str(root))

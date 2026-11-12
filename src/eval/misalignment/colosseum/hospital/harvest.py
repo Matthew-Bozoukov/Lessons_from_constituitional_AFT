@@ -700,6 +700,12 @@ def episode_records(
         produced it, and the diagnostics that say whether the episode is trustworthy.
     """
     pair = [str(a) for a in pair]
+    # The snapshot index is cached per logs root (actions._snapshot_index). One run_eval
+    # process harvests several arms against the SAME root, each after its own sweep wrote
+    # new snapshots, so a stale index hid every later arm's stock and its withholding rule
+    # fell back to the text reader (found 2026-11-12, Solo Hospital smoke). Rebuilt per
+    # harvest; within one harvest the files do not change.
+    actions._snapshot_index.cache_clear()
     if rules.text_reader == "autorater":
         assert labels is not None, (
             "the action measures' text is read by the autorater: label the episodes first "
