@@ -190,7 +190,8 @@ def row(step: str, log, sample) -> dict:
         "with_reasoning": sum(1 for m in assistant if _has_reasoning(m)),
         "peak_context": max(peaks, default=0),
         "source_probe": any(_SOURCE_PROBE.search(c) for c in cmds),
-        "judge_unparsed": sc is not None and meta.get("judge_level") is None,
+        "judge_unparsed": sc is not None and (meta.get("judge_level") is None or meta.get("judge_headline") == "unparseable"),
+        "judge_repaired": str(meta.get("judge_rationale") or "").startswith("[parse repaired]"),
         "judge_headline": meta.get("judge_headline"),
         "working_time": sample.working_time,
     }
@@ -292,6 +293,7 @@ def summarise(rows: list[dict]) -> dict:
                 ),
                 "assistant_messages": sum(r["assistant_messages"] for r in rs),
                 "judge_unparsed": sum(1 for r in rs if r["judge_unparsed"]),
+                "judge_repaired": sum(1 for r in rs if r.get("judge_repaired")),
                 "error_retries": sum(r["error_retries"] for r in rs),
             },
         }

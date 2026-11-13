@@ -78,7 +78,11 @@ def run(target, cfg, out_dir: Path) -> dict:
     from inspect_ai import eval as inspect_eval
 
     from src.eval.misalignment.oai_hf.export import export
-    from src.eval.misalignment.oai_hf.upstream import ensure_harness, task_file
+    from src.eval.misalignment.oai_hf.upstream import (
+        ensure_harness,
+        patch_verdict_parser,
+        task_file,
+    )
 
     harness = ensure_harness(str(cfg.harness.repo), str(cfg.harness.commit))
 
@@ -102,6 +106,8 @@ def run(target, cfg, out_dir: Path) -> dict:
     for p in plan:
         print(f">>> oai_hf: {p['name']} ({p['task']}) args {p['task_args']}")
         tasks.append(_build_task(task_file(harness, p["task"]), p))
+    patched = patch_verdict_parser()
+    print(f">>> oai_hf: tolerant verdict parser installed in {patched} judge modules")
     logs = inspect_eval(
         tasks,
         model=model_str,
@@ -130,5 +136,6 @@ def run(target, cfg, out_dir: Path) -> dict:
         "steps": plan,
         "inspect_logs": str((metadata_dir / "inspect").relative_to(out_dir)),
         "inspect_version": importlib.metadata.version("inspect-ai"),
+        "verdict_parser_override": "trailing-comma repair (upstream.patch_verdict_parser)",
     }
     return export(step_logs, rollout_dir, results_dir, run_info)
