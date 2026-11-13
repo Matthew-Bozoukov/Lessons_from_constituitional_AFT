@@ -13,6 +13,7 @@ itself through Inspect's openrouter provider, with the model named by `judge_mod
 from __future__ import annotations
 
 import importlib.metadata
+import importlib.util
 import os
 from pathlib import Path
 
@@ -40,6 +41,21 @@ def step_plan(cfg) -> list[dict]:
     if not plan:
         raise SystemExit(f"oai_hf: only_steps={only} selects no step")
     return plan
+
+
+def _build_task(path: Path, p: dict):
+    """Import one upstream task.py under a unique module name and call its @task with the args.
+
+    The four files are all called task.py, so each is loaded as `oai_hf_<step>`; the @task
+    function is named after its directory (upstream's convention).
+    """
+    spec = importlib.util.spec_from_file_location(f"oai_hf_{p['name']}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    fn = getattr(module, p["task"], None)
+    if fn is None:
+        raise SystemExit(f"oai_hf: {path} defines no @task named {p['task']}")
+    return fn(**p["task_args"])
 
 
 def run(target, cfg, out_dir: Path) -> dict:
@@ -79,23 +95,30 @@ def run(target, cfg, out_dir: Path) -> dict:
         f"(mode {target.spec.mode}) | judge {cfg.judge_model} | harness {cfg.harness.commit[:8]}"
     )
 
-    step_logs = {}
+    # Every step is its own upstream @task, built with its own args, and all of them go to ONE
+    # Inspect call so the steps run side by side (`max_tasks`); `max_samples` caps the Docker
+    # stacks per step, so at most max_tasks x max_samples stacks are up at once.
+    tasks = []
     for p in plan:
-        log_dir = metadata_dir / "inspect" / p["name"]
         print(f">>> oai_hf: {p['name']} ({p['task']}) args {p['task_args']}")
-        step_logs[p["name"]] = inspect_eval(
-            str(task_file(harness, p["task"])),
-            model=model_str,
-            task_args=p["task_args"],
-            epochs=epochs,
-            max_samples=int(cfg.inspect.max_samples),
-            max_connections=int(cfg.inspect.max_connections),
-            retry_on_error=int(cfg.inspect.retry_on_error),
-            log_dir=str(log_dir),
-            log_format=str(cfg.inspect.log_format),
-            fail_on_error=False,
-            display="plain",
-        )
+        tasks.append(_build_task(task_file(harness, p["task"]), p))
+    logs = inspect_eval(
+        tasks,
+        model=model_str,
+        epochs=epochs,
+        max_tasks=int(cfg.inspect.max_tasks),
+        max_samples=int(cfg.inspect.max_samples),
+        max_connections=int(cfg.inspect.max_connections),
+        retry_on_error=int(cfg.inspect.retry_on_error),
+        log_dir=str(metadata_dir / "inspect"),
+        log_format=str(cfg.inspect.log_format),
+        fail_on_error=False,
+        display="plain",
+    )
+    by_task = {p["task"]: p["name"] for p in plan}
+    step_logs: dict = {p["name"]: [] for p in plan}
+    for log in logs:
+        step_logs[by_task[log.eval.task.split("/")[-1]]].append(log)
 
     run_info = {
         "target": model_str,
