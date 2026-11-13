@@ -3,6 +3,26 @@
 
 # GOTCHAS
 
+## vLLM 0.26 + Qwen3.6-27B @ 8f33b989 can die in startup profiling on an image placeholder (2026-11-13)
+
+Served through `VllmServer` (`--enable-lora`, 131072 window, think template) on a 1x H100 pod,
+the weights loaded (53 GiB) and the engine then died in `determine_available_memory`:
+`Failed to apply Qwen3VLProcessor ... Found 1 <|image_pad|> tokens in the text but no images
+were passed`. The multimodal dummy-input profiling hands the vision processor a placeholder with
+no image. Adding `--limit-mm-per-prompt '{"image":0,"video":0}'` (text-only) made the same argv
+start cleanly. `src/infra/endpoints/vllm.py` does not emit that flag; not yet checked whether
+other pods/evals hit this. Log: `output/shen_software/2026-11-13_feasibility/vllm_failed_mm_profile.log`.
+
+## Claude Code against vLLM `/v1/messages`: turn tool search off and size the window past 200K (2026-11-13)
+
+Two failures running Claude Code (Agent SDK 0.2.181) on a vLLM 0.26 Anthropic endpoint:
+(1) newer Claude Code defers MCP tools behind `ToolSearch`, whose result carries non-text
+content blocks that vLLM rejects (`500 Unexpected item type in content`); set
+`ENABLE_TOOL_SEARCH=false` so MCP tools load up front. (2) Claude Code does not know a custom
+model's window, so it does not compact before vLLM's limit: coders hit `maximum context length
+is 131072 ... requested 32000 output tokens` and died. Serve a window Claude Code's compaction
+fits under (it assumes ~200K), or cap its output tokens. Setup: `scratch/shen_software/`.
+
 ## Every Qwen3.6 run is on the base commit the profile pins, whatever the adapter's stamp says (2026-11-11)
 
 Adapters trained before Qwen's 2026-11-07 template commit are stamped `6a9e13bd`, later ones
