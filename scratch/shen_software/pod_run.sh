@@ -17,7 +17,8 @@ else
 fi
 
 export CLAUDE_CONFIG_DIR="$OUT/claude_config"
-export ANTHROPIC_BASE_URL=http://127.0.0.1:8000
+PORT="${PORT:-8011}"
+export ANTHROPIC_BASE_URL=http://127.0.0.1:$PORT
 export ANTHROPIC_AUTH_TOKEN=EMPTY
 export ANTHROPIC_API_KEY=
 export ANTHROPIC_MODEL="$MODEL"
@@ -46,6 +47,7 @@ echo "start $(date -u +%FT%TZ) task=$TASK n=$N model=$MODEL" > "$OUT/status.txt"
   --eval-config "$SW/data/$D/eval_config.json" \
   --add-file-to-codebase "$ROOT/llm_client.py" \
   --num-coding-agents "$N" \
+  --max-iterations "${MAX_TURNS:-100}" \
   --model "$MODEL" \
   > "$OUT/driver.log" 2>&1
 echo "exit $? $(date -u +%FT%TZ)" >> "$OUT/status.txt"

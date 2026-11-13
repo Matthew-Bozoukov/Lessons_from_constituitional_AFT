@@ -17,7 +17,7 @@ cat > "$OUT/raw_request.json" <<EOF
                              "required": ["city"]}}],
  "messages": [{"role": "user", "content": "What is the weather in Paris right now? Use the tool."}]}
 EOF
-curl -s http://127.0.0.1:8000/v1/messages -H "content-type: application/json" \
+curl -s http://127.0.0.1:${PORT:-8011}/v1/messages -H "content-type: application/json" \
   -H "x-api-key: EMPTY" -H "anthropic-version: 2023-06-01" \
   -d @"$OUT/raw_request.json" > "$OUT/raw_response.json"
 
@@ -25,7 +25,7 @@ curl -s http://127.0.0.1:8000/v1/messages -H "content-type: application/json" \
 cd "$OUT/work"
 env -i HOME="$HOME" PATH="$PATH" TERM=dumb IS_SANDBOX=1 \
   CLAUDE_CONFIG_DIR="$OUT/claude_config" \
-  ANTHROPIC_BASE_URL=http://127.0.0.1:8000 ANTHROPIC_AUTH_TOKEN=EMPTY ANTHROPIC_API_KEY= \
+  ANTHROPIC_BASE_URL=http://127.0.0.1:${PORT:-8011} ANTHROPIC_AUTH_TOKEN=EMPTY ANTHROPIC_API_KEY= \
   ANTHROPIC_MODEL="$MODEL" ANTHROPIC_SMALL_FAST_MODEL="$MODEL" ANTHROPIC_DEFAULT_HAIKU_MODEL="$MODEL" \
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_TELEMETRY=1 \
   "$CLAUDE" -p "Create a file hello.py that prints the result of 2+2, then run it with python3 and tell me the output." \

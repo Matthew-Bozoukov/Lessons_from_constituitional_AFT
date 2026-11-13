@@ -30,19 +30,23 @@ REQUIREMENTS = {"context_window": 262144, "needs_tool_calls": True}
 # vLLM 0.26 + Qwen3.6 @ 8f33b989 dies in startup profiling on the vision processor's dummy
 # image placeholder (docs/GOTCHAS.md, 2026-11-13); text-only skips it. Appended at launch.
 TEXT_ONLY = ["--limit-mm-per-prompt", '{"image":0,"video":0}']
+# Three arms share one server (plain, da-15, da-tools-15); VllmServer allows 2 LoRAs per batch,
+# so the third arm's requests would wait. vLLM's argparse keeps the last value given.
+EXTRA_ARGS = TEXT_ONLY + ["--max-loras", "3"]
 
 
 class TextOnlySshExec(SshExec):
     """SshExec that launches vLLM with multimodal inputs disabled (see TEXT_ONLY)."""
 
     def start_server(self, argv: list[str], env_extra: dict) -> None:
-        super().start_server(argv + TEXT_ONLY, env_extra)
+        super().start_server(argv + EXTRA_ARGS, env_extra)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", required=True)
-    ap.add_argument("--port", type=int, default=8000)
+    # Not 8000: other sessions' eval tunnels hold that port on this laptop (2026-11-13).
+    ap.add_argument("--port", type=int, default=8011)
     ap.add_argument("--targets", nargs="+", required=True)
     args = ap.parse_args()
 
