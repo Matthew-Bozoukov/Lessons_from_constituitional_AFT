@@ -40,6 +40,8 @@ gpu:
     # whole-transcript resends at a 65,536 window with prefix caching: KV headroom is the bound;
     # every October tenet audit ran here
     petri: "NVIDIA H200"
+    # 40-100 turn agent transcripts at a 131,072 window, resent every turn: KV headroom again
+    oai_hf: "NVIDIA H200"
 
 # Verified serving FACTS: what the family is and what it has been measured to do, never what
 # an eval wants. Eval configs cannot write these (plan_serving, src/infra/endpoints/vllm.py).

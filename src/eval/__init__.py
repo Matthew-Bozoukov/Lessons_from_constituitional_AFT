@@ -273,6 +273,17 @@ EVALS: dict[str, EvalSpec] = {
         needs_docker=True,
         supports_api_target=True,
     ),
+    # OAI-HF incident reproduction, Part 1 (arXiv 2609.35799): the four Docker steps of the
+    # May-July 2026 incident (registry write, peer reach-out, exploit sharing, HF answer-key
+    # breach), driven by the paper's own Inspect harness fetched at a pinned commit (no LICENSE
+    # upstream, so not vendored). Docker runs where the driver runs; the model is called from the
+    # host Inspect process, so the containers never reach it. Served targets only for now.
+    "oai_hf": EvalSpec(
+        "misalignment.oai_hf",
+        "configs/eval/oai_hf.yaml",
+        key="oaihf",
+        needs_docker=True,
+    ),
 }
 
 
