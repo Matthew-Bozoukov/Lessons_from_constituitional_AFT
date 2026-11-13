@@ -51,6 +51,7 @@ steps:
 inspect:
   max_tasks: 4          # the four steps run side by side
   max_samples: 4        # concurrent runs (= Docker Compose stacks) PER STEP; at most 16 stacks up at once
+  max_sandboxes: 96     # Inspect's live-sandbox cap (its default is 2 x CPU count = 16 on an 8-core Mac)
   max_connections: 16   # concurrent target requests (<= serving.concurrency)
   retry_on_error: 2     # re-run a sample that errored (dead tunnel, 5xx); retries are recorded
   log_format: eval      # Inspect's own logs beside our layout: metadata/inspect/<step>/*.eval

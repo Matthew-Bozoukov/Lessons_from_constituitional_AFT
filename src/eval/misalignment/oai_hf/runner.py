@@ -114,6 +114,9 @@ def run(target, cfg, out_dir: Path) -> dict:
         epochs=epochs,
         max_tasks=int(cfg.inspect.max_tasks),
         max_samples=int(cfg.inspect.max_samples),
+        # Inspect's docker provider caps live sandboxes at 2 x CPU count (16 on an 8-core Mac) unless told
+        # otherwise; that cap, not max_samples, set the concurrency of the first full run.
+        max_sandboxes=int(cfg.inspect.max_sandboxes),
         max_connections=int(cfg.inspect.max_connections),
         retry_on_error=int(cfg.inspect.retry_on_error),
         log_dir=str(metadata_dir / "inspect"),
