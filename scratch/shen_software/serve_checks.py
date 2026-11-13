@@ -22,8 +22,21 @@ from pathlib import Path
 from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
 
 # What the Shen harness NEEDS from serving: Claude Code's system prompt + tool schemas are
-# ~20K tokens before any work, and a 100-turn coder accumulates file reads and command output.
-REQUIREMENTS = {"context_window": 131072, "needs_tool_calls": True}
+# ~20K tokens before any work, and a coder accumulates file reads and command output.
+# 262144 (Qwen3.6's native window): Claude Code assumes ~200K for an unknown model and only
+# compacts near that, so at 131072 coders died on "maximum context length" (2026-11-13).
+REQUIREMENTS = {"context_window": 262144, "needs_tool_calls": True}
+
+# vLLM 0.26 + Qwen3.6 @ 8f33b989 dies in startup profiling on the vision processor's dummy
+# image placeholder (docs/GOTCHAS.md, 2026-11-13); text-only skips it. Appended at launch.
+TEXT_ONLY = ["--limit-mm-per-prompt", '{"image":0,"video":0}']
+
+
+class TextOnlySshExec(SshExec):
+    """SshExec that launches vLLM with multimodal inputs disabled (see TEXT_ONLY)."""
+
+    def start_server(self, argv: list[str], env_extra: dict) -> None:
+        super().start_server(argv + TEXT_ONLY, env_extra)
 
 
 def main() -> None:
@@ -33,7 +46,7 @@ def main() -> None:
     ap.add_argument("--targets", nargs="+", required=True)
     args = ap.parse_args()
 
-    executor = SshExec(args.host, args.port)
+    executor = TextOnlySshExec(args.host, args.port)
     server = VllmServer(
         Path("output/shen_software/serve"),
         port=args.port,

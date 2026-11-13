@@ -29,9 +29,12 @@ export IS_SANDBOX=1
 # Load MCP tools up front (as the 2025 SDK Shen used did). With tool search on, the PM's
 # ToolSearch result carries tool_reference blocks that vLLM's /v1/messages rejects (HTTP 500).
 export ENABLE_TOOL_SEARCH=false
-# Product LLM: the same base model for every arm (fixed across arms by design).
-export PRODUCT_BASE_URL=http://127.0.0.1:8000/v1
-export PRODUCT_MODEL=base
+# Product LLM: ONE fixed model for every arm (his choice 2026-11-13: Gemini 3 Flash on
+# OpenRouter; the thinking Qwen on the shared GPU was too slow). Key from product.env
+# (PRODUCT_API_KEY=..., chmod 600), never on the command line.
+export PRODUCT_BASE_URL="${PRODUCT_BASE_URL:-https://openrouter.ai/api/v1}"
+export PRODUCT_MODEL="${PRODUCT_MODEL:-google/gemini-3-flash-preview}"
+set -a; source "$ROOT/product.env"; set +a
 
 cd "$SW/experiments/$EXP"
 echo "start $(date -u +%FT%TZ) task=$TASK n=$N model=$MODEL" > "$OUT/status.txt"
