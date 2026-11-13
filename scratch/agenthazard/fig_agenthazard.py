@@ -101,22 +101,26 @@ def main(argv: list[str]) -> None:
 
     # (b) ASR by cumulative round
     x = np.arange(len(ROUNDS))
+    series = {}
     for a in arms:
         br = stats[a]["asr_by_round"]
-        ys = [100 * br[r]["asr"] if r in br else np.nan for r in ROUNDS]
+        series[a] = [100 * br[r]["asr"] if r in br else np.nan for r in ROUNDS]
         ax_rnd.plot(
-            x, ys, marker="o", markersize=9, linewidth=2.6, color=S.COLOUR[a], zorder=3
+            x,
+            series[a],
+            marker="o",
+            markersize=9,
+            linewidth=2.6,
+            color=S.COLOUR[a],
+            zorder=3,
         )
-        for xi, y in zip(x, ys):
-            ax_rnd.text(
-                xi,
-                y + 2.2,
-                f"{y:.0f}",
-                ha="center",
-                va="bottom",
-                fontsize=13,
-                color=S.COLOUR[a],
-            )
+    for xi in x:  # value labels: the lowest arm at each round labels below its point, the rest above
+        lowest = min(arms, key=lambda a: series[a][xi])
+        for a in arms:
+            y = series[a][xi]
+            below = a == lowest and len(arms) > 1
+            ax_rnd.text(xi, y - 2.6 if below else y + 2.2, f"{y:.0f}", ha="center", va="top" if below else "bottom",
+                        fontsize=13, color=S.COLOUR[a])  # fmt: skip
     n4 = stats[arms[0]]["asr_by_round"].get("R4", {}).get("n")
     ax_rnd.set_xticks(
         x,
