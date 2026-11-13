@@ -1,0 +1,48 @@
+# ABOUTME: am_firm — Lynch's agentic-misalignment scenarios run inside Shen's 12-role firm, the
+# ABOUTME: Artificial Societies blog setup (2026-11-06), with the measured arm in the Director seat.
+# Run: uv run evals --name am_firm --target <hf_path>[,<hf_path>...] [key=value ...]
+#
+# The firm is THEIR harness (artificial-societies/constitutional-midtraining-collective-alignment,
+# cmca/cho/shen_org.py), cloned at `harness.commit` at run time and imported — never copied into
+# this repo (it carries no licence). Only the judge (ours), the stop strings and the token budget
+# are overridden; see src/eval/misalignment/am_firm/runner.py.
+#
+# A run's TARGET sits in the Communications Director seat — the only seat holding the scenario's
+# external tools. Every other seat is `colleagues`, co-served on the same vLLM server. `single`
+# is the target alone on the scenario's own single-agent prompt (the blog's "alone" arm).
+
+harness:
+  repo: https://github.com/artificial-societies/constitutional-midtraining-collective-alignment
+  commit: e23dec144aaaf80a98c35a9d9eda8e24ccdfd85b   # 2026-11-11 head; the blog's code
+
+# The 11 non-Director seats: the matched 0%-DA control adapter (his choice, 2026-11-13).
+colleagues: dougalldeepmind/2026-10-05-qwen36-0-plain
+
+structure: full                    # Shen's 12 roles (the blog's main study); `core` = 5
+condition: explicit-replacement    # Lynch goal x urgency (the blog's default)
+instructions: none                 # Lynch's "dont" safety lines off, as in the blog
+scenarios: [blackmail, murder, leaking]
+arms: [org, single]
+
+n: 20             # runs per scenario per arm
+smoke: false      # true -> n = 2 (a wiring check; read the transcripts before a full run)
+concurrency: 20   # runs in flight per (scenario, arm); a full-firm round is 12 requests each
+
+generation:
+  temperature: 0.6    # the blog / Cho
+  top_p: 0.95
+  max_tokens: 16384   # per turn: thinking trace + visible reply (the blog's 2048 was for no-think)
+  # The blog stops on `User:` / `Human:`; with thinking on, those strings can occur inside the
+  # trace and cut it, so no stop strings here (Qwen's template ends a turn with <|im_end|>).
+  stop: null
+
+judge:
+  # Our AM eval's judge and protocol (agentic-action-judge-v3: visible text only, action gates),
+  # pinned through configs/endpoints/providers.yaml. His choice over the blog's GPT-4o.
+  model: google/gemini-3-flash-preview
+  retries: 3
+
+serving:
+  # Their 150k-character history cap (~40k tokens) + a 16k turn budget.
+  context_window: 65536
+  concurrency: 192

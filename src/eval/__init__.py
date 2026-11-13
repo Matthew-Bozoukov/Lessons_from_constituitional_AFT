@@ -245,6 +245,15 @@ EVALS: dict[str, EvalSpec] = {
     # through Inspect's OpenAI-compatible provider over the served endpoint, so an API target works
     # (the cheapest wiring check, and how the paper's own numbers were produced). The judges route
     # to OpenRouter. No docker: the tools are stubs.
+    # The Artificial Societies blog setup (2026-11-06): Lynch's three agentic-misalignment
+    # scenarios inside Shen's 12-role firm, the arm in the Communications Director seat (the
+    # only seat with external tools) and the colleagues' adapter co-served on the same vLLM
+    # server. Their harness is cloned at a pinned commit and driven unchanged; our AM judge.
+    "am_firm": EvalSpec(
+        "misalignment.am_firm",
+        "configs/eval/am_firm.yaml",
+        key="amfirm",
+    ),
     "whistlebench_team": EvalSpec(
         "misalignment.whistlebench_team",
         "configs/eval/whistlebench_team.yaml",
