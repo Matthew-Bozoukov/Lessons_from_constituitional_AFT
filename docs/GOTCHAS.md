@@ -2245,3 +2245,8 @@ The SSH tunnel of a finished `evals --server ... --port N` run can still hold lo
 while after the process exits. The next run on the same port fails fast at `assert_local_port_free`
 ("local port 127.0.0.1:N is already taken") before serving or spending anything. Chain consecutive
 runs on distinct ports (8097, 8098, ...) or check `lsof -nP -iTCP:N` first.
+
+## Fresh pods get transformers 5.23, which breaks vLLM 0.26.0: pinned to 5.22.2 (2026-11-13)
+
+Found by the oai_hf session on 2026-11-13; `src/infra/runpod.py` now installs `transformers==5.22.2`
+beside the vLLM pin in both pod bootstraps (agenthazard branch). Move the pin with the vLLM pin.

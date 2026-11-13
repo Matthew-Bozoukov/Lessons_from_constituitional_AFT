@@ -496,7 +496,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH=/root/.local/bin:$PATH
 export VENV=/workspace/vllmenv
 uv venv $VENV --python 3.12
-uv pip install --python $VENV/bin/python -q '{_pinned_vllm()}' ninja huggingface_hub hf_transfer transformers
+uv pip install --python $VENV/bin/python -q '{_pinned_vllm()}' ninja huggingface_hub hf_transfer 'transformers==5.22.2'
 $VENV/bin/python -c "import sys; print('venv python', sys.version)"
 $VENV/bin/hf download {base}{rev_flag} >/dev/null
 {downloads}
@@ -1122,7 +1122,7 @@ git checkout -q --detach {sha}
         # flashinfer constraints, spelled out in `bootstrap_script`'s docstring.
         blocks.append(f"""echo INSTALLING_VLLM
 uv venv {POD_VENV} --python 3.12
-uv pip install --python {POD_VENV}/bin/python -q '{_pinned_vllm()}' ninja huggingface_hub hf_transfer transformers
+uv pip install --python {POD_VENV}/bin/python -q '{_pinned_vllm()}' ninja huggingface_hub hf_transfer 'transformers==5.22.2'
 {token_block}
 echo PULLING_WEIGHTS
 {downloads}""")
