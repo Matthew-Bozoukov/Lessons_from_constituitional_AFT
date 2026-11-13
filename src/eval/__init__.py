@@ -102,7 +102,9 @@ EVALS: dict[str, EvalSpec] = {
         pools=True,
     ),
     "morebench": EvalSpec(
-        "capabilities.morebench", "configs/eval/morebench.yaml", key="morebench",
+        "capabilities.morebench",
+        "configs/eval/morebench.yaml",
+        key="morebench",
         supports_api_target=True,
     ),
     # The STANDARDIZED baseline: upstream mini-SWE-agent, pinned, config untouched. A custom
@@ -272,6 +274,19 @@ EVALS: dict[str, EvalSpec] = {
         key="sn",
         needs_docker=True,
         supports_api_target=True,
+    ),
+    # AgentHazard (arXiv 2604.02947) under Claude Code: each instance's locally plausible steps
+    # sent as turns of one Claude Code session in a fresh, network-isolated container on the
+    # driver (docker), the model reached through vLLM's /v1/messages over the run_eval tunnel.
+    # Judged at R1..R4 + round_all with the paper's Gemini-3-Flash prompt. vLLM targets only.
+    # protocol= names a non-default draw (e.g. the 100-instance check) so it cannot collide
+    # with the same arm's run of the day.
+    "agenthazard": EvalSpec(
+        "misalignment.agenthazard",
+        "configs/eval/agenthazard.yaml",
+        key="agenthazard",
+        needs_docker=True,
+        name_facets=("protocol",),
     ),
 }
 

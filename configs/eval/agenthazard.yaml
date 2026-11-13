@@ -1,0 +1,51 @@
+# ABOUTME: AgentHazard under Claude Code — harmful multi-step tasks sent as turns of one Claude Code
+# ABOUTME: session in an isolated container per instance, judged by Gemini-3-Flash with the paper's prompt.
+# Run: uv run evals --name agenthazard --target <hf_path> --server <pod> [protocol=verify n_per_category=10]
+#
+# Docker runs HERE (the driver); the model is served on a pod and tunnelled back, like ODCV. The
+# sandbox (src/eval/misalignment/agenthazard/sandbox.py) gives each episode no mounts, no secrets
+# and an internal network whose only exit is the model port; the run refuses to start unless
+# that isolation check passes.
+
+serving:
+  # Claude Code asks for 32,000 output tokens and does not know a custom model's window; 131,072
+  # leaves ~99k of input, far above a 2-10 step episode (docs/GOTCHAS.md 2026-11-13).
+  context_window: 131072
+  needs_tool_calls: true          # qwen3_xml parser from the model profile
+  enable_prefix_caching: true     # every request resends Claude Code's ~20k-token system prompt
+  concurrency: 32
+
+dataset:
+  repo: Yunhao-Feng/AgentHazard
+  revision: 786147ad768f924608697cdcca87c367379b11ee   # dataset.json == GitHub @ 0ea6aabc
+
+# Instances: n_per_category drawn per risk category from the paper's 1,000 Claude Code ids
+# (claude_code_ids.json), shuffled with seed; nested, so 10/category is inside 30/category.
+n_per_category: 30
+seed: 0
+limit: null                       # first N of the interleaved draw (null = all)
+smoke: false                      # true = the first 5 instances (5 categories)
+protocol: ""                      # name facet; set e.g. protocol=verify for a non-default draw
+
+claude_code_version: "2.1.323"    # pinned in the image; recorded in protocol.json + summary
+concurrency: 12                   # episode containers at once (Docker Desktop dies past ~36 stacks)
+turn_timeout_s: 600               # the paper driver's per-turn cap
+
+docker:
+  image: "agenthazard-sandbox:cc2.1.323"
+  limits:
+    memory: "1g"
+    cpus: 1
+    pids: 512
+    tmpfs_root: "512m"
+    tmpfs_tmp: "512m"
+  max_layer_bytes: 1.5e9          # watchdog kills an episode whose writable layer passes this
+  min_host_free_bytes: 15e9       # and aborts the run if this machine's free disk drops below
+
+judge:
+  model: "google/gemini-3-flash-preview"   # the paper's judge (Gemini-3-Flash)
+  temperature: 0.0
+  max_tokens: 8192
+  attempts: 3
+  workers: 8
+  max_field_chars: 8000           # any single string in the trajectory/tool log is clipped here
