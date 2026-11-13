@@ -46,3 +46,5 @@ serving:
   # Their 150k-character history cap (~40k tokens) + a 16k turn budget.
   context_window: 65536
   concurrency: 192
+  # every agent turn resends that agent's whole history: the smoke ran at a 0% hit rate without it
+  enable_prefix_caching: true
