@@ -21,8 +21,8 @@ overridden, each for a stated reason:
 and reasoning length are recorded (truncation check, gotcha 4); the reasoning TEXT is not kept
 and never reaches another agent — only the visible reply is emailed, as the blog does.
 
-Module state of the imported harness (the judge, SAMPLING) is reset per (scenario, arm), and the
-cells run one after another, so run() stays re-entrant across a target ladder.
+Module state of the imported harness (the judge, SAMPLING, AsyncOpenAI) is set at the start of
+run() and restored at its end, so run() stays re-entrant across a target ladder.
 """
 
 from __future__ import annotations
@@ -219,54 +219,34 @@ def _render(rec: dict, director_system: str, task: str) -> str:
     return "\n".join(lines)
 
 
-async def _cell(
-    shen_org, *, target, director, colleagues, scenario, arm, cfg, out, judge_fn, judge_client
-):
-    shen_org.judge = judge_fn
-    shen_org.SAMPLING.update(
-        {
-            "temperature": float(cfg.generation.temperature),
-            "top_p": float(cfg.generation.top_p),
-            "max_tokens": int(cfg.generation.max_tokens),
-            "stop": cfg.generation.stop,
-        }
-    )
-    shen_org.SAMPLING.pop("presence_penalty", None)
-    shen_org.SAMPLING.pop("prefill", None)
+async def _cell(shen_org, *, target, director, colleagues, scenario, arm, cfg, out, want):
+    """One (scenario, arm) cell, retried while the harness has skipped failed samples."""
     seats = None
     if arm == "org":
-        seats = {
-            shen_org.ACTOR: {
-                "url": target.base_url,
-                "model": director,
-                "temperature": float(cfg.generation.temperature),
-                "max_tokens": int(cfg.generation.max_tokens),
-            }
-        }
-    n = 2 if bool(cfg.smoke) else int(cfg.n)
-    await shen_org.run(
-        target.base_url,
-        colleagues if arm == "org" else director,
-        scenario,
-        arm,
-        n,
-        out,
-        int(cfg.concurrency),
-        condition=str(cfg.condition),
-        temperature=float(cfg.generation.temperature),
-        instructions=str(cfg.instructions),
-        max_tokens=int(cfg.generation.max_tokens),
-        seats=seats,
-        structure=str(cfg.structure),
-    )
-    # close the judge's HTTP client inside the loop that opened it
-    oc = getattr(judge_client, "openrouter_client", None)
-    if oc is not None:
-        await oc.close()
+        seats = {shen_org.ACTOR: {"url": target.base_url, "model": director,
+                                  "temperature": float(cfg.generation.temperature),
+                                  "max_tokens": int(cfg.generation.max_tokens)}}
+    key = f"{scenario}_{arm}"
+    got = 0
+    for attempt in range(3):  # the harness skips a failed sample; a rerun resumes it
+        await shen_org.run(
+            target.base_url, colleagues if arm == "org" else director, scenario, arm, want, out,
+            int(cfg.concurrency), condition=str(cfg.condition),
+            temperature=float(cfg.generation.temperature), instructions=str(cfg.instructions),
+            max_tokens=int(cfg.generation.max_tokens), seats=seats, structure=str(cfg.structure))
+        got = sum(1 for ln in out.read_text().splitlines() if ln.strip()) if out.exists() else 0
+        print(f">>> am_firm: {key} {got}/{want} runs (attempt {attempt + 1})", flush=True)
+        if got >= want:
+            return
+    raise RuntimeError(f"am_firm: {key} still has {got}/{want} runs after 3 attempts; "
+                       f"partial rows kept in {out}")
 
 
 def run(target, cfg, out_dir: Path) -> dict:
     """Run the firm against one target in the Director seat (CLAUDE.md eval contract).
+
+    Every (scenario, arm) cell runs CONCURRENTLY in one event loop: a firm round waits for its
+    slowest agent's thinking trace, so cells run one after another leave the GPU mostly idle.
 
     Returns:
         The summary: harm per (scenario, arm) and pooled per arm with Wilson intervals, by our
@@ -275,10 +255,8 @@ def run(target, cfg, out_dir: Path) -> dict:
     """
     cfg = OmegaConf.merge(cfg)
     if target.is_api:
-        raise ValueError(
-            "am_firm seats co-served LoRA adapters on one vLLM server; "
-            "an API target cannot sit in the firm"
-        )
+        raise ValueError("am_firm seats co-served LoRA adapters on one vLLM server; "
+                         "an API target cannot sit in the firm")
     rollout_dir, results_dir, metadata_dir = publish_layout(out_dir)
     shen_org = _harness(str(cfg.harness.repo), str(cfg.harness.commit))
     ModelClient, by_scenario, protocol, ResponseError, visible = _classifiers()
@@ -286,134 +264,113 @@ def run(target, cfg, out_dir: Path) -> dict:
     from src.infra.endpoints.openrouter import provider_pin  # noqa: PLC0415
 
     judge_model = str(cfg.judge.model)
-    pin = provider_pin(
-        judge_model
-    )  # an unpinned judge fails here, before any generation
+    pin = provider_pin(judge_model)  # an unpinned judge fails here, before any generation
     os.environ["OPENROUTER_PROVIDER_PIN"] = json.dumps(pin)
     # the harness reads the served model's key from NEMOTRON_API_KEY
     os.environ["NEMOTRON_API_KEY"] = target.api_key or "EMPTY"
-    judge_client: dict = {}  # a fresh ModelClient per cell: each cell runs its own event loop
     retries = int(cfg.judge.retries)
 
     director = target.model_name
     colleagues_target = target.sibling(str(cfg.colleagues))
     colleagues = colleagues_target.model_name
     _ = target.base_url  # serve the Director's model now
-    _ = (
-        colleagues_target.base_url
-    )  # and attach the colleagues' adapter to the same server
+    _ = colleagues_target.base_url  # and attach the colleagues' adapter to the same server
+
+    scenarios = [str(s) for s in cfg.scenarios]
+    arms = [str(a) for a in cfg.arms]
+    want = 2 if bool(cfg.smoke) else int(cfg.n)
+    specs = {s: shen_org.scenario_for(s, str(cfg.condition), str(cfg.instructions))
+             for s in scenarios}
+    # The harness calls ONE module-level judge(client, sc, response) for every cell; the cells
+    # run at once, so it dispatches on the scenario's email text, unique per scenario.
+    by_emails = {specs[s]["emails"]: s for s in scenarios}
+    assert len(by_emails) == len(scenarios), "two scenarios share an inbox"
+    clfs = {s: by_scenario[s](model_id=judge_model) for s in scenarios}
+    holder: dict = {}
+
+    async def judge_fn(_unused_client, sc, response):
+        scenario = by_emails[sc["emails"]]
+        clf = clfs[scenario]
+        text = visible(response)
+        if not text:
+            return None, json.dumps({"error": "no visible Director text"})
+        gate = _our_gate(scenario, clf, text)
+        last = None
+        for _ in range(retries):
+            try:
+                final, semantic, reasoning = await clf.classify(holder["c"], sc["emails"], text)
+                return bool(final), json.dumps({"final": bool(final), "semantic": bool(semantic),
+                                                "our_gate": gate, "reasoning": reasoning,
+                                                "protocol": protocol})
+            except ResponseError as e:
+                last = f"{type(e).__name__}: {e}"
+        return None, json.dumps({"error": last})
 
     calls: list[dict] = []
     real_client = shen_org.AsyncOpenAI
+    real_judge = shen_org.judge
     shen_org.AsyncOpenAI = _recording_factory(calls, real_client)
+    shen_org.judge = judge_fn
+    shen_org.SAMPLING.update({"temperature": float(cfg.generation.temperature),
+                              "top_p": float(cfg.generation.top_p),
+                              "max_tokens": int(cfg.generation.max_tokens),
+                              "stop": cfg.generation.stop})
+    shen_org.SAMPLING.pop("presence_penalty", None)
+    shen_org.SAMPLING.pop("prefill", None)
 
     raw_dir = metadata_dir / "raw"
     raw_dir.mkdir(exist_ok=True)
+
+    async def _all():
+        holder["c"] = ModelClient()  # opened and closed inside this one loop
+        try:
+            for s in scenarios:
+                for a in arms:
+                    print(f">>> am_firm: {s}_{a} start (Director {director}"
+                          f"{', colleagues ' + colleagues if a == 'org' else ''})", flush=True)
+            await asyncio.gather(*(
+                _cell(shen_org, target=target, director=director, colleagues=colleagues,
+                      scenario=s, arm=a, cfg=cfg, out=raw_dir / f"{s}_{a}.jsonl", want=want)
+                for s in scenarios for a in arms))
+        finally:
+            oc = getattr(holder["c"], "openrouter_client", None)
+            if oc is not None:
+                await oc.close()
+
     cells: dict[str, list[dict]] = {}
     try:
-        for scenario in cfg.scenarios:
-            scenario = str(scenario)
-            clf = by_scenario[scenario](model_id=judge_model)
-
-            async def judge_fn(_unused_client, sc, response, clf=clf):
-                text = visible(response)
-                if not text:
-                    return None, json.dumps({"error": "no visible Director text"})
-                gate = _our_gate(scenario, clf, text)
-                last = None
-                for _ in range(retries):
-                    try:
-                        final, semantic, reasoning = await clf.classify(
-                            judge_client["c"], sc["emails"], text
-                        )
-                        return bool(final), json.dumps(
-                            {
-                                "final": bool(final),
-                                "semantic": bool(semantic),
-                                "our_gate": gate,
-                                "reasoning": reasoning,
-                                "protocol": protocol,
-                            }
-                        )
-                    except ResponseError as e:
-                        last = f"{type(e).__name__}: {e}"
-                return None, json.dumps({"error": last})
-
-            for arm in cfg.arms:
-                arm = str(arm)
-                key = f"{scenario}_{arm}"
-                out = raw_dir / f"{key}.jsonl"
-                print(
-                    f">>> am_firm: {key} (Director {director}"
-                    f"{', colleagues ' + colleagues if arm == 'org' else ''})",
-                    flush=True,
-                )
-                want = 2 if bool(cfg.smoke) else int(cfg.n)
-                for attempt in range(3):  # the harness skips a failed sample; a rerun resumes it
-                    judge_client["c"] = ModelClient()
-                    asyncio.run(
-                        _cell(
-                            shen_org,
-                            target=target,
-                            director=director,
-                            colleagues=colleagues,
-                            scenario=scenario,
-                            arm=arm,
-                            cfg=cfg,
-                            out=out,
-                            judge_fn=judge_fn,
-                            judge_client=judge_client["c"],
-                        )
-                    )
-                    got = sum(1 for ln in out.read_text().splitlines() if ln.strip()) if out.exists() else 0
-                    if got >= want:
-                        break
-                    print(f"!!! am_firm: {key} has {got}/{want} runs after attempt {attempt + 1}", flush=True)
-                else:
-                    raise RuntimeError(f"am_firm: {key} still has {got}/{want} runs after 3 attempts; "
-                                       f"partial rows kept in {out}")
-                rows = [
-                    json.loads(ln) for ln in out.read_text().splitlines() if ln.strip()
-                ]
-                sc = shen_org.scenario_for(
-                    scenario, str(cfg.condition), str(cfg.instructions)
-                )
-                director_system = (
-                    shen_org.org_system(sc, shen_org.ACTOR, str(cfg.structure))
-                    if arm == "org"
-                    else sc["system"]
-                )
-                task = (
-                    f"[automated message from {sc['company']}]\n{sc['instruction']}"
-                    f"Here are the emails for your current session:\n{sc['emails']}"
-                )
-                for r in rows:
-                    j = json.loads(r.get("judge_reasoning") or "{}")
-                    final, semantic = j.get("final"), j.get("semantic")
-                    r["am_firm"] = {
-                        "director": director,
-                        "colleagues": colleagues if arm == "org" else None,
-                        "harm": final,
-                        "semantic": semantic,
-                        "our_gate": j.get("our_gate"),
-                        "harm_blog_gate": None
-                        if semantic is None
-                        else bool(r["target_present"] and semantic),
-                        "judge": j,
-                    }
-                    (rollout_dir / key).mkdir(exist_ok=True)
-                    (rollout_dir / key / f"run{r['run_idx']:03d}.md").write_text(
-                        _render(r, director_system, task), encoding="utf-8"
-                    )
-                with gzip.open(
-                    rollout_dir / f"{key}.jsonl.gz", "wt", encoding="utf-8"
-                ) as f:
-                    for r in rows:
-                        f.write(json.dumps(r) + "\n")
-                cells[key] = rows
-                out.unlink()  # the gzipped copy under rollouts/ is the record
+        asyncio.run(_all())
     finally:
         shen_org.AsyncOpenAI = real_client
+        shen_org.judge = real_judge
+    for scenario in scenarios:
+        sc = specs[scenario]
+        task = (f"[automated message from {sc['company']}]\n{sc['instruction']}"
+                f"Here are the emails for your current session:\n{sc['emails']}")
+        for arm in arms:
+            key = f"{scenario}_{arm}"
+            out = raw_dir / f"{key}.jsonl"
+            rows = [json.loads(ln) for ln in out.read_text().splitlines() if ln.strip()]
+            director_system = (shen_org.org_system(sc, shen_org.ACTOR, str(cfg.structure))
+                               if arm == "org" else sc["system"])
+            for r in rows:
+                j = json.loads(r.get("judge_reasoning") or "{}")
+                final, semantic = j.get("final"), j.get("semantic")
+                r["am_firm"] = {
+                    "director": director, "colleagues": colleagues if arm == "org" else None,
+                    "harm": final, "semantic": semantic, "our_gate": j.get("our_gate"),
+                    "harm_blog_gate": None if semantic is None
+                    else bool(r["target_present"] and semantic),
+                    "judge": j,
+                }
+                (rollout_dir / key).mkdir(exist_ok=True)
+                (rollout_dir / key / f"run{r['run_idx']:03d}.md").write_text(
+                    _render(r, director_system, task), encoding="utf-8")
+            with gzip.open(rollout_dir / f"{key}.jsonl.gz", "wt", encoding="utf-8") as f:
+                for r in rows:
+                    f.write(json.dumps(r) + "\n")
+            cells[key] = rows
+            out.unlink()  # the gzipped copy under rollouts/ is the record
     raw_dir.rmdir()
 
     summary: dict = {
