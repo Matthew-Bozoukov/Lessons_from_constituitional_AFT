@@ -71,14 +71,22 @@ def load(repo: str) -> dict:
 
 
 def main(argv: list[str]) -> None:
-    repos = dict(a.split("=", 1) for a in argv)
+    full = (
+        "--full" in argv
+    )  # default: panels (a) and (b) only; --full adds category and strategy
+    repos = dict(a.split("=", 1) for a in argv if a != "--full")
     arms = [a for a in ORDER if a in repos]
     stats = {a: load(repos[a]) for a in arms}
     S.apply()
-    fig = plt.figure(figsize=(22, 19))
-    gs = fig.add_gridspec(3, 2, width_ratios=[1, 1.6], hspace=0.45, wspace=0.18)
-    ax_all, ax_rnd = fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1])
-    ax_cat, ax_str = fig.add_subplot(gs[1, :]), fig.add_subplot(gs[2, :])
+    if full:
+        fig = plt.figure(figsize=(22, 19))
+        gs = fig.add_gridspec(3, 2, width_ratios=[1, 1.6], hspace=0.45, wspace=0.18)
+        ax_all, ax_rnd = fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1])
+        ax_cat, ax_str = fig.add_subplot(gs[1, :]), fig.add_subplot(gs[2, :])
+    else:
+        fig = plt.figure(figsize=(22, 7.5))
+        gs = fig.add_gridspec(1, 2, width_ratios=[1, 1.6], wspace=0.18)
+        ax_all, ax_rnd = fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1])
 
     # (a) round_all ASR with Wilson 95% CIs; severity under each bar
     for i, a in enumerate(arms):
@@ -140,8 +148,9 @@ def main(argv: list[str]) -> None:
             ax, title=title, ylabel="ASR (%)", ylim=(0, 105), yticks=range(0, 101, 20)
         )
 
-    grouped(ax_cat, "asr_by_category", CATS, "(c) ASR by risk category")
-    grouped(ax_str, "asr_by_strategy", STRATS, "(d) ASR by attack strategy")
+    if full:
+        grouped(ax_cat, "asr_by_category", CATS, "(c) ASR by risk category")
+        grouped(ax_str, "asr_by_strategy", STRATS, "(d) ASR by attack strategy")
 
     labels = {
         "control": S.ARM["control"],
@@ -152,13 +161,14 @@ def main(argv: list[str]) -> None:
         fig,
         [S.patch(S.COLOUR[a], f"Qwen3.6-27B {labels[a]}") for a in arms],
         ncol=len(arms),
-        y=1.0,
+        y=1.0 if full else 1.08,
     )
-    fig.text(0.5, -0.03,
+    fig.text(0.5, -0.03 if full else -0.1,
              "AgentHazard (arXiv 2604.02947) under Claude Code 2.1.323, 100 instances per arm (10 per risk category, drawn from "
              "the paper's Claude Code set), same instances for every arm. Judge: Gemini-3-Flash with the paper's prompt; "
              "error bars: Wilson 95%.", ha="center", fontsize=14, color=S.MUTED)  # fmt: skip
-    S.save(fig, "output/plots", "agenthazard-claude-code-three-arms", "AgentHazard under Claude Code: three arms",
+    subject = "agenthazard-claude-code-arms" + ("-full" if full else "")
+    S.save(fig, "output/plots", subject, "AgentHazard under Claude Code",
            "scratch/agenthazard/fig_agenthazard.py", artifacts=[repos[a] for a in arms])  # fmt: skip
 
 
