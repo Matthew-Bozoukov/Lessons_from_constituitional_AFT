@@ -2340,3 +2340,18 @@ The SSH tunnel of a finished `evals --server ... --port N` run can still hold lo
 while after the process exits. The next run on the same port fails fast at `assert_local_port_free`
 ("local port 127.0.0.1:N is already taken") before serving or spending anything. Chain consecutive
 runs on distinct ports (8097, 8098, ...) or check `lsof -nP -iTCP:N` first.
+
+## A new transformers release breaks vLLM 0.26.0 on a freshly booted pod (2026-11-13)
+
+- The inference-pod bootstrap installs `vllm==0.26.0 ... transformers` with transformers UNPINNED.
+  transformers 5.23.0 (released between two pod boots on 2026-11-13) makes vLLM 0.26.0 die while
+  profiling Qwen3.6-27B: `ValueError: Found 1 <|image_pad|> tokens in the text but no images were
+  passed` -> `Engine core initialization failed`. A pod booted the same morning had 5.22.2 and served.
+- Check: `/workspace/vllmenv/bin/python -c "import transformers; print(transformers.__version__)"`.
+  Fix on a live pod: `uv pip install --python /workspace/vllmenv/bin/python transformers==5.22.2`.
+  The durable fix is pinning transformers in the bootstrap's install line (src/infra/runpod.py).
+- Killing vLLM on a pod: `pkill -f "vllm serve"` run over ssh matches the ssh session's own
+  command line and kills it, and the engine worker is named `VLLM::EngineCore`, so a pattern on
+  `vllm.entrypoints` alone leaves it holding the GPU. Use a bracket pattern that cannot match itself:
+  `ps -eo pid,args | awk '/[v]llm\.entrypoints|[V]LLM::/ {print $1}' | xargs -r kill -9`.
+
