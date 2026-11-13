@@ -30,6 +30,8 @@ export IS_SANDBOX=1
 # Load MCP tools up front (as the 2025 SDK Shen used did). With tool search on, the PM's
 # ToolSearch result carries tool_reference blocks that vLLM's /v1/messages rejects (HTTP 500).
 export ENABLE_TOOL_SEARCH=false
+# Wall-clock limit for a whole run, read by the patched AgentOrgConfig (patch_shen.py). Shen: 3600.
+export SHEN_GLOBAL_TIMEOUT="${SHEN_GLOBAL_TIMEOUT:-7200}"
 # Product LLM: ONE fixed model for every arm (his choice 2026-11-13: Gemini 3 Flash on
 # OpenRouter; the thinking Qwen on the shared GPU was too slow). Key from product.env
 # (PRODUCT_API_KEY=..., chmod 600), never on the command line.
