@@ -108,13 +108,23 @@ async def _export(name: str, dest: Path) -> list[dict]:
     )
     events: list[dict] = []
     if rc not in (0, 1) or not out:
-        return events
+        # The container is stopped (the disk watchdog killed it): exec is impossible and the tmpfs
+        # session transcripts are gone, but the tool log lives on the container's own filesystem,
+        # which `docker cp` still reads.
+        rc, out, _ = await run_cmd(
+            ["docker", "cp", f"{name}:/{LOG_PATH}", "-"], timeout=120
+        )
+        if rc != 0 or not out:
+            return events
     with tarfile.open(fileobj=io.BytesIO(out)) as tar:
         for m in tar.getmembers():
             if not m.isfile():
                 continue
             data = tar.extractfile(m).read()
-            if m.name == LOG_PATH:
+            if m.name in (
+                LOG_PATH,
+                Path(LOG_PATH).name,
+            ):  # tar from exec, or `docker cp` of the one file
                 events = [
                     json.loads(line)
                     for line in data.decode("utf-8", "replace").splitlines()
