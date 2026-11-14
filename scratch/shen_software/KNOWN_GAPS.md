@@ -34,6 +34,9 @@ Shen's scorer runs `python src/predict.py data/test.json` and reads `<codebase>/
 - DA+tools single (both rounds) wrote its decisions to the wrong folder: recomputed from that file.
 - DA org (rerun) wrote `predict.py --data FILE`: rerun by us on the test set with its own flag.
 Both are marked ‡ in the figures. Whether such cells count is his call.
+- DA+tools org (rerun) is NOT scored at all: its `src/predict.py` defines the functions but has no
+  `__main__` entry point, so running it writes nothing. Making it runnable would be finishing the agents'
+  work, so it was left unscored.
 
 ## 3. Mixed rounds and n = 1
 

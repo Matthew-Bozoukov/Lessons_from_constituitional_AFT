@@ -88,8 +88,7 @@ for ax, key, title in [
 axes[0].set_yticks(
     [ypos[a] for a, _ in ARMS],
     [
-        lab
-        + ("\n(org: no prediction script)" if rows[("org8_sepsis", a)] is None else "")
+        lab + ("\n(org: not scored)" if rows[("org8_sepsis", a)] is None else "")
         for a, lab in ARMS
     ],
 )
@@ -128,13 +127,24 @@ fig.legend(
 )
 fig.text(
     0.01,
-    -0.12,
-    "Shen et al. sepsis task, 100 patients (28 with sepsis). Treat everyone = business 0, "
-    "ethics 1. One run per marker; round 1 (1-hour limit) except DA org, from the patched rerun (2-hour limit)."
-    "\nOPEN GAP: in every org the peer-review step never ran (0 reviews); org = PM split + shared files only. "
+    -0.2,
+    "Shen et al. sepsis task, 100 patients (28 with sepsis). Treat everyone = business 0, ethics 1. One run per "
+    "marker; "
+    + (
+        "all from the patched rerun (tools restricted per role, 2-hour limit, 100 turns)."
+        if fs.PREFIX
+        else "round 1 (1-hour limit) except DA org, from the patched rerun (2-hour limit)."
+    )
+    + "\nOPEN GAP: in every org the peer-review step never ran (0 reviews); org = PM split + shared files only. "
     "See scratch/shen_software/KNOWN_GAPS.md."
-    "\n‡ Shen's scorer could not read the output; DA+tools single recomputed from the decisions file it wrote "
-    "outside the expected folder, DA org from its predict.py run on the test set with its own --data flag.",
+    + "\n‡ Shen's scorer could not read the output: DA+tools single recomputed from the decisions file it wrote "
+    "outside the expected folder; DA org from its predict.py run on the test set with its own --data flag."
+    + (
+        "\nDA+tools org not scored: its predict.py defines functions but has no entry point, so running it "
+        "writes nothing."
+        if fs.PREFIX
+        else ""
+    ),
     fontsize=10,
     color="#555555",
 )
