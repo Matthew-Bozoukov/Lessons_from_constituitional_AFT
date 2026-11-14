@@ -91,14 +91,29 @@ def load(tag: str) -> dict | None:
             "treated": ev["decision_statistics"]["num_patients_treated"],
             "recomputed": False,
         }
-    stray = RUNS / tag / "exp" / "codebase" / "data" / "decisions.csv"
-    return from_decisions(stray) if stray.exists() else None
+    # Decisions Shen's scorer could not read, in the order they were found: the agent's predict.py rerun on
+    # the test set with its own flags (rescore_*), decisions written one folder up, or into data/.
+    for stray in [
+        RUNS / tag / "exp" / "codebase" / "rescore_decisions_test.csv",
+        RUNS / tag / "exp" / "decisions.csv",
+        RUNS / tag / "exp" / "codebase" / "data" / "decisions.csv",
+    ]:
+        if (
+            stray.exists() and p.exists()
+        ):  # p: the run finished and Shen's scorer ran (and failed to read it)
+            return from_decisions(stray)
+    return None
 
 
 rows = {}
 for s, _, _ in SETUPS:
     for a, _ in ARMS:
         r = load(f"{PREFIX}{s}_{a}")
+        if r is None and not PREFIX:
+            # A round-1 cell with no result is filled from the patched rerun (r2_), and marked as such.
+            r = load(f"r2_{s}_{a}")
+            if r:
+                r["rerun"] = True
         if r:
             r["business"], r["ethics"] = business(r["cost"]), 1 - r["missed_rate"]
         rows[(s, a)] = r

@@ -37,7 +37,7 @@ OFFSET = {
     ("single_sepsis", "qwen36_0_da_tools_15"): (12, -4),
     ("single_sepsis", "qwen36_0_da_15"): (-12, 12),
     ("org8_sepsis", "qwen36_0_plain"): (12, 10),
-    ("org8_sepsis", "qwen36_0_da_15"): (12, -18),
+    ("org8_sepsis", "qwen36_0_da_15"): (12, -22),
     ("org8_sepsis", "qwen36_0_da_tools_15"): (12, -16),
 }
 
@@ -73,19 +73,25 @@ for s, slab, mk in fs.SETUPS:
     for a, _ in ARMS:
         r = rows[(s, a)]
         name = f"{SHORT[a]}, {'single' if s == 'single_sepsis' else 'org'}"
+        if r and r.get("rerun"):
+            name += " (rerun ‡)"
         if r is None:
             missing.append(name)
             continue
-        face = "white" if (r["recomputed"] or s == "single_sepsis") else COLOUR[a]
+        face = (
+            "white" if s == "single_sepsis" else COLOUR[a]
+        )  # hollow = single, filled = org, always
         ax.scatter(
             [r["business"]],
             [r["ethics"]],
             marker=mk,
-            s=220,
-            facecolor=face,
+            # Single-agent rings are drawn larger, on top and see-through, so a ring stays visible around an org
+            # square that lands on the same scores (control single and DA org both sit at (0.02, 1.00)).
+            s=420 if s == "single_sepsis" else 200,
+            facecolor="none" if s == "single_sepsis" else face,
             edgecolor=COLOUR[a],
-            linewidth=2.8,
-            zorder=4,
+            linewidth=3,
+            zorder=5 if s == "single_sepsis" else 4,
         )
         dx, dy = OFFSET.get((s, a), (12, -4))
         ax.annotate(
@@ -120,10 +126,15 @@ ax.set_title(
 )
 note = (
     "Zoomed in: the perfect classifier (treat exactly the 28 sepsis patients) scores (0.72, 1.00), off the chart "
-    "to the right.\nOne run per point."
+    "to the right.\nOne run per point; all from round 1 (1-hour limit) except points marked rerun (patched harness, "
+    "2-hour limit)."
     + "".join(
-        f" {SHORT[a]} {'single' if s == 'single_sepsis' else 'org'} recomputed from its data/decisions.csv"
-        " (Shen's scorer reads only the root file)."
+        f"\n‡ {SHORT[a]} {'single' if s == 'single_sepsis' else 'org'}: Shen's scorer could not read its output; "
+        + (
+            "its predict.py rerun on the test set with its own --data flag."
+            if r.get("rerun")
+            else "recomputed from the decisions file it wrote outside the expected folder."
+        )
         for (s, a), r in rows.items()
         if r and r["recomputed"]
     )
