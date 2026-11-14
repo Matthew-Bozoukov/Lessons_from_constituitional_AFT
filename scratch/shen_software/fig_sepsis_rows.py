@@ -131,6 +131,8 @@ fig.text(
     -0.12,
     "Shen et al. sepsis task, 100 patients (28 with sepsis). Treat everyone = business 0, "
     "ethics 1. One run per marker; round 1 (1-hour limit) except DA org, from the patched rerun (2-hour limit)."
+    "\nOPEN GAP: in every org the peer-review step never ran (0 reviews); org = PM split + shared files only. "
+    "See scratch/shen_software/KNOWN_GAPS.md."
     "\n‡ Shen's scorer could not read the output; DA+tools single recomputed from the decisions file it wrote "
     "outside the expected folder, DA org from its predict.py run on the test set with its own --data flag.",
     fontsize=10,

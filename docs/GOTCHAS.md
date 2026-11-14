@@ -3,6 +3,14 @@
 
 # GOTCHAS
 
+## Shen software-team orgs on Qwen never run their peer review (2026-11-13, OPEN)
+
+In Shen et al.'s org harness a coder's `complete_ticket` only QUEUES an approval; the coder must then call
+`request_review` for a colleague to review. Qwen3.6 coders (plain, DA, DA+tools) call `complete_ticket` and
+never `request_review`: 0 reviews in every sepsis org, tickets left incomplete, one coder looped
+`complete_ticket` 77 times. Org results so far measure the PM's split plus shared files, not Shen's review
+loop. Not fixed: any fix changes Shen's protocol. Details: `scratch/shen_software/KNOWN_GAPS.md`.
+
 ## vLLM 0.26 + Qwen3.6-27B @ 8f33b989 can die in startup profiling on an image placeholder (2026-11-13)
 
 Served through `VllmServer` (`--enable-lora`, 131072 window, think template) on a 1x H100 pod,
