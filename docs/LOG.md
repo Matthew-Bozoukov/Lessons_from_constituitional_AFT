@@ -1,3 +1,15 @@
+## 2026-11-16: One lock for training and serving; an eval pod installs vLLM's part of the root uv.lock (transformers 5.14.1)
+
+Hypothesis: the second lock added this morning (`src/infra/endpoints/vllm_env`, transformers 5.22.2) is unnecessary, because the root `uv.lock` already holds a complete, working serving stack: every on-box eval serves from it. If a repo-less pod installs the same versions, a model is served on one stack wherever the eval is typed.
+
+Method: `locked_serving_packages()` (src/infra/endpoints/vllm.py) now walks the root lock from vllm, ninja and huggingface-hub, keeping the dependency edges whose markers hold on a linux x86_64 Python 3.12 pod; `runpod up` writes those as `name==version` into the boot script. `transformers==5.14.1` is exact in `pyproject.toml`; `vllm_env/` is deleted. `serving_env_record` counts the repo's own env (the serving packages plus the rest of the lock) as matching. Checked on pod `ypcnmfoyika7dh` (H200, rented for the prefilled AM and MASK runs, no extra rental): (1) the 195 versions against the repo env `uv sync` had built there; (2) a fresh venv from them: `uv pip check`, imports, `hf download`; (3) `/workspace/vllmenv` rebuilt with the exact lines `_vllm_env_install` emits, then `uv run evals --target dougalldeepmind/2026-10-05-qwen36-0-da-15 --name mmlu --server root@103.196.86.136:24592 --no-push subset.per_subject=1` from the laptop.
+
+Result: 195 packages (vLLM 0.26.0, transformers 5.14.1, torch 2.11.0+cu130), none missing from or different to the pod's repo env; `uv pip check` clean. The smoke served DA-15 from the rebuilt venv and reported "195 packages, as locked in uv.lock" (`serving_env.matches_lock` true, `differs` empty); MMLU 49/57 (86.0%), 100% parsed, no truncation, not published. Against the lock it replaces: 103 of the shared packages change version, including torch (CUDA 13.5 build to 13.0) and transformers 5.22.2 to 5.14.1. Full suite: the same 11 failures as main.
+
+Not checked: a boot from `runpod up` itself on this branch (the install lines were run by hand on a live pod, which is the same script but not the same path), and whether laptop-driven results move between 5.22.2 and 5.14.1. Runs served from repo-less pods on 2026-11-11 and 2026-11-16 (the MASK+tools arms, base MASK+tools) were on 5.22.2; on-box runs (Petri reruns of 2026-11-05, tonight's prefill and Petri runs) were on 5.14.1.
+
+Next steps: the first `uv run runpod up --eval` after this merges confirms the boot path. `scripts/infra/runpod_arena_hard.py` still installs `vllm>=0.8.5 transformers>=4.51.3`.
+
 ## 2026-11-16: SWE-bench Lite v5 on da-tools-15 seed a: 170/300 (56.7%), against Figure 10's da-15 182 and control 178
 
 Hypothesis: adding unused tool definitions to the Difficult Advice data (da-tools-15) costs no general agentic coding ability, as Figure 10 shows for plain DA. da-tools-15 seed a is the matched pair of Figure 10's 15% point: its mixture `2026-10-11-da-tools-15-mix` equals `2026-10-05-da-15-mix` row for row except `tools` on 646 of 650 DA rows.
