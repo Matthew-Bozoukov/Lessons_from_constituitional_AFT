@@ -130,21 +130,24 @@ fig.text(
     -0.2,
     "Shen et al. sepsis task, 100 patients (28 with sepsis). Treat everyone = business 0, ethics 1. One run per "
     "marker; "
-    + (
-        "all from the patched rerun (tools restricted per role, 2-hour limit, 100 turns)."
-        if fs.PREFIX
-        else "round 1 (1-hour limit) except DA org, from the patched rerun (2-hour limit)."
+    + {
+        "r2_": "RERUN: patched harness (tools restricted per role), 2-hour limit, 100 turns.",
+        "r1_": "ROUND 1: original harness, 1-hour limit, 100 turns.",
+    }.get(
+        fs.PREFIX,
+        "round 1 (1-hour limit) except DA org, from the patched rerun (2-hour limit).",
     )
     + "\nOPEN GAP: in every org the peer-review step never ran (0 reviews); org = PM split + shared files only. "
     "See scratch/shen_software/KNOWN_GAPS.md."
-    + "\n‡ Shen's scorer could not read the output: DA+tools single recomputed from the decisions file it wrote "
-    "outside the expected folder; DA org from its predict.py run on the test set with its own --data flag."
-    + (
-        "\nDA+tools org not scored: its predict.py defines functions but has no entry point, so running it "
-        "writes nothing."
-        if fs.PREFIX
-        else ""
-    ),
+    + {
+        "r2_": "\n‡ Shen's scorer could not read the output: DA+tools single recomputed from the decisions file it "
+        "wrote outside the expected folder; DA org from its predict.py run on the test set with its own "
+        "--data flag.\nDA+tools org not scored: its predict.py defines functions but has no entry point, so "
+        "running it writes nothing.",
+        "r1_": "\n‡ Shen's scorer could not read the output: DA+tools single recomputed from the decisions file it "
+        "wrote outside the expected folder.\nDA org not scored: its PM used Claude Code's built-in sub-agent "
+        "tools instead of tickets and stalled; no predict.py was written.",
+    }.get(fs.PREFIX, ""),
     fontsize=10,
     color="#555555",
 )

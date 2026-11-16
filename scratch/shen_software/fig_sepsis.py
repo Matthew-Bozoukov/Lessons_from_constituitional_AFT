@@ -108,7 +108,8 @@ def load(tag: str) -> dict | None:
 rows = {}
 for s, _, _ in SETUPS:
     for a, _ in ARMS:
-        r = load(f"{PREFIX}{s}_{a}")
+        # "r1_" = round 1 strictly (its tags carry no prefix on disk, and nothing is filled from the rerun).
+        r = load(f"{'' if PREFIX == 'r1_' else PREFIX}{s}_{a}")
         if r is None and not PREFIX:
             # A round-1 cell with no result is filled from the patched rerun (r2_), and marked as such.
             r = load(f"r2_{s}_{a}")
