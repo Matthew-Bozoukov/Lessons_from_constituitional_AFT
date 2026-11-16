@@ -21,10 +21,11 @@ def test_two_arm_restart_skips_completed_generation_and_releases_before_pool(tmp
     specs = {k: TargetSpec(f'org/qwen36-0-{k}', 'Qwen/Qwen3.6-27B', True, 'think',
                           f'qwen36_0_{k}', 64, revision=k, base_revision='base') for k in ['plain', 'da-15']}
     class Server:
+        serving_env = None
         def __init__(self, **kw): pass
         def ensure(self, spec):
             events.append('serve:' + spec.revision)
-            return NS(spec=spec)
+            return NS(spec=spec, served_by_vllm=False)
         def stop(self): events.append('stop')
     def runner(target, cfg, out, *, reference=''):
         (out / 'rollouts').mkdir(exist_ok=True)

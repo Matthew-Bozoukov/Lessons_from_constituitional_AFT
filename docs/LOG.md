@@ -1,3 +1,20 @@
+## 2026-11-16: Eval pods serve on a locked environment; every served run records its packages
+
+Hypothesis: the base-Qwen MASK+tools pod (`spuk5fl00oit29`, H200, rented 15:58Z) failed to start vLLM because the pod's serving environment is not pinned, not because of anything in the run.
+
+Method: read `/workspace/output/serve/vllm.log` on the pod; compared the pod's installed versions with PyPI release dates; downgraded transformers on the pod and reran. Then locked the serving environment: `src/infra/endpoints/vllm_env/` (`pyproject.toml` with `vllm==0.26.0`, `transformers==5.22.2`; `uv.lock` seeded from `uv pip freeze` of that pod once it was serving), `_vllm_env_install` in `src/infra/runpod.py` (both pod bootstraps), `serving_env` in `run_meta.json` (`src/infra/endpoints/vllm.py`, `src/eval/run_eval.py`).
+
+Result:
+- Cause: the boot script installed `transformers` with no version. The pod got 5.23.0 (released 2026-11-13); vLLM 0.26.0 exits at start-up on Qwen3.6 with it (`Found 1 <|image_pad|> tokens in the text but no images were passed`, in `profile_run`). With 5.22.2 the same pod served and the run started generating.
+- The lock holds 198 packages and equals that pod's package list exactly, name for name and version for version.
+- The new install block was run on the live pod into a second venv (`/workspace/vllmenv_locktest`, since deleted): 16 s from the uv cache, 198 packages, `matches_lock: true`, `import vllm` fine, server `--help` lists our flags. The pod's serving venv also reports `matches_lock: true`.
+- Eval-pod boot script: 6,092 bytes. The lock file itself (182 KB) cannot ride in it: the script is one `bash -lc` argument and Linux caps one at 128 KiB, so versions travel, not the file, and wheel hashes are not checked.
+- Tests: 2,551 pass; the 11 that fail also fail on main at be2d5aef.
+
+Not verified: a complete boot of a fresh pod from the new script (only the install block ran on a pod). Checked without a pod whether moving to vLLM 0.33.0 is safe: the lock resolves and every flag, parser and endpoint we use exists there, but it pins torch 2.14, for which `kernels-community/flash-attn2` publishes no build (training's attention kernel), and the model runner, hybrid-model prefix caching and the `max_tokens`/context-window rule all changed since 0.26. Not migrating.
+
+Next steps: the first `uv run runpod up --eval` after this commit confirms the full boot; log the base-Qwen MASK+tools result when the run in flight finishes; CLAUDE.md still says an eval pod gets "vLLM at the version pyproject pins" (human edit); `scripts/infra/runpod_arena_hard.py` installs unpinned.
+
 ## 2026-11-12: A sentence-level ruler for "other-option" content: DA is 62% other-side in the reasoning, 45% in the reply; a free one-sided rewrite fails its gates
 
 Hypothesis: (a) Sonnet 5 can rewrite a DA row so that reasoning and reply argue only for the chosen option (the other set aside in one sentence, its costs never named), gated per row by three judges; (b) failing that, a sentence labeller can measure how much of a row is about the other option well enough to drive and check in-place edits.

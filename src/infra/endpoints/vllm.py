@@ -56,6 +56,60 @@ _HEALTH_TIMEOUT_S = 1800  # first start downloads weights; a 32B pull can take a
 POD_VENV = "/workspace/vllmenv"
 POD_WORKDIR = "/workspace"
 
+# What goes INTO that venv: the serving environment's own pyproject + lock, beside this file
+# (as tinker_env is beside tinker.py). `uv run runpod up` installs the lock on the pod, and
+# every served run records what the venv actually held (`VllmServer.serving_env`).
+VLLM_ENV = Path(__file__).resolve().parent / "vllm_env"
+
+
+def _dist_name(name: str) -> str:
+    """A distribution name as PyPI compares them (PEP 503): `PyYAML` and `pyyaml` are one."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def locked_serving_packages() -> dict[str, str]:
+    """{name: version} of every package in the serving lock (`vllm_env/uv.lock`).
+
+    The lock is resolved for one platform, so each package has exactly one version; a second
+    one would mean the pins below could not be written as `name==version`, and is refused.
+    """
+    import tomllib
+
+    out: dict[str, str] = {}
+    for pkg in tomllib.loads((VLLM_ENV / "uv.lock").read_text())["package"]:
+        if "virtual" in pkg.get("source", {}):      # the env's own (unbuilt) project entry
+            continue
+        name = _dist_name(pkg["name"])
+        assert name not in out, f"{VLLM_ENV / 'uv.lock'} locks {name} at two versions"
+        out[name] = pkg["version"]
+    assert out, f"{VLLM_ENV / 'uv.lock'} locks no packages"
+    return out
+
+
+# Printed by the serving interpreter itself, so it needs neither pip nor uv on the host.
+_INSTALLED_SNIPPET = ("import importlib.metadata as m; "
+                      "print(chr(10).join(sorted({d.metadata['Name'] + '==' + d.version "
+                      "for d in m.distributions() if d.metadata['Name']})))")
+
+
+def _parse_installed(text: str) -> dict[str, str]:
+    return {_dist_name(n): v for n, _, v in (line.strip().partition("==") for line in text.splitlines()) if v}
+
+
+def serving_env_record(where: str, installed: dict[str, str]) -> dict:
+    """What a run records about the environment that served it.
+
+    `matches_lock` is the question a later reader has: was this the locked serving stack?
+    False for a pod built before the lock existed, for a hand-patched pod, and always for a
+    server on this machine (it runs in the repo's own env). `differs` names what was not as
+    locked, so a False can be read rather than guessed at.
+    """
+    locked = locked_serving_packages()
+    differs = {n: {"installed": installed.get(n), "locked": locked.get(n)}
+               for n in sorted(set(installed) | set(locked)) if installed.get(n) != locked.get(n)}
+    return {"where": where, "matches_lock": not differs, "differs": differs,
+            "lock": "src/infra/endpoints/vllm_env/uv.lock", "packages": dict(sorted(installed.items()))}
+
 # pgrep/pkill pattern for the server. The brackets keep the pattern from matching the
 # pgrep/pkill command line itself over SSH (docs/LOG.md 2026-07-29: "bit us three times").
 _SERVER_PATTERN = "vllm.entrypoints.openai.api_serve[r]"
@@ -123,6 +177,10 @@ class ServedTarget:
         self.model_name = spec.base_model if spec.api_base \
             else (spec.model_key if spec.adapter else "base")
         self._server = server
+        # True once THIS arm has reached for a vLLM endpoint: what run_eval reads before
+        # recording `VllmServer.serving_env`, so an arm that never touched the server (an
+        # answer cache hit, an API target later in a ladder) does not inherit another's.
+        self.served_by_vllm = False
 
     @property
     def is_api(self) -> bool:
@@ -145,7 +203,9 @@ class ServedTarget:
             "reaches for base_url on one has not read spec.answers first.")
         if self.spec.api_base is not None:
             return self.spec.api_base
-        return self._server.serve(self.spec)
+        url = self._server.serve(self.spec)
+        self.served_by_vllm = True
+        return url
 
     def release(self) -> None:
         """Give the GPU back early -- see `VllmServer.release`. A no-op for an API target."""
@@ -728,6 +788,12 @@ class LocalExec:
         self.proc = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT,
                                      env=os.environ | base | env_extra)
 
+    def installed_packages(self) -> tuple[str, dict[str, str]]:
+        """(where, {name: version}) for the interpreter that runs the server here."""
+        out = subprocess.run([*self.python_argv, "-c", _INSTALLED_SNIPPET], capture_output=True,
+                             text=True, timeout=120, check=True).stdout
+        return f"this machine ({self.python_argv[0]})", _parse_installed(out)
+
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
 
@@ -1006,6 +1072,11 @@ class SshExec:
                 f"{self.bind}:{self.port} could not be bound or was lost — another eval's tunnel "
                 f"probably holds the port; pass a different --port")
 
+    def installed_packages(self) -> tuple[str, dict[str, str]]:
+        """(where, {name: version}) for the pod venv that runs the server."""
+        out = self._ssh(f"{POD_VENV}/bin/python -c {shlex.quote(_INSTALLED_SNIPPET)}", timeout=120)
+        return f"{self.host}:{POD_VENV}", _parse_installed(out)
+
     def alive(self) -> bool:
         if self.tunnel_failure():
             return False
@@ -1056,6 +1127,9 @@ class VllmServer:
         # under --terminate-pod). Called once, from `release()`, after the server is stopped.
         self.on_release = on_release
         self.released = False
+        # What the serving interpreter held when the server last started (`serving_env_record`);
+        # None until a server has started -- an API, Tinker or answers target never sets it.
+        self.serving_env: dict | None = None
 
     @property
     def base_url(self) -> str:
@@ -1156,6 +1230,12 @@ class VllmServer:
         self.base_revision = spec.base_revision
         self._loaded_loras = {spec.model_key} if spec.adapter else set()
         self._wait_healthy()
+        self.serving_env = serving_env_record(*self.executor.installed_packages())
+        n = len(self.serving_env["differs"])
+        print(f">>> serving env at {self.serving_env['where']}: {len(self.serving_env['packages'])} packages, "
+              + ("as locked in src/infra/endpoints/vllm_env" if not n else
+                 f"{n} not as locked in src/infra/endpoints/vllm_env (recorded in run_meta.serving_env)"),
+              flush=True)
 
     def _wait_healthy(self) -> None:
         deadline = time.time() + _HEALTH_TIMEOUT_S

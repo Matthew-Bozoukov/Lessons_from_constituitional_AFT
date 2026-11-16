@@ -53,7 +53,7 @@ from typing import Any, Callable, Sequence
 
 import requests
 
-from src.infra.endpoints.vllm import POD_VENV, pin_prefix, ssh_argv
+from src.infra.endpoints.vllm import POD_VENV, VLLM_ENV, locked_serving_packages, pin_prefix, ssh_argv
 from src.model_profile import gpu_entry, gpu_for, pinned_revision
 
 REST = "https://api.runpod.io/v2"
@@ -495,8 +495,7 @@ export VLLM_USE_FLASHINFER_SAMPLER=0
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH=/root/.local/bin:$PATH
 export VENV=/workspace/vllmenv
-uv venv $VENV --python 3.12
-uv pip install --python $VENV/bin/python -q '{_pinned_vllm()}' ninja huggingface_hub hf_transfer transformers
+{_vllm_env_install("$VENV")}
 $VENV/bin/python -c "import sys; print('venv python', sys.version)"
 $VENV/bin/hf download {base}{rev_flag} >/dev/null
 {downloads}
@@ -1017,21 +1016,45 @@ def _commit_to_run(branch: str | None) -> tuple[str, str]:
 # --------------------------------------------------------------------------------------
 
 def _pinned_vllm() -> str:
-    """The vLLM spec this repo is verified against, read from pyproject: ONE pin.
+    """The vLLM spec this repo serves on, read from the serving env's pyproject: ONE pin.
 
     A pod that installs whatever PyPI serves that morning is a pod whose serving
     behaviour is not the behaviour the runs on record were made with — parser names, the
-    runtime LoRA endpoint and chat-template handling all move between vLLM versions. The
-    driver's own env resolves this same line from the lock, so reading it here is what
-    keeps a remote server and a local one the same server.
+    runtime LoRA endpoint and chat-template handling all move between vLLM versions.
+    `src/infra/endpoints/vllm_env/pyproject.toml` states the pin and its uv.lock every
+    package under it; the root pyproject carries the same line for a server on a linux
+    driver, and tests/test_runpod_pod.py keeps the two equal.
     """
     import tomllib
 
-    root = Path(__file__).resolve().parents[2]
-    deps = tomllib.loads((root / "pyproject.toml").read_text())["project"]["dependencies"]
+    path = VLLM_ENV / "pyproject.toml"
+    deps = tomllib.loads(path.read_text())["project"]["dependencies"]
     spec = next((d for d in deps if re.match(r"^vllm\b", d)), None)
-    assert spec, f"{root / 'pyproject.toml'} declares no vllm dependency to pin a pod to"
-    return spec.split(";")[0].strip()      # drop the `; sys_platform == 'linux'` marker
+    assert spec, f"{path} declares no vllm dependency to pin a pod to"
+    return spec.split(";")[0].strip()
+
+
+def _vllm_env_install(venv: str) -> str:
+    """Shell lines that build the pod's vLLM venv from the serving lock, package for package.
+
+    An eval pod has no copy of this repo, so the lock travels IN the boot script: every
+    package `src/infra/endpoints/vllm_env/uv.lock` names, as `name==version`, written to a
+    file on the pod and installed with `--no-deps` — nothing is resolved there, so PyPI
+    publishing a newer release of anything cannot change what a pod serves on. Until
+    2026-11-16 this was `uv pip install vllm==<pin> ... transformers`, which pinned one
+    package and let ~190 float: transformers 5.23.0 (2026-11-13) made vLLM 0.26 exit at
+    start-up on Qwen3.6 (docs/GOTCHAS.md).
+
+    Versions and not the lock file itself, because the script is one `bash -lc` argument
+    and Linux caps a single argument at 128 KiB; the lock is ~180 KB, its versions ~5 KB.
+    Python 3.12, not the image's 3.10: a flashinfer constraint (`bootstrap_script`).
+    """
+    pins = "\n".join(f"{name}=={version}" for name, version in sorted(locked_serving_packages().items()))
+    return f"""uv venv {venv} --python 3.12
+cat > /workspace/vllm_env.lock.txt <<'VLLM_ENV_LOCK'
+{pins}
+VLLM_ENV_LOCK
+uv pip install --python {venv}/bin/python -q --no-deps -r /workspace/vllm_env.lock.txt"""
 
 
 # causal-conv1d is the lock's `train` extra: an sdist (no wheel for its torch/CUDA;
@@ -1118,11 +1141,8 @@ git checkout -q --detach {sha}
             f"{POD_VENV}/bin/hf download {shlex.quote(repo)}"
             + (f" --revision {shlex.quote(weight_revisions[repo])}" if weight_revisions else "")
             + " >/dev/null" for repo in repos)
-        # Python 3.12, not the image's 3.10, and `ninja` alongside vllm: both are
-        # flashinfer constraints, spelled out in `bootstrap_script`'s docstring.
         blocks.append(f"""echo INSTALLING_VLLM
-uv venv {POD_VENV} --python 3.12
-uv pip install --python {POD_VENV}/bin/python -q '{_pinned_vllm()}' ninja huggingface_hub hf_transfer transformers
+{_vllm_env_install(POD_VENV)}
 {token_block}
 echo PULLING_WEIGHTS
 {downloads}""")

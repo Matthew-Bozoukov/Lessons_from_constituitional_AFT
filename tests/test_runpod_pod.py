@@ -143,25 +143,96 @@ def test_an_eval_pod_can_also_carry_the_repo_so_the_eval_runs_on_the_box():
     assert "echo READY abc1234 + vllm venv at /workspace/vllmenv" in script
 
 
-def test_a_pod_serves_the_vllm_this_repo_pins_not_whatever_pypi_has_today():
-    # Parser names, the runtime LoRA endpoint and template handling all move between
-    # vLLM versions: a pod on a different one is not the server the driver was tested
-    # against. Both pod bootstraps read the SAME pin, from pyproject.
+def _vllm_pin(pyproject_path):
     import re
     import tomllib
 
-    declared = tomllib.loads(open("pyproject.toml", "rb").read().decode())["project"]["dependencies"]
-    spec = next(d for d in declared if re.match(r"^vllm\b", d)).split(";")[0].strip()
-    assert pod._pinned_vllm() == spec
-    assert "==" in spec, "the pod pin is only as exact as pyproject's own"
+    declared = tomllib.loads(open(pyproject_path, "rb").read().decode())["project"]["dependencies"]
+    return next(d for d in declared if re.match(r"^vllm\b", d)).split(";")[0].strip()
 
+
+def test_a_pod_serves_the_vllm_this_repo_pins_not_whatever_pypi_has_today():
+    # Parser names, the runtime LoRA endpoint and template handling all move between
+    # vLLM versions: a pod on a different one is not the server the driver was tested
+    # against. The pin lives in the serving env (src/infra/endpoints/vllm_env); the root
+    # pyproject repeats it for a server on a linux driver, and the two must not drift.
+    from src.infra.endpoints import vllm
+
+    spec = _vllm_pin(vllm.VLLM_ENV / "pyproject.toml")
+    assert pod._pinned_vllm() == spec == _vllm_pin("pyproject.toml")
+    assert "==" in spec, "the pod pin is only as exact as the serving env's own"
+    name, version = spec.split("==")
+    assert vllm.locked_serving_packages()[name] == version
+
+
+def _pod_scripts():
     eval_pod = pod._bootstrap(None, (["Qwen/Qwen3.6-27B"], None))
     chat_pod = pod.bootstrap_script(
         "Qwen/Qwen3.6-27B", [], hf_token=None, max_len=16384, lora_rank=64,
         max_num_seqs=32, mode="think", reasoning_parser="qwen3", tool_call_parser=None)
-    for script in (eval_pod, chat_pod):
-        assert f"'{spec}'" in script
-        assert " -q vllm " not in script  # never the unpinned name
+    return eval_pod, chat_pod
+
+
+def test_a_pod_installs_every_package_at_the_version_the_serving_lock_names():
+    # An eval pod has no repo and so no lock of ours: until 2026-11-16 it installed
+    # `vllm==<pin> ... transformers`, and transformers 5.23.0 (released 2026-11-13) made
+    # vLLM 0.26 exit at start-up on Qwen3.6. Both pod bootstraps now carry the WHOLE lock
+    # as exact versions and resolve nothing on the pod.
+    from src.infra.endpoints import vllm
+
+    locked = vllm.locked_serving_packages()
+    assert locked["transformers"] == "5.22.2" and len(locked) > 150
+    for script in _pod_scripts():
+        pod._check_bash(script)
+        body = script.split("<<'VLLM_ENV_LOCK'\n", 1)[1].split("\nVLLM_ENV_LOCK\n", 1)[0]
+        assert dict(line.split("==") for line in body.splitlines()) == locked
+        install = next(ln for ln in script.splitlines() if "uv pip install" in ln)
+        assert "--no-deps" in install and "-r /workspace/vllm_env.lock.txt" in install
+        # Nothing but that one install, and never a package named without a version.
+        assert sum("pip install" in ln for ln in script.splitlines()) == 1
+        assert not any(word in install.split() for word in ("transformers", "vllm", "ninja"))
+    # One argument to `bash -lc`: Linux caps a single argv string at 128 KiB.
+    assert all(len(script.encode()) < 64 * 1024 for script in _pod_scripts())
+
+
+def test_the_serving_lock_is_current_with_its_pyproject_and_one_version_per_package():
+    # `uv lock --check` is what a re-lock that was forgotten after editing the pins fails.
+    import shutil
+
+    from src.infra.endpoints import vllm
+
+    uv = shutil.which("uv")
+    if uv is None:
+        pytest.skip("uv is not on PATH")
+    r = subprocess.run([uv, "lock", "--check", "--offline", "--project", str(vllm.VLLM_ENV)],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    vllm.locked_serving_packages()  # asserts one version per package
+
+
+def test_a_served_run_records_what_the_serving_interpreter_held():
+    from src.infra.endpoints import vllm
+
+    locked = vllm.locked_serving_packages()
+    as_locked = vllm.serving_env_record("pod:/workspace/vllmenv", dict(locked))
+    assert as_locked["matches_lock"] and as_locked["differs"] == {} and as_locked["packages"] == locked
+    # The 2026-11-16 pod: everything as locked except a newer transformers and one stray package.
+    drifted = vllm.serving_env_record("pod", {**locked, "transformers": "5.23.0", "stray": "1.0"})
+    assert not drifted["matches_lock"]
+    assert drifted["differs"] == {"transformers": {"installed": "5.23.0", "locked": "5.22.2"},
+                                  "stray": {"installed": "1.0", "locked": None}}
+    # Names compare as PyPI compares them, whatever case or separator the dist metadata uses.
+    assert vllm._parse_installed("PyYAML==6.0.3\nhuggingface_hub==2.4.0\n\n") == {
+        "pyyaml": "6.0.3", "huggingface-hub": "2.4.0"}
+
+
+def test_the_serving_env_is_read_from_the_interpreter_that_runs_the_server(tmp_path):
+    import sys
+
+    from src.infra.endpoints import vllm
+
+    where, installed = vllm.LocalExec(tmp_path).installed_packages()
+    assert sys.executable in where and "pytest" in installed  # this interpreter, really queried
 
 
 def test_ssh_remotes_are_rewritten_to_the_anonymous_https_form(monkeypatch):

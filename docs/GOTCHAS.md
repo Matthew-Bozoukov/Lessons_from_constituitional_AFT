@@ -3,6 +3,28 @@
 
 # GOTCHAS
 
+## An eval pod's Python packages come from `src/infra/endpoints/vllm_env/uv.lock`, not from PyPI's latest (2026-11-16)
+
+An eval pod has no copy of the repo, so it never saw the root `uv.lock`. Until 2026-11-16 its boot
+script ran `uv pip install vllm==<pin> ninja huggingface_hub hf_transfer transformers`: one package
+pinned, about 190 floating. vLLM 0.26.0 declares only `transformers>=5.5.3`, so each pod got that
+day's newest, and transformers 5.23.0 (released 2026-11-13) makes vLLM 0.26 exit at start-up on
+Qwen3.6: `ValueError: Found 1 <|image_pad|> tokens in the text but no images were passed`, raised in
+`profile_run` while the engine sizes memory with a dummy image. `uv run evals` reports it as
+"vLLM exited ... Engine core initialization failed"; the real line is higher up in
+`/workspace/output/serve/vllm.log` on the pod.
+
+Now `runpod up` writes every package of the serving lock into the boot script as `name==version`
+and installs with `--no-deps` (`_vllm_env_install`, src/infra/runpod.py), and each served run records
+what the interpreter held in `run_meta.json` under `serving_env` (`matches_lock`, `differs`,
+`packages`). To change the stack: edit `vllm_env/pyproject.toml`, `uv lock --project
+src/infra/endpoints/vllm_env`, serve a smoke eval on a fresh pod. A pod rented before this commit is
+unpinned: if it fails as above, `uv pip install --python /workspace/vllmenv/bin/python
+transformers==5.22.2` on the pod and rerun.
+
+Not covered: a server on this machine (no `--server`) runs in the repo's own env (transformers
+5.14.1 from the root lock), and `scripts/infra/runpod_arena_hard.py` still installs unpinned.
+
 ## Every Qwen3.6 run is on the base commit the profile pins, whatever the adapter's stamp says (2026-11-11)
 
 Adapters trained before Qwen's 2026-11-07 template commit are stamped `6a9e13bd`, later ones

@@ -26,12 +26,15 @@ def test_custom_runner_keeps_shared_lifecycle_and_metadata(monkeypatch, tmp_path
     events, outputs = [], []
 
     class Server:
+        # What a started vLLM server reports; run_eval copies it into the arm's run_meta.
+        serving_env = {"where": "fake", "matches_lock": True, "differs": {}, "packages": {"vllm": "0.26.0"}}
+
         def __init__(self, **kwargs):
             assert kwargs["work_dir"] == tmp_path / f"runs/server_{kwargs['port']}"
 
         def ensure(self, target):
             events.append("serve")
-            return SimpleNamespace(spec=target)
+            return SimpleNamespace(spec=target, served_by_vllm=self.serving_env is not None)
 
         def stop(self):
             events.append("stop")
@@ -69,6 +72,8 @@ def test_custom_runner_keeps_shared_lifecycle_and_metadata(monkeypatch, tmp_path
     meta = json.loads((outputs[0] / "metadata/run_meta.json").read_text())
     assert meta["target_revision"] == "adapter-pin" and meta["base_model_revision"] == "base-pin"
     assert meta["runner"].endswith(":test_custom_runner_keeps_shared_lifecycle_and_metadata.<locals>.custom")
+    # What the vLLM interpreter held when it served this arm travels with the run.
+    assert meta["serving_env"] == Server.serving_env
 
 
 def test_checkpoint_obeys_no_push(tmp_path, monkeypatch):
@@ -95,12 +100,14 @@ def _preamble_arm(monkeypatch, tmp_path, *, protocol: bool):
     events, outputs = [], []
 
     class Server:
+        serving_env = None  # no vLLM server ran for this arm
+
         def __init__(self, **kwargs):
             pass
 
         def ensure(self, target):
             events.append("serve")
-            return SimpleNamespace(spec=target)
+            return SimpleNamespace(spec=target, served_by_vllm=self.serving_env is not None)
 
         def stop(self):
             events.append("stop")
@@ -138,6 +145,7 @@ def test_run_eval_records_and_materialises_the_system_preamble(monkeypatch, tmp_
     assert "<constitution>\n## Priority\n\nBe honest.\n</constitution>" in meta["system_preamble"]["text"]
     assert meta["system_preamble"]["sha256"] and meta["system_preamble"]["constitution_sha256"]
     assert meta["variant"] == "constitution"
+    assert meta["serving_env"] is None  # no vLLM server ran for this arm
     assert (outputs[0] / "metadata/system_preamble.md").read_text() == meta["system_preamble"]["text"] + "\n"
 
 

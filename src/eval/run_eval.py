@@ -639,6 +639,12 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
             # checkpoint, so an arm ladder restarts it rather than swapping weights.
             with _tinker_endpoint(spec, cfg):
                 summary = run_fn(served, cfg, out_dir, **run_kwargs)
+            # Serving is lazy, so what served this arm is only known now: the packages the
+            # vLLM interpreter held and whether they are the locked serving stack. Stays null
+            # for an arm no vLLM server ran for (API, Tinker and answers targets).
+            launch_meta = json.loads(launch_meta_path.read_text())
+            launch_meta["serving_env"] = server.serving_env if served.served_by_vllm else None
+            launch_meta_path.write_text(json.dumps(launch_meta, indent=2))
 
             summary = {"target": hf_path, "mode": spec.mode, **summary}
             launch_meta = json.loads(launch_meta_path.read_text())
