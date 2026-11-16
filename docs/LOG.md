@@ -1,3 +1,26 @@
+## 2026-11-16: Base-side tool-use dose on da-tools-15: half and double the base's tool rows at fixed size, two adapters trained
+
+Hypothesis: da-tools-15's agentic gain may come from the unused tools on the DA rows, or from how they sit next to the base's own tool use. In the 85% base of `2026-10-11-da-tools-15-mix` @ da195751 every tool row is nemotron_science: 110 rows, 275,288 of 4,245,400 supervised tokens (6.5%). Changing only that dose, with the DA side held, says whether the base's tool use matters.
+
+Method: `scratch/tools_dose/build_base_tools_dose.py`, an edit of da195751. The 650 DA rows (646 with unused tools) are byte-identical and in their order; the base keeps its size, so DA stays 15.1% of supervised tokens in both arms. New rows come from nvidia/Nemotron-SFT-Science-v2 @ 6536a502 through the plain base's own stream order and screen (`scratch/nosynth_published_traces/build.py`: author not gpt-oss/Qwen, no failed web search, fits 8,192 under Qwen3.6 and gpt-oss templates, no markup or model identity, no parallel calls), excluding every row id and prompt of `2026-10-05-plain-mix` (all 1,832). Rows are chosen by `fill_tokens`, seed 0.
+- half: in each tool group (rqa called, so called, syn_mcq called, syn_mcq tools-unused) a seeded half of its tokens is dropped (53 rows); the freed tokens are refilled with new tool-free science rows of the same question format, rqa's open questions from vendor (22 rows), so's and syn_mcq's multiple choice from syn_mcq's tool-free rows (46 rows). Science stays 412k tokens; nothing outside science changes.
+- double: each tool group gains as many tokens of new rows of its own kind (95 rows: rqa 48, so 32, syn_mcq 12 called + 3 unused); the same tokens leave every tool-free group in proportion (116 rows, 6.9% of each of chat, maths cot, maths tir, code, syn_mcq tool-free, vendor; Nika's choice over removing science's tool-free rows first). Science grows from 411k to 677k tokens (16% of the base).
+- Checks in the build: DA rows and every kept base row byte-identical to da195751, no prompt twice, every count recomputed with Qwen3.6's render and equal to the plain mix's provenance, training's own HF loader + render + mask gate passed. The loader's schema union reorders keys inside a few science tool schemas (3 rows half, 9 double, 6 in da195751 itself); the text differs only in equal-JSON lines and training renders the loader's version, as it did for da-tools-15.
+
+Result (HF, dougalldeepmind/):
+
+| arm | mix | base tool tokens (share of base) | base supervised | rows |
+|---|---|---|---|---|
+| da-tools-15 (reference) | `2026-10-11-da-tools-15-mix` @ da195751 | 275,288 (6.5%) | 4,245,400 | 2,218 |
+| half | `2026-11-16-da-tools-15-base-tools-half-mix` @ 31d819a0 | 136,478 (3.2%) | 4,245,715 | 2,233 |
+| double | `2026-11-16-da-tools-15-base-tools-double-mix` @ 81e13d3c | 550,427 (13.0%) | 4,244,889 | 2,197 |
+
+- Adapters: `2026-11-16-qwen36-0-da-tools-15-base-tools-half` @ 0b63ffb5 (140 steps, last logged loss 0.683) and `2026-11-16-qwen36-0-da-tools-15-base-tools-double` @ 12cd67ae (138 steps in 50 min, last logged loss 0.670): sft.yaml, seed 0, one H200 each (global batch 16), code b4148e59, base 8f33b989 like the 50-50 arm. Thinking stamp true.
+- No H200 was free for the second pod at first (SECURE and COMMUNITY both refused); a retry loop got one 10 minutes later, so the two trained in parallel. Roughly $12 of RunPod in all; both pods terminated, `runpod pods` shows none of them.
+- Not evaluated yet. The comparison for each is da-tools-15 A (10-11) and B/C (11-06) on ODCV, MASK and Hospital.
+
+Next: ODCV and MASK (3 passes) on both adapters, then Hospital; one seed each, so a second seed before reading anything small.
+
 ## 2026-11-16: Base Qwen3.6 on MASK+tools keeps its chat reasoning opener (97.5% of tooled pressure prompts); honesty 55.9, one pass
 
 Hypothesis: unused tool definitions on MASK's pressure prompts move the base model off its chat reasoning shape ("Here's a thinking process:" followed by a numbered list), as they move the DA+tools adapter (numbered list on 70.3% of plain-MASK pressure reasoning, pooled over three seeds, against 5.1% under MASK+tools on seed a).
