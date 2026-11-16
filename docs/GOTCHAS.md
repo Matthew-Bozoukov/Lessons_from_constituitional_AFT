@@ -22,6 +22,13 @@ src/infra/endpoints/vllm_env`, serve a smoke eval on a fresh pod. A pod rented b
 unpinned: if it fails as above, `uv pip install --python /workspace/vllmenv/bin/python
 transformers==5.22.2` on the pod and rerun.
 
+The first version of that install (e0820ea2) broke every `--clone-repo` eval pod: run inside the
+clone, `uv pip install` applied the repo's `[tool.uv] constraint-dependencies` to the serving pins
+("you require nvidia-nvvm==13.5.37 and nvidia-nvvm>=13.0,<13.1"), the start script exited, RunPod
+restarted the container with its disk, and `uv venv` then refused the existing venv on every later
+life: a RUNNING card whose SSH refuses and whose boot log 404s. Fixed with `--no-config` and
+`uv venv --clear`. To read such a pod, retry `ssh ... cat /workspace/boot.log` until one life answers.
+
 Not covered: a server on this machine (no `--server`) runs in the repo's own env (transformers
 5.14.1 from the root lock), and `scripts/infra/runpod_arena_hard.py` still installs unpinned.
 
