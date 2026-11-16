@@ -153,6 +153,44 @@ def test_adapter_without_stamp_is_a_hard_error():
         _spec_from_files("org/bad-lora", ADAPTER_CONFIG, {"mode": "think"})
 
 
+def test_a_reasoning_prefill_lands_right_after_the_open_think_tag_and_nowhere_else():
+    """serving.reasoning_prefill (experimental): the served template ends its generation prompt
+    with the opener, so every trace starts from it; without it the template is unchanged."""
+    import jinja2
+
+    template = ("{%- for m in messages %}<|im_start|>{{ m.role }}\n{{ m.content }}<|im_end|>\n{%- endfor %}\n"
+                "{%- if add_generation_prompt %}\n    {{- '<|im_start|>assistant\n' }}\n"
+                "    {%- if enable_thinking is defined and enable_thinking is false %}\n"
+                "        {{- '<think>\n\n</think>\n\n' }}\n    {%- else %}\n        {{- '<think>\n' }}\n"
+                "    {%- endif %}\n{%- endif %}")
+    render = lambda t, gen: jinja2.Template(t).render(messages=[{"role": "user", "content": "hi"}],
+                                                      add_generation_prompt=gen)
+    plain = pin_template(template, "think")
+    assert pin_template(template, "think", "") == plain
+    opener = "Here's a thinking process:"
+    prefilled = pin_template(template, "think", opener)
+    assert render(prefilled, True) == render(plain, True) + opener
+    assert render(plain, True).endswith("<think>\n")
+    assert render(prefilled, False) == render(plain, False)      # history renders carry no opener
+    with pytest.raises(AssertionError, match="needs mode=think"):
+        pin_template(template, "nothink", opener)
+    with pytest.raises(AssertionError, match="one string literal"):
+        pin_template(template, "think", 'a "quoted" {{ thing }}')
+
+
+def test_a_reasoning_prefill_is_an_eval_requirement_that_needs_think_mode():
+    from src.infra.endpoints.vllm import plan_serving
+
+    facts = {"max_num_seqs": 192, "reasoning_parser": "qwen3"}
+    req = {"context_window": 20480, "concurrency": 8, "reasoning_prefill": "Here"}
+    plan = plan_serving(facts, req, "Qwen/Qwen3.6-27B", "think")
+    assert plan["reasoning_prefill"] == "Here" and any("reasoning_prefill" in w for w in plan["warnings"])
+    assert plan_serving(facts, {k: v for k, v in req.items() if k != "reasoning_prefill"},
+                        "Qwen/Qwen3.6-27B", "think")["reasoning_prefill"] == ""
+    with pytest.raises(SystemExit, match="reasoning_prefill"):
+        plan_serving(facts, req, "Qwen/Qwen3.6-27B", "nothink")
+
+
 def test_pin_template_shadows_request_kwargs():
     template = "{%- if enable_thinking %}T{% else %}N{% endif %}"
     pinned = pin_template(template, "nothink")
@@ -226,6 +264,7 @@ def test_plan_serving_validates_requirements_against_facts():
         "tool_call_parser": None,
         "prefix_caching": None,
         "hf_overrides": None,
+        "reasoning_prefill": "",
         "warnings": (),
     }
     # No concurrency request: serve at the family cap.

@@ -483,7 +483,7 @@ def resolve_target(hf_path: str, revision: str | None = None) -> TargetSpec:
     return spec
 
 
-def pin_template(template_text: str, mode: str) -> str:
+def pin_template(template_text: str, mode: str, reasoning_prefill: str = "") -> str:
     """Pin thinking mode into a chat template (pure; unit-tested offline).
 
     A top-level Jinja `set` executes after the render context is built, so it shadows any
@@ -496,7 +496,23 @@ def pin_template(template_text: str, mode: str) -> str:
     `render_kwargs`). From 2026-08-04 to 2026-10-05 think mode pinned it true, keeping every
     earlier turn's reasoning in view; arms trained then were also served that way.
     """
-    return pin_prefix(mode) + template_text
+    pinned = pin_prefix(mode) + template_text
+    if not reasoning_prefill:
+        return pinned
+    # EXPERIMENTAL (2026-11-16, docs/LOG.md): start every generated reasoning trace from a
+    # fixed opener. In think mode the template's generation prompt ends at the reasoning
+    # prefill `<think>\n`, and a template's last output is its generation prompt, so one
+    # more emission at the very end lands the text exactly where the trace begins. The
+    # opener is in the PROMPT, not the completion: `reasoning_content` in a rollout starts
+    # after it, and an earlier turn's trace rendered back as history does not carry it.
+    assert mode == "think", f"reasoning_prefill needs mode=think (got {mode!r}): only think mode ends at the open trace"
+    assert _PREFILL_TEXT.fullmatch(reasoning_prefill), (
+        f"reasoning_prefill {reasoning_prefill!r}: letters, digits, spaces and . , : ; ' ! ? ( ) - only, "
+        "so it can be written into the template as one string literal")
+    return pinned + '{%- if add_generation_prompt %}{{- "' + reasoning_prefill + '" }}{%- endif %}'
+
+
+_PREFILL_TEXT = re.compile(r"[A-Za-z0-9 .,:;'!?()\-]{1,200}")
 
 
 def pin_prefix(mode: str) -> str:
@@ -556,6 +572,8 @@ _EVAL_REQUIREMENT_KEYS = {
     "needs_tool_calls",
     "enable_prefix_caching",
     "rope_scaling",
+    # EXPERIMENTAL: text every generated reasoning trace starts from (`pin_template`).
+    "reasoning_prefill",
 }
 # `enable_prefix_caching` was called `reuses_long_prefixes` until 2026-10-29; every published
 # run_meta.json before then carries the old name, and re-running from a fetched config has to
@@ -703,6 +721,15 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     # (on for a plain transformer, OFF for a hybrid family such as Qwen3.6, which 0.26 keeps
     # opt-in). An eval that wants caching therefore has to ask for it.
     warnings = [rope_note] if rope_note else []
+    reasoning_prefill = str(requirements.get("reasoning_prefill") or "")
+    if reasoning_prefill:
+        if mode != "think":
+            raise SystemExit(
+                f"\nserving.reasoning_prefill is set but {base_model} is served in mode={mode!r}: "
+                "only think mode ends its generation prompt inside an open reasoning trace.")
+        warnings.append(
+            f"reasoning_prefill: every reasoning trace starts from {reasoning_prefill!r}, written into "
+            "the served template. It is NOT part of the returned reasoning_content.")
     prefix_caching = requirements.get("enable_prefix_caching")
     prefix_caching = None if prefix_caching is None else bool(prefix_caching)
     if prefix_caching and not facts.get("supports_prefix_caching"):
@@ -725,6 +752,7 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
         "tool_call_parser": tool_call_parser,
         "prefix_caching": prefix_caching,
         "hf_overrides": hf_overrides,
+        "reasoning_prefill": reasoning_prefill,
         "warnings": tuple(warnings),
     }
 
@@ -1158,7 +1186,8 @@ class VllmServer:
             self._load_lora(spec, adapter_dir)
         return self.base_url
 
-    def _pinned_template_path(self, base_model: str, mode: str, revision: str | None = None) -> str | None:
+    def _pinned_template_path(self, base_model: str, mode: str, revision: str | None = None,
+                              reasoning_prefill: str = "") -> str | None:
         if mode == "default":
             return None
         rev = {"revision": revision} if revision else {}
@@ -1170,7 +1199,7 @@ class VllmServer:
             with open(hf_download(base_model, "chat_template.jinja", **rev), encoding="utf-8") as f:
                 template = f.read()
         return self.executor.write_file(f"chat_template_{mode}.jinja",
-                                        pin_template(template, mode))
+                                        pin_template(template, mode, reasoning_prefill))
 
     def _start(self, spec: TargetSpec, adapter_dir: str | None) -> None:
         # Facts come from two places, both authoritative and neither overridable: the
@@ -1206,7 +1235,8 @@ class VllmServer:
             argv += ["--no-enable-prefix-caching"]
         if plan.get("hf_overrides"):
             argv += ["--hf-overrides", json.dumps(plan["hf_overrides"])]
-        template = self._pinned_template_path(spec.base_model, spec.mode, spec.base_revision)
+        template = self._pinned_template_path(spec.base_model, spec.mode, spec.base_revision,
+                                              plan["reasoning_prefill"])
         if template:
             argv += ["--chat-template", template]
         if spec.adapter:

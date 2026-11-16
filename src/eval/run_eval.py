@@ -478,6 +478,16 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
                 + ")")
         print(f">>> system preamble: {preamble.file} (constitution {preamble.constitution_sha256[:12]}, "
               f"composed {preamble.sha256[:12]}, {len(preamble.text):,} chars)", flush=True)
+    # EXPERIMENTAL: a reasoning prefill changes what the model generates from, so the arm
+    # must name itself, exactly as a preamble arm must (serving.reasoning_prefill, vllm.pin_template).
+    prefill = str(OmegaConf.select(cfg, "serving.reasoning_prefill") or "")
+    if prefill:
+        if "protocol" not in EVALS[args.name].name_facets or not cfg.get("protocol"):
+            raise SystemExit(
+                f"{args.name}: serving.reasoning_prefill={prefill!r} is set but no protocol= facet names "
+                "the arm (pass protocol=prefill), so the run would publish under the plain name")
+        print(f">>> reasoning prefill: every trace starts from {prefill!r} (in the prompt, not in the "
+              "returned reasoning)", flush=True)
     run_fn = runner if runner is not None else resolve(args.name)
     cfg._run_eval = {"push": not args.no_push,
                      "runner": f"{run_fn.__module__}:{run_fn.__qualname__}"}
@@ -558,6 +568,10 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
                 raise SystemExit("SWE API targets require a Tinker GPT-OSS checkpoint and "
                                  "--config configs/eval/swebench_mini/gptoss-tinker.yaml; "
                                  "the Qwen fleet protocol is unchanged")
+        if prefill and (spec.api_base or spec.answers):
+            raise SystemExit(
+                f"!!! serving.reasoning_prefill needs a model this run serves itself; {hf_path} is "
+                "an API or answers target, whose template is not ours to write into.")
         if spec.api_base and not EVALS[args.name].supports_api_target:
             raise SystemExit(
                 f"!!! {args.name} does not support an API-endpoint target "
