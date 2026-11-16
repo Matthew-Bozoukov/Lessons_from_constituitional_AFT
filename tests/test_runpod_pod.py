@@ -138,6 +138,8 @@ def test_an_eval_pod_can_also_carry_the_repo_so_the_eval_runs_on_the_box():
     pod._check_bash(script)
     assert "git fetch -q origin main" in script and "uv sync" in script
     assert "uv venv /workspace/vllmenv" in script
+    # The serving install comes after the clone's `cd`, so it must not read the repo's uv config.
+    assert script.index("uv sync") < script.index("uv pip install --no-config")
     # One READY, naming both, so the boot log says what actually finished.
     assert script.count("echo READY") == 1
     assert "echo READY abc1234 + vllm venv at /workspace/vllmenv" in script
@@ -188,6 +190,11 @@ def test_a_pod_installs_every_package_at_the_version_the_serving_lock_names():
         assert dict(line.split("==") for line in body.splitlines()) == locked
         install = next(ln for ln in script.splitlines() if "uv pip install" in ln)
         assert "--no-deps" in install and "-r /workspace/vllm_env.lock.txt" in install
+        # On a --clone-repo pod the install runs inside the clone: without --no-config uv applies the
+        # repo's own [tool.uv] constraints to the serving env and the pins are unsatisfiable; without
+        # --clear a restarted container dies on the venv its previous life left (2026-11-16).
+        assert "--no-config" in install
+        assert f"uv venv {vllm.POD_VENV if '$VENV' not in script else '$VENV'} --python 3.12 --clear" in script
         # Nothing but that one install, and never a package named without a version.
         assert sum("pip install" in ln for ln in script.splitlines()) == 1
         assert not any(word in install.split() for word in ("transformers", "vllm", "ninja"))

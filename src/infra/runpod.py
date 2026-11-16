@@ -1048,13 +1048,21 @@ def _vllm_env_install(venv: str) -> str:
     Versions and not the lock file itself, because the script is one `bash -lc` argument
     and Linux caps a single argument at 128 KiB; the lock is ~180 KB, its versions ~5 KB.
     Python 3.12, not the image's 3.10: a flashinfer constraint (`bootstrap_script`).
+
+    `--no-config`, from /workspace: on a pod that also clones this repo the boot is INSIDE the clone by now,
+    and uv would apply the repo's own `[tool.uv] constraint-dependencies` (the training
+    env's CUDA compiler pins) to the serving env — "you require nvidia-nvvm==13.5.37 and
+    nvidia-nvvm>=13.0,<13.1 ... unsatisfiable". `--clear`: RunPod restarts a container
+    whose start script exited, WITH its disk, and `uv venv` refuses an existing venv, so
+    without it one failed boot became an endless restart loop (both 2026-11-16, three
+    `--clone-repo` pods, 43 restarts in 13 minutes; docs/GOTCHAS.md).
     """
     pins = "\n".join(f"{name}=={version}" for name, version in sorted(locked_serving_packages().items()))
-    return f"""uv venv {venv} --python 3.12
+    return f"""uv venv {venv} --python 3.12 --clear
 cat > /workspace/vllm_env.lock.txt <<'VLLM_ENV_LOCK'
 {pins}
 VLLM_ENV_LOCK
-uv pip install --python {venv}/bin/python -q --no-deps -r /workspace/vllm_env.lock.txt"""
+(cd /workspace && uv pip install --no-config --python {venv}/bin/python -q --no-deps -r /workspace/vllm_env.lock.txt)"""
 
 
 # causal-conv1d is the lock's `train` extra: an sdist (no wheel for its torch/CUDA;
