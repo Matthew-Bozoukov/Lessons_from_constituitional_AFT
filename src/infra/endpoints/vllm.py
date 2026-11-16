@@ -56,10 +56,25 @@ _HEALTH_TIMEOUT_S = 1800  # first start downloads weights; a 32B pull can take a
 POD_VENV = "/workspace/vllmenv"
 POD_WORKDIR = "/workspace"
 
-# What goes INTO that venv: the serving environment's own pyproject + lock, beside this file
-# (as tinker_env is beside tinker.py). `uv run runpod up` installs the lock on the pod, and
-# every served run records what the venv actually held (`VllmServer.serving_env`).
-VLLM_ENV = Path(__file__).resolve().parent / "vllm_env"
+# What goes INTO that venv: the part of the repo's ONE lock (the root uv.lock) that serving
+# needs — vLLM and everything under it, at the versions training and an on-box server already
+# run on. `uv run runpod up` installs exactly that on the pod, and every served run records
+# what the serving interpreter actually held (`VllmServer.serving_env`). There is no second
+# lock: for one day (2026-11-16) there was (`vllm_env/`, transformers 5.22.2 against the
+# repo's 5.14.1), and a model was then served on a different stack depending on where the
+# eval was typed.
+REPO_LOCK = Path(__file__).resolve().parents[3] / "uv.lock"
+# What a serving venv is asked for; the lock supplies the rest. ninja: flashinfer (under vllm)
+# JIT-compiles with it and fails with exit 127 without. huggingface-hub: `hf download`
+# pre-pulls the weights at boot.
+SERVING_ROOTS = ("vllm", "ninja", "huggingface-hub")
+# The environment a pod's venv is: lock markers are evaluated against THIS, not against the
+# machine typing `runpod up` (a macOS driver would otherwise drop every linux-marked package).
+_POD_MARKER_ENV = {
+    "sys_platform": "linux", "platform_system": "Linux", "os_name": "posix", "platform_machine": "x86_64",
+    "python_version": "3.12", "python_full_version": "3.12.0",
+    "implementation_name": "cpython", "platform_python_implementation": "CPython",
+}
 
 
 def _dist_name(name: str) -> str:
@@ -67,22 +82,54 @@ def _dist_name(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
-def locked_serving_packages() -> dict[str, str]:
-    """{name: version} of every package in the serving lock (`vllm_env/uv.lock`).
-
-    The lock is resolved for one platform, so each package has exactly one version; a second
-    one would mean the pins below could not be written as `name==version`, and is refused.
-    """
+def _repo_lock() -> dict[str, dict]:
+    """The root uv.lock's registry packages by name; one version each, or names could not be pinned."""
     import tomllib
 
-    out: dict[str, str] = {}
-    for pkg in tomllib.loads((VLLM_ENV / "uv.lock").read_text())["package"]:
-        if "virtual" in pkg.get("source", {}):      # the env's own (unbuilt) project entry
+    out: dict[str, dict] = {}
+    for pkg in tomllib.loads(REPO_LOCK.read_text())["package"]:
+        if "registry" not in pkg.get("source", {}):      # this repository's own editable entry
             continue
         name = _dist_name(pkg["name"])
-        assert name not in out, f"{VLLM_ENV / 'uv.lock'} locks {name} at two versions"
+        assert name not in out, f"{REPO_LOCK} locks {name} at two versions"
+        out[name] = pkg
+    assert out, f"{REPO_LOCK} locks no packages"
+    return out
+
+
+def locked_packages() -> dict[str, str]:
+    """{name: version} of every package the repo's lock names, on any platform."""
+    return {name: pkg["version"] for name, pkg in _repo_lock().items()}
+
+
+def locked_serving_packages() -> dict[str, str]:
+    """{name: version} of the serving env: `SERVING_ROOTS` and all they depend on, from the root uv.lock.
+
+    The walk follows the lock's own dependency edges (extras included) and keeps an edge when
+    its marker holds on a pod (`_POD_MARKER_ENV`), which is the set `uv sync` installs there
+    restricted to what vLLM needs: no trainer, no eval harness, nothing that has to compile.
+    """
+    from packaging.markers import Marker
+
+    lock = _repo_lock()
+    out: dict[str, str] = {}
+    seen: set[tuple[str, tuple[str, ...]]] = set()
+    todo: list[tuple[str, tuple[str, ...]]] = [(root, ()) for root in SERVING_ROOTS]
+    while todo:
+        name, extras = todo.pop()
+        name = _dist_name(name)
+        if (name, extras) in seen:
+            continue
+        seen.add((name, extras))
+        assert name in lock, f"{REPO_LOCK} has no {name}, which the serving env needs"
+        pkg = lock[name]
         out[name] = pkg["version"]
-    assert out, f"{VLLM_ENV / 'uv.lock'} locks no packages"
+        edges = list(pkg.get("dependencies", []))
+        for extra in extras:
+            edges += pkg.get("optional-dependencies", {}).get(extra, [])
+        for dep in edges:
+            if "marker" not in dep or Marker(dep["marker"]).evaluate(_POD_MARKER_ENV):
+                todo.append((dep["name"], tuple(sorted(dep.get("extra", [])))))
     return out
 
 
@@ -99,16 +146,23 @@ def _parse_installed(text: str) -> dict[str, str]:
 def serving_env_record(where: str, installed: dict[str, str]) -> dict:
     """What a run records about the environment that served it.
 
-    `matches_lock` is the question a later reader has: was this the locked serving stack?
-    False for a pod built before the lock existed, for a hand-patched pod, and always for a
-    server on this machine (it runs in the repo's own env). `differs` names what was not as
-    locked, so a False can be read rather than guessed at.
+    `matches_lock` is the question a later reader has: was this the locked stack? It holds
+    when every serving package is installed at its locked version and nothing else installed
+    disagrees with the repo's lock — so a pod's serving venv (the serving packages and no
+    more) and the repo's own env (those plus the rest of the lock) both match, and a pod
+    built before the lock, a hand-patched one or a stray package does not. `differs` names
+    what was not as locked, so a False can be read rather than guessed at.
     """
-    locked = locked_serving_packages()
-    differs = {n: {"installed": installed.get(n), "locked": locked.get(n)}
-               for n in sorted(set(installed) | set(locked)) if installed.get(n) != locked.get(n)}
+    serving, everything = locked_serving_packages(), locked_packages()
+    differs = {n: {"installed": installed.get(n), "locked": everything.get(n)}
+               for n in sorted(set(installed) | set(serving))
+               if n != _THIS_PROJECT and installed.get(n) != everything.get(n)}
     return {"where": where, "matches_lock": not differs, "differs": differs,
-            "lock": "src/infra/endpoints/vllm_env/uv.lock", "packages": dict(sorted(installed.items()))}
+            "lock": "uv.lock", "packages": dict(sorted(installed.items()))}
+
+
+# This repository's own distribution: installed (editable) in the repo's env, in no lock.
+_THIS_PROJECT = "teaching-claude-why-replication"
 
 # pgrep/pkill pattern for the server. The brackets keep the pattern from matching the
 # pgrep/pkill command line itself over SSH (docs/LOG.md 2026-07-29: "bit us three times").
@@ -1233,8 +1287,8 @@ class VllmServer:
         self.serving_env = serving_env_record(*self.executor.installed_packages())
         n = len(self.serving_env["differs"])
         print(f">>> serving env at {self.serving_env['where']}: {len(self.serving_env['packages'])} packages, "
-              + ("as locked in src/infra/endpoints/vllm_env" if not n else
-                 f"{n} not as locked in src/infra/endpoints/vllm_env (recorded in run_meta.serving_env)"),
+              + ("as locked in uv.lock" if not n else
+                 f"{n} not as locked in uv.lock (recorded in run_meta.serving_env)"),
               flush=True)
 
     def _wait_healthy(self) -> None:

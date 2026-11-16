@@ -3,7 +3,7 @@
 
 # GOTCHAS
 
-## An eval pod's Python packages come from `src/infra/endpoints/vllm_env/uv.lock`, not from PyPI's latest (2026-11-16)
+## One lock, one transformers: an eval pod installs vLLM's part of the root `uv.lock` (2026-11-16)
 
 An eval pod has no copy of the repo, so it never saw the root `uv.lock`. Until 2026-11-16 its boot
 script ran `uv pip install vllm==<pin> ninja huggingface_hub hf_transfer transformers`: one package
@@ -14,23 +14,31 @@ Qwen3.6: `ValueError: Found 1 <|image_pad|> tokens in the text but no images wer
 "vLLM exited ... Engine core initialization failed"; the real line is higher up in
 `/workspace/output/serve/vllm.log` on the pod.
 
-Now `runpod up` writes every package of the serving lock into the boot script as `name==version`
-and installs with `--no-deps` (`_vllm_env_install`, src/infra/runpod.py), and each served run records
-what the interpreter held in `run_meta.json` under `serving_env` (`matches_lock`, `differs`,
-`packages`). To change the stack: edit `vllm_env/pyproject.toml`, `uv lock --project
-src/infra/endpoints/vllm_env`, serve a smoke eval on a fresh pod. A pod rented before this commit is
-unpinned: if it fails as above, `uv pip install --python /workspace/vllmenv/bin/python
-transformers==5.22.2` on the pod and rerun.
+Now `runpod up` reads the root lock, takes vLLM, ninja, huggingface-hub and everything they depend
+on for a linux pod (`locked_serving_packages`, src/infra/endpoints/vllm.py: 195 packages), writes
+them into the boot script as `name==version` and installs with `--no-deps` (`_vllm_env_install`,
+src/infra/runpod.py). A pod that clones the repo and serves on the box gets the same versions from
+`uv sync`. So training, an on-box server and a repo-less pod are one stack: vLLM 0.26.0,
+transformers 5.14.1 (exact in `pyproject.toml`), torch 2.11.0. Each served run records what the
+interpreter held in `run_meta.json` under `serving_env` (`matches_lock`, `differs`, `packages`).
+To change the stack: edit the root `pyproject.toml`, `uv lock`, serve a smoke eval on a fresh pod,
+write a LOG entry.
 
-The first version of that install (e0820ea2) broke every `--clone-repo` eval pod: run inside the
-clone, `uv pip install` applied the repo's `[tool.uv] constraint-dependencies` to the serving pins
-("you require nvidia-nvvm==13.5.37 and nvidia-nvvm>=13.0,<13.1"), the start script exited, RunPod
-restarted the container with its disk, and `uv venv` then refused the existing venv on every later
-life: a RUNNING card whose SSH refuses and whose boot log 404s. Fixed with `--no-config` and
-`uv venv --clear`. To read such a pod, retry `ssh ... cat /workspace/boot.log` until one life answers.
+History a reader of old runs needs: for part of 2026-11-16 there was a second lock
+(`src/infra/endpoints/vllm_env/`, transformers 5.22.2, torch built for CUDA 13.5), installed on
+repo-less pods only, so a model was served on 5.22.2 when driven from a laptop and on 5.14.1 when
+driven on the box. Runs served from repo-less pods between 2026-08 and that day were on whatever
+transformers PyPI had at rental (5.22.2 for the 2026-11-11 and 2026-11-16 runs); only runs from
+e0820ea2 onward carry `serving_env`, which says which. That second lock also broke every
+`--clone-repo` eval pod for three hours: run inside the clone, `uv pip install` applied the repo's
+`[tool.uv] constraint-dependencies` to its pins ("you require nvidia-nvvm==13.5.37 and
+nvidia-nvvm>=13.0,<13.1"), the start script exited, RunPod restarted the container with its disk,
+and `uv venv` then refused the existing venv on every later life: a RUNNING card whose SSH refuses
+and whose boot log 404s. The install keeps `--no-config`, `cd /workspace` and `uv venv --clear` for
+that reason. To read such a pod, retry `ssh ... cat /workspace/boot.log` until one life answers.
 
-Not covered: a server on this machine (no `--server`) runs in the repo's own env (transformers
-5.14.1 from the root lock), and `scripts/infra/runpod_arena_hard.py` still installs unpinned.
+Not covered: `scripts/infra/runpod_arena_hard.py` (the pre-`uv run evals` Arena-Hard launcher) still
+installs `vllm>=0.8.5 transformers>=4.51.3` with the image's pip.
 
 ## SWE-bench fleet: REST v2 create rejections now release their reservation (2026-11-16)
 

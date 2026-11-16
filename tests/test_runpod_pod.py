@@ -156,15 +156,43 @@ def _vllm_pin(pyproject_path):
 def test_a_pod_serves_the_vllm_this_repo_pins_not_whatever_pypi_has_today():
     # Parser names, the runtime LoRA endpoint and template handling all move between
     # vLLM versions: a pod on a different one is not the server the driver was tested
-    # against. The pin lives in the serving env (src/infra/endpoints/vllm_env); the root
-    # pyproject repeats it for a server on a linux driver, and the two must not drift.
+    # against. The pin is the root pyproject's, and the pod's comes from the lock under it.
     from src.infra.endpoints import vllm
 
-    spec = _vllm_pin(vllm.VLLM_ENV / "pyproject.toml")
-    assert pod._pinned_vllm() == spec == _vllm_pin("pyproject.toml")
-    assert "==" in spec, "the pod pin is only as exact as the serving env's own"
+    spec = _vllm_pin("pyproject.toml")
+    assert pod._pinned_vllm() == spec
+    assert "==" in spec, "the pod pin is only as exact as the repo's own"
     name, version = spec.split("==")
     assert vllm.locked_serving_packages()[name] == version
+
+
+def test_training_and_serving_share_one_exact_transformers():
+    # One version wherever a model is trained or served (2026-11-16: for a day an eval pod
+    # served on 5.22.2 and an on-box server on 5.14.1). Exact in the pyproject, so a re-lock
+    # cannot move it; the same in the lock; and the same in what a repo-less pod installs.
+    import tomllib
+
+    from src.infra.endpoints import vllm
+
+    declared = tomllib.loads(open("pyproject.toml", "rb").read().decode())["project"]["dependencies"]
+    assert "transformers==5.14.1" in declared
+    assert vllm.locked_packages()["transformers"] == "5.14.1"
+    assert vllm.locked_serving_packages()["transformers"] == "5.14.1"
+    # There is no second lock to drift from the first.
+    assert not (vllm.REPO_LOCK.parent / "src/infra/endpoints/vllm_env").exists()
+
+
+def test_the_serving_env_is_vllms_part_of_the_repo_lock_as_a_pod_would_install_it():
+    from src.infra.endpoints import vllm
+
+    serving, everything = vllm.locked_serving_packages(), vllm.locked_packages()
+    assert set(vllm.SERVING_ROOTS) <= set(serving)
+    assert all(everything[name] == version for name, version in serving.items())
+    # Markers are read for the POD, whatever machine types `runpod up`: the linux-only GPU
+    # stack is in, the trainer and the macOS/Windows-only wheels are out.
+    assert {"vllm", "torch", "transformers", "tokenizers", "flashinfer-python", "nvidia-nvvm"} <= set(serving)
+    assert not {"trl", "peft", "causal-conv1d", "colorama", "pywin32"} & set(serving)
+    assert 150 < len(serving) < len(everything)
 
 
 def _pod_scripts():
@@ -178,12 +206,11 @@ def _pod_scripts():
 def test_a_pod_installs_every_package_at_the_version_the_serving_lock_names():
     # An eval pod has no repo and so no lock of ours: until 2026-11-16 it installed
     # `vllm==<pin> ... transformers`, and transformers 5.23.0 (released 2026-11-13) made
-    # vLLM 0.26 exit at start-up on Qwen3.6. Both pod bootstraps now carry the WHOLE lock
-    # as exact versions and resolve nothing on the pod.
+    # vLLM 0.26 exit at start-up on Qwen3.6. Both pod bootstraps now carry the serving part
+    # of the repo's lock as exact versions and resolve nothing on the pod.
     from src.infra.endpoints import vllm
 
     locked = vllm.locked_serving_packages()
-    assert locked["transformers"] == "5.22.2" and len(locked) > 150
     for script in _pod_scripts():
         pod._check_bash(script)
         body = script.split("<<'VLLM_ENV_LOCK'\n", 1)[1].split("\nVLLM_ENV_LOCK\n", 1)[0]
@@ -202,32 +229,25 @@ def test_a_pod_installs_every_package_at_the_version_the_serving_lock_names():
     assert all(len(script.encode()) < 64 * 1024 for script in _pod_scripts())
 
 
-def test_the_serving_lock_is_current_with_its_pyproject_and_one_version_per_package():
-    # `uv lock --check` is what a re-lock that was forgotten after editing the pins fails.
-    import shutil
-
-    from src.infra.endpoints import vllm
-
-    uv = shutil.which("uv")
-    if uv is None:
-        pytest.skip("uv is not on PATH")
-    r = subprocess.run([uv, "lock", "--check", "--offline", "--project", str(vllm.VLLM_ENV)],
-                       capture_output=True, text=True)
-    assert r.returncode == 0, r.stderr
-    vllm.locked_serving_packages()  # asserts one version per package
-
-
 def test_a_served_run_records_what_the_serving_interpreter_held():
     from src.infra.endpoints import vllm
 
-    locked = vllm.locked_serving_packages()
+    locked, everything = vllm.locked_serving_packages(), vllm.locked_packages()
     as_locked = vllm.serving_env_record("pod:/workspace/vllmenv", dict(locked))
     assert as_locked["matches_lock"] and as_locked["differs"] == {} and as_locked["packages"] == locked
+    assert as_locked["lock"] == "uv.lock"
+    # A server on the box runs in the repo's own env: the rest of the lock and this repo itself
+    # are installed beside the serving packages, and that is still the locked stack.
+    on_box = vllm.serving_env_record("this machine", {**everything, vllm._THIS_PROJECT: "0.1.0"})
+    assert on_box["matches_lock"] and on_box["differs"] == {}
     # The 2026-11-16 pod: everything as locked except a newer transformers and one stray package.
     drifted = vllm.serving_env_record("pod", {**locked, "transformers": "5.23.0", "stray": "1.0"})
     assert not drifted["matches_lock"]
-    assert drifted["differs"] == {"transformers": {"installed": "5.23.0", "locked": "5.22.2"},
+    assert drifted["differs"] == {"transformers": {"installed": "5.23.0", "locked": "5.14.1"},
                                   "stray": {"installed": "1.0", "locked": None}}
+    # A serving package that is missing is a difference too.
+    missing = vllm.serving_env_record("pod", {n: v for n, v in locked.items() if n != "ninja"})
+    assert missing["differs"] == {"ninja": {"installed": None, "locked": locked["ninja"]}}
     # Names compare as PyPI compares them, whatever case or separator the dist metadata uses.
     assert vllm._parse_installed("PyYAML==6.0.3\nhuggingface_hub==2.4.0\n\n") == {
         "pyyaml": "6.0.3", "huggingface-hub": "2.4.0"}
