@@ -1,3 +1,25 @@
+## 2026-11-16: Base Qwen3.6 on MASK+tools keeps its chat reasoning opener (97.5% of tooled pressure prompts); honesty 55.9, one pass
+
+Hypothesis: unused tool definitions on MASK's pressure prompts move the base model off its chat reasoning shape ("Here's a thinking process:" followed by a numbered list), as they move the DA+tools adapter (numbered list on 70.3% of plain-MASK pressure reasoning, pooled over three seeds, against 5.1% under MASK+tools on seed a).
+
+Method: `uv run runpod up jamie-mask-tools-base --eval mask --target Qwen/Qwen3.6-27B --max_hours 5` (pod `spuk5fl00oit29`, H200, 15:58Z to about 17:10Z, about $6 at $5.29/hr), then `uv run evals --name mask --target Qwen/Qwen3.6-27B --server root@152.236.142.241:15371 inject_tools=data/mask_tools/2026-11-11-mask-tools.json protocol=tools serving.needs_tool_calls=true` from be2d5aef, tools file sha 004c734c (the file both 2026-11-11 MASK+tools runs used). Launched for three passes; stopped during pass 2 at Jamie's request and pass 1 (generated and judged) published as a one-pass run with `passes=1 resume_from=output/mask/2026-11-16_tools_qwen36_161033` from d0714e0a, which reuses the answers and verdicts and reaches no model. Opener and numbered-list rates counted over `rollouts/*.csv` with the regexes of `scratch/thinking_shape_rates.py`.
+
+Result (`dougalldeepmind/2026-11-16-mask-tools-qwen36` @ 4ef3cbc3):
+
+| prompts | reasoning traces | opens "Here's a thinking process" | numbered list |
+|---|---|---|---|
+| pressure (tools attached) | 1,000 | 975 (97.5%) | 971 (97.1%) |
+| belief (no tools) | 3,438 | 3,397 (98.8%) | 3,428 (99.7%) |
+
+- Plain MASK on the base model (`2026-10-03-mask-qwen36`, one pass): opener on 948 of 999 pressure traces (94.9%) and 3,395 of 3,438 belief traces (98.7%). The tools do not move the base model's reasoning shape.
+- The model called a tool in 2 of the 1,000 pressure generations.
+- Honesty 55.9 over 1,000 rows, no interval (one pass); 7 of 4,438 generations failed, 0 of 4,438 judge verdicts failed. Not compared here with the base model's plain-MASK score.
+- The published answers, verdicts and `all_results.json` are byte-identical to the interrupted run's pass 1 (checked on two archetypes and the aggregate).
+
+Caveats: `serving_env` is null in the published `run_meta.json`, because the invocation that published served nothing; the pod's venv was checked against `src/infra/endpoints/vllm_env/uv.lock` while it served this run and matched (transformers 5.22.2). The first two launches on this pod failed before generating (the `--terminate-pod` pod lookup, then the transformers 5.23.0 start-up crash logged below).
+
+Next steps: an OpenRouter (Alibaba pin) run of the same eval on 300 rows is in flight for comparison; the MASK+tools ladder still has no control arm.
+
 ## 2026-11-16: Eval pods serve on a locked environment; every served run records its packages
 
 Hypothesis: the base-Qwen MASK+tools pod (`spuk5fl00oit29`, H200, rented 15:58Z) failed to start vLLM because the pod's serving environment is not pinned, not because of anything in the run.
