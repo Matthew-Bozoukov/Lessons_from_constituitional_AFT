@@ -48,21 +48,23 @@ for ax, key, title in [
     for a, _ in ARMS:
         y = ypos[a]
         s1, s2 = rows[("single_sepsis", a)], rows[("org8_sepsis", a)]
+        # Single sits a little above the row line, org a little below, so equal values never hide each other.
+        y1, y2 = y + 0.16, y - 0.16
         if s1 and s2:
             ax.plot(
                 [s1[key], s2[key]],
-                [y, y],
+                [y1, y2],
                 color=COLOUR[a],
                 lw=2.5,
                 alpha=0.35,
                 zorder=1,
             )
-        for r, mk, face, dy in [(s1, "o", "white", 0.22), (s2, "s", COLOUR[a], -0.36)]:
+        for r, mk, face, yy in [(s1, "o", "white", y1), (s2, "s", COLOUR[a], y2)]:
             if r is None:
                 continue
             ax.scatter(
                 [r[key]],
-                [y],
+                [yy],
                 marker=mk,
                 s=150,
                 facecolor=face,
@@ -70,11 +72,15 @@ for ax, key, title in [
                 linewidth=2.5,
                 zorder=3,
             )
+            right = (
+                r[key] <= 0.85
+            )  # label to the right of the marker, unless that would run off the axis
             ax.text(
-                r[key],
-                y + dy,
+                r[key] + (0.03 if right else -0.03),
+                yy,
                 f"{r[key]:.2f}" + (" ‡" if r["recomputed"] else ""),
-                ha="center",
+                ha="left" if right else "right",
+                va="center",
                 fontsize=10.5,
                 color="#222222",
             )
