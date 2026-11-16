@@ -338,6 +338,24 @@ class RentalTests(unittest.TestCase):
             self.assertNotIn('ended', records[1])
             self.assertGreater(fleet.reserved_cost({'pods': [records[1]]}), 0)
 
+    def test_rest_v2_rejection_is_reconciled_but_rate_limit_stays_reserved(self):
+        with tempfile.TemporaryDirectory() as temp:
+            cfg = OmegaConf.load('scratch/swebench_lite.yaml')
+            cfg.root = temp
+            base = {'created': time.time() - 120, 'expires': time.time() + 300,
+                    'ceiling_hourly': 5, 'id': None, 'status': 'allocation-unconfirmed'}
+            atomic(Path(temp) / 'metadata/state.json', {'pods': [
+                base | {'slot': 0, 'name': 'rejected', 'error': 'HTTPError: 400 from POST /pods: Bad Request; '
+                        'There are no longer any instances available with the requested specifications.'},
+                base | {'slot': 1, 'name': 'limited', 'error': 'HTTPError: 429 from POST /pods: Too Many Requests'}]})
+            with patch.object(runpod, 'active_pods', return_value=[]):
+                fleet.reconcile_rejections(cfg, {'campaign': 'ours'})
+            records = read(Path(temp) / 'metadata/state.json')['pods']
+            self.assertEqual(records[0]['status'], 'rejected-reconciled')
+            self.assertEqual(fleet.reserved_cost({'pods': [records[0]]}), 0)
+            self.assertEqual(records[1]['status'], 'allocation-unconfirmed')
+            self.assertGreater(fleet.reserved_cost({'pods': [records[1]]}), 0)
+
     def test_late_allocation_still_charged_after_reconciliation(self):
         with tempfile.TemporaryDirectory() as temp:
             cfg = OmegaConf.load('scratch/swebench_lite.yaml')

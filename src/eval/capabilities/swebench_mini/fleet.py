@@ -6,6 +6,7 @@ import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
+import re
 import math
 import os
 from pathlib import Path
@@ -422,12 +423,23 @@ def checkpoint(cfg, config_path, *, required=False):
         return False
 
 
+# A create the provider answered with a definitive refusal made no pod. REST v2 raises
+# `HTTPError: 4xx from POST /pods` (e.g. 400 "no longer any instances available"); the
+# GraphQL wording is kept so pre-2026-10-29 campaign states still read the same. 408/429
+# are not definitive: the request may still have been accepted.
+_V2_REJECTION = re.compile(r'HTTPError: 4(?!08|29)\d\d from POST /pods\b')
+
+
+def explicit_rejection(error):
+    return 'RunPod GraphQL rejected the request;' in error or bool(_V2_REJECTION.search(error))
+
+
 def reserved_cost(state):
     return sum(p['ceiling_hourly'] * (p.get('ended', p['expires']) - p['created']) / 3600
                for p in state['pods'] if not (
                    p.get('reservation_released') and p.get('status') == 'rejected-reconciled'
                    and p.get('id') is None and p.get('reconciliation_inventory_checks') == 2
-                   and 'RunPod GraphQL rejected the request;' in p.get('error', '')))
+                   and explicit_rejection(p.get('error', ''))))
 
 
 def final_accounting(cfg):
@@ -522,7 +534,7 @@ def reconcile_rejections(cfg, manifest):
     candidates = [p for p in read(state.path)['pods']
                   if p['status'] in ('allocation-unconfirmed', 'rejected-reconciled')
                   and not p.get('reservation_released') and p.get('id') is None
-                  and 'RunPod GraphQL rejected the request;' in p.get('error', '')
+                  and explicit_rejection(p.get('error', ''))
                   and time.time() - p['created'] >= cfg.allocation_reconcile_seconds]
     if not candidates:
         return
@@ -545,7 +557,7 @@ def reconcile_rejections(cfg, manifest):
                     p.setdefault('ended', min(time.time(), p['expires']))
                     p.update(status='rejected-reconciled', reservation_released=True,
                              reservation_released_at=time.time(), reconciliation_inventory_checks=2,
-                             reconciliation='Explicit GraphQL rejection; absent in two provider inventory sweeps; no late create observed')
+                             reconciliation='Explicit provider rejection; absent in two provider inventory sweeps; no late create observed')
 
 
 def pending_tasks(data, allowed, cfg):
@@ -801,7 +813,7 @@ def phase(cfg, config_path, ids, count, seconds, manifest, adopted=None):
                 last_reconcile = time.time()
             live = read(state.path)
             awaiting_reconciliation = any(p.get('id') is None and not p.get('reservation_released')
-                and 'RunPod GraphQL rejected the request;' in p.get('error', '')
+                and explicit_rejection(p.get('error', ''))
                 for p in live['pods'])
             if (not futures and not awaiting_reconciliation and
                     manifest['budget_usd'] - reserved_cost(live) < price_ceiling(cfg, cfg.gpu) * cfg.allocation_min_remaining_seconds / 3600):
