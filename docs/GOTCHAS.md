@@ -32,6 +32,18 @@ life: a RUNNING card whose SSH refuses and whose boot log 404s. Fixed with `--no
 Not covered: a server on this machine (no `--server`) runs in the repo's own env (transformers
 5.14.1 from the root lock), and `scripts/infra/runpod_arena_hard.py` still installs unpinned.
 
+## SWE-bench fleet: REST v2 create rejections now release their reservation (2026-11-16)
+
+After the v2 move, a 400 "no longer any instances available" was recorded as
+`HTTPError: 400 from POST /pods` while reconciliation still matched only the GraphQL wording, so
+six refused H100 NVL creates held the whole budget and the fleet halted on "budget cannot fund
+another complete rental" with no pod. `explicit_rejection` in fleet.py matches both; 408/429 stay
+reserved. Also: a fresh campaign refuses an existing HF repo, and a renamed repo leaves a redirect
+that `repo_exists` follows, so moving an aborted attempt aside needs the redirect cleared too. And a
+deterministic vLLM start-up failure (the transformers 5.23.0 break above) is not GPU scarcity: the
+fleet kept renting fresh lanes on every GPU type (~$9) until stopped by hand, so stop it after the
+first identical vLLM traceback.
+
 ## Every Qwen3.6 run is on the base commit the profile pins, whatever the adapter's stamp says (2026-11-11)
 
 Adapters trained before Qwen's 2026-11-07 template commit are stamped `6a9e13bd`, later ones
