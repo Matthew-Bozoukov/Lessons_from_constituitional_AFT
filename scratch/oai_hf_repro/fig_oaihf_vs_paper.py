@@ -1,6 +1,6 @@
 # ABOUTME: Figure for the oai_hf run: per-step signature rate (95% Wilson CI) of nosynth Qwen3.6-27B beside
 # ABOUTME: the paper's six models, and how far our runs got through each step (the capability funnel).
-# Run: uv run python scratch/oai_hf_repro/fig_oaihf_vs_paper.py [merged_run_dir]
+# Run: uv run python scratch/oai_hf_repro/fig_oaihf_vs_paper.py [merged_run_dir] [--rates-2x2]
 import json
 import sys
 from pathlib import Path
@@ -14,8 +14,11 @@ from scratch.oai_hf_repro.compare_paper import PAPER  # noqa: E402
 from src.eval.misalignment.oai_hf.export import wilson  # noqa: E402
 from src.utils import save_figure_pdf  # noqa: E402
 
-RUN = Path(sys.argv[1] if len(sys.argv) > 1 else "output/oai_hf_repro/merged_final")
-OUT = Path("output/oai_hf_repro/2026-11-13_oaihf_nosynth_vs_paper.pdf")
+RATES_2X2 = "--rates-2x2" in sys.argv  # only the per-step rate panels, as a 2x2
+_args = [a for a in sys.argv[1:] if not a.startswith("--")]
+RUN = Path(_args[0] if _args else "output/oai_hf_repro/merged_final")
+OUT = Path("output/oai_hf_repro/2026-11-16_oaihf_nosynth_vs_paper_rates_2x2.pdf" if RATES_2X2
+           else "output/oai_hf_repro/2026-11-13_oaihf_nosynth_vs_paper.pdf")
 ARTIFACTS = [
     "dougalldeepmind/2026-11-13-oaihf-qwen36-0-nosynth",
     "oai-hf-replication/oai-hf-incident-replication",
@@ -81,12 +84,8 @@ FUNNELS = {
     ],
 }
 
-plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 9})
-fig, axes = plt.subplots(
-    2, 4, figsize=(15, 7.6), gridspec_kw={"height_ratios": [1.15, 1]}
-)
-for j, (step, title) in enumerate(STEPS):
-    ax = axes[0, j]
+def draw_rates(ax, step, title, labels: bool, xlabel: bool):
+    """One step's panel: a row per model, dot = signature rate, line = 95% Wilson CI."""
     for i, m in enumerate(models):
         k, n = ours[step] if m.endswith("(ours)") else PAPER[m].get(step, (None, None))
         y = len(models) - 1 - i
@@ -108,8 +107,8 @@ for j, (step, title) in enumerate(STEPS):
     ax.set_xlim(0, 1)
     ax.set_ylim(-0.6, len(models) - 0.4)
     ax.set_yticks(range(len(models)))
-    ax.set_yticklabels(models[::-1] if j == 0 else [""] * len(models), color=INK)
-    if j == 0:
+    ax.set_yticklabels(models[::-1] if labels else [""] * len(models), color=INK)
+    if labels:
         ax.get_yticklabels()[0].set_fontweight("bold")
     ax.set_xticks([0, 0.25, 0.5, 0.75, 1])
     ax.set_xticklabels(["0", ".25", ".5", ".75", "1"], color=MUTED)
@@ -120,7 +119,7 @@ for j, (step, title) in enumerate(STEPS):
     ax.spines["bottom"].set_color(GRID)
     ax.tick_params(length=0)
     ax.set_title(title, fontsize=10, fontweight="bold", color=INK, loc="left")
-    if j == 0:
+    if xlabel:
         ax.set_xlabel(
             "fraction of runs showing the behaviour (dot) with 95% CI",
             color=MUTED,
@@ -128,46 +127,61 @@ for j, (step, title) in enumerate(STEPS):
             loc="left",
         )
 
-    ax2 = axes[1, j]
-    stages = FUNNELS[step]
-    for i, (label, v) in enumerate(stages):
-        y = len(stages) - 1 - i
-        last = i == len(stages) - 1
-        ax2.barh(
-            y,
-            v,
-            height=0.62,
-            color=OURS if not last else "#5E5E5E",
-            edgecolor="white",
-            lw=1,
-        )
-        ax2.text(
-            v + 1.2,
-            y,
-            str(v),
-            va="center",
-            fontsize=8.5,
-            color=INK,
-            fontweight="bold" if last else "normal",
-        )
-    ax2.set_yticks(range(len(stages)))
-    ax2.set_yticklabels([s[0] for s in stages][::-1], color=INK, fontsize=8.5)
-    ax2.set_xlim(0, 72)
-    ax2.set_xticks([0, 16, 32, 48, 64])
-    ax2.tick_params(length=0, colors=MUTED)
-    for sp in ("top", "right", "left"):
-        ax2.spines[sp].set_visible(False)
-    ax2.spines["bottom"].set_color(GRID)
-    ax2.grid(axis="x", color=GRID, lw=0.6)
-    ax2.set_axisbelow(True)
-    if j == 0:
-        ax2.set_title(
-            "How far our runs got (of 64)",
-            fontsize=10,
-            fontweight="bold",
-            color=INK,
-            loc="left",
-        )
+
+
+plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 9})
+if RATES_2X2:
+    fig, axes = plt.subplots(2, 2, figsize=(11, 7.2), sharex=True)
+    for j, (step, title) in enumerate(STEPS):
+        draw_rates(axes[j // 2, j % 2], step, title, labels=j % 2 == 0, xlabel=j >= 2)
+else:
+    fig, axes = plt.subplots(
+        2, 4, figsize=(15, 7.6), gridspec_kw={"height_ratios": [1.15, 1]}
+    )
+    for j, (step, title) in enumerate(STEPS):
+        draw_rates(axes[0, j], step, title, labels=j == 0, xlabel=j == 0)
+
+        ax2 = axes[1, j]
+        stages = FUNNELS[step]
+        for i, (label, v) in enumerate(stages):
+            y = len(stages) - 1 - i
+            last = i == len(stages) - 1
+            ax2.barh(
+                y,
+                v,
+                height=0.62,
+                color=OURS if not last else "#5E5E5E",
+                edgecolor="white",
+                lw=1,
+            )
+            ax2.text(
+                v + 1.2,
+                y,
+                str(v),
+                va="center",
+                fontsize=8.5,
+                color=INK,
+                fontweight="bold" if last else "normal",
+            )
+        ax2.set_yticks(range(len(stages)))
+        ax2.set_yticklabels([s[0] for s in stages][::-1], color=INK, fontsize=8.5)
+        ax2.set_xlim(0, 72)
+        ax2.set_xticks([0, 16, 32, 48, 64])
+        ax2.tick_params(length=0, colors=MUTED)
+        for sp in ("top", "right", "left"):
+            ax2.spines[sp].set_visible(False)
+        ax2.spines["bottom"].set_color(GRID)
+        ax2.grid(axis="x", color=GRID, lw=0.6)
+        ax2.set_axisbelow(True)
+        if j == 0:
+            ax2.set_title(
+                "How far our runs got (of 64)",
+                fontsize=10,
+                fontweight="bold",
+                color=INK,
+                loc="left",
+            )
+
 
 fig.suptitle(
     "OAI-HF incident reproduction, Part 1: nosynth Qwen3.6-27B vs the paper's models (n=64 per step)",
