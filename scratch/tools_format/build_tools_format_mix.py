@@ -97,7 +97,17 @@ def main() -> None:
     out = Path("data/mixes") / name
     out.mkdir(parents=True, exist_ok=True)
     body = "".join(ln + "\n" for ln in out_lines)
-    (out / "mixture.jsonl").write_text(body, encoding="utf-8")
+    # newline="\n": on Windows write_text would otherwise turn every "\n" into "\r\n", and the base
+    # rows would stop being byte-identical to the source (the first 2026-11-16 push did exactly that).
+    (out / "mixture.jsonl").write_text(body, encoding="utf-8", newline="\n")
+    assert (out / "mixture.jsonl").read_bytes() == body.encode("utf-8")
+    # Base rows: the exact source bytes. Both files are LF-terminated JSON lines, so line k of one is
+    # line k of the other except where a row was edited.
+    src_b, new_b = Path(src_path).read_bytes(), (out / "mixture.jsonl").read_bytes()
+    assert b"\r" not in src_b and b"\r" not in new_b
+    src_rows, new_rows = src_b.rstrip(b"\n").split(b"\n"), new_b.rstrip(b"\n").split(b"\n")
+    assert len(src_rows) == len(new_rows) == len(src)
+    assert [i for i in range(len(src)) if src_rows[i] != new_rows[i]] == edited
 
     meta = {"name": name, "source_repo": SRC_REPO, "source_revision": SRC_REV, "format": "qwen_agent_fncall_en",
             "format_source": QWEN_AGENT_SOURCE, "placement": "prepended to the operator system text, '\\n\\n'",
@@ -137,7 +147,8 @@ def main() -> None:
             "edited_row_tokens_new_mean": round(statistics.mean(lens_new.values()), 1),
             "prompt_token_delta_mean_min_max": [round(statistics.mean(deltas), 1), min(deltas), max(deltas)],
             "supervised_tokens": n_sup, "total_tokens": n_tok}
-    (out / "build_meta.json").write_text(json.dumps(meta, indent=1, ensure_ascii=False), encoding="utf-8")
+    (out / "build_meta.json").write_text(json.dumps(meta, indent=1, ensure_ascii=False), encoding="utf-8",
+                                         newline="\n")
     print(json.dumps({k: v for k, v in meta.items() if k != "edited_row_indices"}, indent=1, ensure_ascii=False))
 
     if a.push:
