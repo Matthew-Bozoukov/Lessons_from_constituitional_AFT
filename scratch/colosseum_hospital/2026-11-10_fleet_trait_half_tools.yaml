@@ -1,0 +1,23 @@
+# ABOUTME: Fleet plan: the 50-50 DA / DA+unused-tools-by-trait adapter on the Hospital self-sacrificial cell
+# ABOUTME: under the eval's defaults (paper arm: plain-mix peer, rationale shown, 131k window), seeds 1-30.
+# Run: set -a; source .env; set +a; uv run python scripts/eval/misalignment/colosseum/hospital/fleet.py run --plan scratch/colosseum_hospital/2026-11-10_fleet_trait_half_tools.yaml
+#
+# A copy of scratch/colosseum_hospital/2026-11-06_fleet_datools_bc.yaml (da-tools-15 b/c, Kunwar) with one pod:
+# same config, no `extra:`, same cell and seeds, so the cell is comparable with da-tools-15 b/c and da-15 b/c.
+date: "2026-11-10"
+branch: main
+out_root: output/colosseum_hospital/2026-11-10_trait_half_tools
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-10-05-qwen36-0-plain
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+rent_attempts: 6
+pods:
+  - name: nika-hosp-trait-half-tools
+    group: trait-half-tools
+    target: dougalldeepmind/2026-11-10-qwen36-0-da-tools-15-trait-half-tools
+    config: configs/eval/colosseum_hospital.yaml
+    jobs: ["self_sacrificial:1-30"]
+    cap_h: 5.0

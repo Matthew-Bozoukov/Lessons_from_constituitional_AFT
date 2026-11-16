@@ -1,0 +1,577 @@
+# ABOUTME: One-sided deliberation: the 2026-10-30 da corpus with its reasoning AND reply rewritten to argue only
+# ABOUTME: for the option the reply chose, the other set aside in one sentence. Run: uv run synth run --config configs/data/synth/da-one-sided.yaml [--smoke]
+#   Prereq: uv run python scratch/da_one_sided/stage_source.py   (stages the full source and the 20-row smoke source)
+#   Audit:  uv run python scratch/da_one_sided/audit.py --run_dir <run dir>
+#
+# WHAT THIS ARM TESTS. The paper's claim is that DA works through reasoning that "seriously weighs more than one
+# option". This arm keeps the reasoning -- a full, first-person working-through of the chosen option, its merits,
+# how to carry it out -- and removes the weighing: the other option is never argued with, its costs are never
+# named, the shortcut is never treated as attractive, and it is set aside in one sentence with no reason given.
+# Everything else is held: the same 2,001 scenarios, system prompts and user messages, the same decision and plan,
+# the same facts, DA's voice.
+#
+# WHY NOT THE 2026-10-04 STATED-HARM ARM. Its audit (docs/LOG.md 2026-11-11) found it also changed reply structure
+# (99% opened by restating the situation), length (0.48x/0.60x), register ("you should" 0.07 -> 0.97 a reply),
+# autonomy (leaves the decision with the person 97% -> 69%), refused things nobody asked for, labelled judgement
+# calls "the harmful action", and was written by another model family with the pattern scan off. Each of those has
+# a check below.
+#
+# THE LINE between the two sides, which is the hard part. Benefits of the chosen option stated POSITIVELY are
+# allowed even when they mirror a cost of the other ("this keeps the sales figures tied to the product itself");
+# banning those would leave nothing to reason about and collapse the arm into "we choose this". AVOIDANCE phrasing
+# is banned ("avoids misleading customers", "prevents", "protects against", "without risking"), because it names
+# the other option's harm. Comparisons are banned. Practical obstacles to carrying out the plan are allowed;
+# doubting the choice is not. Lint catches the vocabulary; three judges catch the rest.
+#
+# GATES, in the order they run on every attempt (3 attempts, then the row is dropped):
+#   lint    DA's own bans + weighing / comparison / avoidance / temptation vocabulary on both fields, a reply that
+#           opens on "You are/You're/You have", "the harmful action", the rewriter naming its input.
+#   verify  three google/gemini-3.8-flash judges, each its own call (stage_operators.op_llm_tagged: one question
+#           asked third in a combined prompt caught 0/5 planted failures, alone 5/5):
+#           one_sided -- no comparison, no consequence of the other option, no disguised cost, no attraction, at
+#                        most one dismissal sentence per field, no doubt about the choice;
+#           faithful  -- same option, every plan step kept, certainty not raised, nothing refused that the original
+#                        did not refuse, no invented or misstated fact, reasoning and reply agree;
+#           voice     -- no situation-restating opener, register not severely shifted, decision left with the
+#                        person where the original left it, not more directive than the original.
+# The audit afterwards (scratch/da_one_sided/audit.py) MEASURES what survived; these gates only select.
+
+method: ours
+pipeline: ablation
+
+card:
+  experiment: >-
+    Difficult-advice SFT corpus, one-sided deliberation: dougalldeepmind/2026-10-30-da-synth (all 2,001 rows) with
+    scenarios, system prompts and user messages frozen and the assistant reasoning and reply rewritten to argue only
+    for the option the reply chose -- its merits stated positively, how to carry it out -- with the other option set
+    aside in one sentence and never weighed, costed or treated as attractive. Decision, plan, facts and voice held.
+  models: >-
+    rewrite: anthropic/claude-sonnet-5 (temperature 1.0), the model that wrote the source corpus's final pass.
+    Gates: google/gemini-3.8-flash (temperature 0), three separate judge calls per attempt. Corpus pattern scan:
+    anthropic/claude-sonnet-5 + anthropic/claude-haiku-4.5, as in configs/data/synth/da.yaml. All via OpenRouter.
+  provenance: "uv run python scratch/da_one_sided/stage_source.py && uv run synth run --config configs/data/synth/da-one-sided.yaml"
+  notes: >-
+    Source rows are dataset.jsonl of 2026-10-30-da-synth @ 8fadea62 flattened by scratch/da_one_sided/stage_source.py.
+    The rewritten fields are os_reasoning / os_response; the source's reasoning / response travel with each record
+    through the run so the judges can compare against them, and only the rewrite is exported. Rows that fail every
+    attempt are dropped and counted in manifest.json.
+
+ablate: []
+
+smoke:
+  source:
+    local_dir: "data/da_1030_one_sided_smoke"
+    snapshot: "stage_6_revise_responses.jsonl"
+  # 20 rows: one strict-gate drop is 5%. Relaxed here only; the production tolerance stays below.
+  max_fail_pct: 40
+
+seed: 0
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+
+# DA's guidance with its deliberation clause replaced. Everything about voice is DA's, word for word.
+style_guidance: |-
+  Engages with the person's situation rather than stonewalling. Works out the chosen option in the open: what it
+  is, why it is good on its own terms, and how to carry it out. Does not weigh it against the other option, name
+  the other option's costs, or treat the other option as attractive; sets it aside in one sentence. Offers a
+  specific legitimate course of action. Leaves the decision with the person. Warm, practical, proportionate.
+n_traits: 9
+chunking: principle
+
+source:
+  local_dir: "data/da_1030_full_source"
+  snapshot: "stage_6_revise_responses.jsonl"
+
+total_scenarios: 2001
+
+output_dir: "output/synth_da_one_sided"
+hf_private: false
+workers: 16
+budget_usd: 120.0
+# Production drop tolerance. The smoke measures the real rate; raise this only on that evidence.
+max_fail_pct: 10.0
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+models:
+  rewrite:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 1.0
+    max_tokens: 12288
+    assumed_tokens: {in: 4500, out: 2500}
+  judge:
+    model: "google/gemini-3.8-flash"
+    temperature: 0.0
+    max_tokens: 6000
+    assumed_tokens: {in: 4000, out: 800}
+  autorate:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 500
+    assumed_tokens: {in: 1400, out: 120}
+  scan:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 8000
+    assumed_tokens: {in: 28000, out: 3500}
+  classify:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 0.0
+    max_tokens: 900
+    assumed_tokens: {in: 9000, out: 200}
+
+stages:
+- name: chunk_constitution
+  kind: segment
+
+- name: load_source
+  kind: load_source_run
+
+- name: rewrite_one_sided
+  kind: llm_tagged
+  model: rewrite
+  checkpoint: scenario_id
+  tags:
+  - decision
+  - reasoning
+  - response
+  save:
+    os_decision: decision
+    os_reasoning: reasoning
+    os_response: response
+  ablate_with:
+    os_reasoning: reasoning
+    os_response: response
+  prompts:
+    system: |-
+      You rewrite an assistant's private reasoning and its reply to a person so that both argue only for the
+      option the reply chose. You keep the decision, the whole plan, every fact and the assistant's voice. What
+      you remove is the weighing of one option against another.
+    user: |-
+      Here is a complete conversation: the operator's system prompt, a person's message, the assistant's private
+      reasoning, and the assistant's reply.
+
+      <system_prompt>
+      {system}
+      </system_prompt>
+
+      <user_message>
+      {user}
+      </user_message>
+
+      <assistant_reasoning>
+      {reasoning}
+      </assistant_reasoning>
+
+      <assistant_response>
+      {response}
+      </assistant_response>
+
+      For reference, the scenario's author described the option the person is drawn to, which the reply advises
+      against, as: {shortcut}
+
+      The original reasoning and reply weigh two (or more) options against each other before landing on one.
+      Rewrite them so that they reason only about the option the reply lands on. The style they should have:
+
+      {style_guidance}
+
+      WHAT TO WRITE
+
+      1. <decision> -- a working note, not part of the rewrite. In this order: the option the original reply
+         chooses, in one line; how firmly it chooses it (firm / leaning / tentative); every concrete step of its
+         plan, as a list; the facts from the person's message the plan depends on.
+
+      2. <reasoning> -- the assistant's private reasoning, first person, free-form (no fixed number of paragraphs,
+         no headings). It works out the chosen option: what it is, why it is good on its own terms, what the person
+         needs in order to carry it out, practical obstacles to carrying it out and how to handle them. It goes to
+         the chosen option directly. It does not consider, test or argue against the other option.
+
+      3. <response> -- the reply to the person. It gives the chosen option and the whole plan, says why the option
+         is good on its own terms, and leaves the final decision with the person. If they asked a yes/no or
+         either/or question, answer it directly; do not walk through each option.
+
+      THE LINE. Apply it sentence by sentence, in both the reasoning and the reply.
+
+      Allowed:
+      - Benefits of the chosen option, stated positively and about that option: "this keeps the sales figures tied
+        to the product itself", "the reviewer gets the full picture before Thursday".
+      - The person's own case for the other option, mentioned once as a fact about their situation, without
+        answering it: "you've been told nothing here is illegal".
+      - Practical obstacles to the plan and how to get past them: "the board meets Thursday, so draft it tonight".
+      - Exactly ONE sentence in the reasoning and ONE in the reply that sets the other option aside, with no reason
+        attached, no firmer than the original reply was. Firm: "I wouldn't go the other way on this." Leaning or
+        tentative: "I'd lean away from the other route."
+
+      Not allowed:
+      - Any consequence, risk, cost or downside of the other option, in any form -- including what would happen if
+        it came out, who it would hurt, what it would hide.
+      - Avoidance phrasing, which names the other option's harm: "this avoids misleading customers", "prevents",
+        "protects you against", "without risking", "so you don't end up".
+      - Comparisons: "better than", "rather than [the other option]", "unlike", "instead of [the other option],
+        which...", "the alternative", "on the one hand / on the other", "trade-off", "weighing", "on balance".
+      - The other option presented as tempting, understandable, appealing, or as having a real upside.
+      - Doubt about the choice ("I'm not sure this is right, but..."). The choice is made; the reasoning carries it out.
+
+      KEEP
+      - Every fact. No new numbers, names, roles, dates or details that are not in the person's message or the
+        original. No fact from the person's message misstated.
+      - The decision, and every step of the plan in at least the detail the original gave. Thinning the plan to
+        save words removes the wrong thing.
+      - What the reply declines. Do not refuse, or say "I will not" / "I can't" about, anything the original reply
+        did not. If the person asked for advice and nothing else, there is nothing to refuse.
+      - The voice: warm and conversational, contractions, the assistant speaking as itself ("I'd", "it's worth"),
+        advice framed as a suggestion rather than an order, a question to the person where the original asked one,
+        the decision left with them. Do not use "you should" / "you must" more than the original does. Formatting
+        (bold labels, lists) about as much as the original used.
+      - Do not open the reply by restating the person's situation back to them ("You're managing..."). Open the
+        way the original opens, on the substance.
+      - Write as much as the chosen option needs. Do not pad, and do not summarise.
+      - Never mention the original, a draft, a rewrite, the constitution, principles, rules or policies.
+
+      WORDS THAT GET THE ANSWER REJECTED AUTOMATICALLY, anywhere in the reasoning or the reply, in any form: weigh
+      (weighs, weighed, weighing), trade-off / tradeoff, on balance, on the one hand, on the other hand, the tension,
+      competing priorities, torn, better than, unlike, the alternative, avoid (avoids, avoiding), prevent, protects
+      against, without risking, tempting, temptation, the pull, the appeal, "the harmful action", and any reference
+      to "the original reply", "the draft" or "the rewrite". The reply must not begin with "You're", "You are",
+      "You have" or "You've". Do not swap in a synonym for the same move: say what the chosen option does.
+
+      Return exactly this, with no other text:
+
+      <decision>
+      the working note
+      </decision>
+      <reasoning>
+      the rewritten private reasoning
+      </reasoning>
+      <response>
+      the rewritten reply
+      </response>
+  lint:
+  # DA's bans (configs/data/synth/da.yaml revise_responses), carried so the arms are comparable on recital and
+  # openers, plus the rewriter describing its input.
+  - fields: [reasoning, response]
+    min_chars: 500
+    ban_patterns:
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - \bnot permitted to\b
+    - \bi must not\b
+    - \b(?:i am|i'm) required to\b
+    - \bagainst (?:my|the) (?:rules|policy|guidelines)\b
+    - \bviolates? (?:my|the) (?:rules|policy|guidelines|constitution|principles?)\b
+    - \bhard constraints?\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    - '[一-鿿]'
+    - \bclaude\b
+    - \banthropic\b
+    - \bthe draft (?:reply|response|reasoning)\b
+    # Narrow on purpose: "the original reasoning" is legitimate advice in DA replies ("whatever the original
+    # reasoning was, can you still state it plainly?" -- r2_t5_b06_s003, rejected three times by a wider pattern).
+    - \bthe original (?:reply|response|assistant)\b
+    - \bthe rewrite\b
+    - \bthe harmful action\b
+    retries: 2
+  # The weighing, comparison, avoidance and temptation vocabulary this arm removes -- on BOTH fields, because
+  # the reply is one-sided too. Deliberately narrow ("rather than", "instead of" are not here: they are common in
+  # plain plan steps, and the one_sided judge reads them in context).
+  - fields: [reasoning, response]
+    ban_patterns:
+    - \bon the one hand\b
+    - \bon the other hand\b
+    - \btrade-?offs?\b
+    - \bweigh(?:s|ed|ing)?\b
+    - \bbalanc(?:e|es|ing) \w+ against\b
+    - \bon balance\b
+    - \bthe (?:real )?tension\b
+    - \bcompeting (?:interests|pressures|priorities|demands)\b
+    - \bwhat makes this (?:hard|difficult|tricky)\b
+    - \bI(?:'m| am) torn\b
+    - \bbetter than\b
+    - \bunlike\b
+    - \bthe alternative\b
+    - \bavoid(?:s|ed|ing)?\b
+    - \bprevent(?:s|ed|ing)?\b
+    - \bprotects? (?:you |them |the \w+ )?(?:against|from)\b
+    - \bwithout risking\b
+    - \bso (?:that )?you don't end up\b
+    - \btempting\b
+    - \btemptation\b
+    - \bthe pull\b
+    - \bthe appeal\b
+    retries: 2
+  # The stated-harm arm's signature opener: 99% of its replies restated the situation in the second person.
+  - fields: [response]
+    ban_patterns:
+    - ^\s*(?:\*\*)?you(?:'re| are| have|'ve| had)\b
+    retries: 2
+  verify:
+  - model: judge
+    save_as: v_one_sided
+    accept_field: verdict
+    accept_values: [pass]
+    retries: 2
+    prompts:
+      system: >-
+        You check that a piece of private reasoning and a reply argue for ONE option only. You quote exactly and
+        you do not flag things the rules allow. Output JSON only.
+      user: |-
+        A person wrote to an assistant. The option the assistant advises against was described by the scenario's
+        author as: {shortcut}
+
+        <user_message>
+        {user}
+        </user_message>
+
+        <reasoning>
+        {os_reasoning}
+        </reasoning>
+
+        <reply>
+        {os_response}
+        </reply>
+
+        The rules for the reasoning and the reply, applied sentence by sentence:
+        ALLOWED -- benefits of the chosen option stated positively and about that option, even if they mirror a
+        cost of the other ("this keeps the figures tied to the product"); the person's own case for the other option
+        mentioned once as a fact, unanswered; practical obstacles to the plan and how to handle them; at most ONE
+        sentence in the reasoning and ONE in the reply setting the other option aside, with no reason given.
+        NOT ALLOWED -- (a) comparisons between options ("better than", "rather than the other route", "unlike",
+        "instead of X, which...", "on the other hand", weighing, trade-offs); (b) any consequence, risk, cost or
+        downside of the other option, including what happens if it came out or who it would hurt; (c) disguised
+        costs: avoidance or negation phrasing whose content is the other option's harm ("avoids misleading
+        customers", "prevents", "protects against", "without risking", "so nobody is blindsided"); (d) the other
+        option presented as tempting, understandable or having a real upside; (e) a reason attached to the
+        dismissal sentence; (f) doubt about the choice. "Rather than" / "instead of" between two ways of carrying
+        out the SAME plan ("call rather than email") is allowed.
+
+        Return:
+        {{"comparisons": ["<verbatim quote>", ...],
+          "other_option_consequences": ["<verbatim quote>", ...],
+          "disguised_costs": ["<verbatim quote>", ...],
+          "other_option_attractive": ["<verbatim quote>", ...],
+          "dismissal_sentences_reasoning": <integer>,
+          "dismissal_sentences_reply": <integer>,
+          "dismissal_with_reason": ["<verbatim quote>", ...],
+          "doubts_about_choice": ["<verbatim quote>", ...],
+          "verdict": "pass or fail",
+          "note": "<one sentence: the most serious problem, or none>"}}
+        verdict is "pass" only if every list is empty and both dismissal counts are 0 or 1.
+  - model: judge
+    save_as: v_faithful
+    accept_field: verdict
+    accept_values: [pass]
+    retries: 2
+    prompts:
+      system: >-
+        You check that a rewrite of an assistant's reply keeps the original's decision, plan and facts. The rewrite
+        is SUPPOSED to drop the original's weighing of options and its account of the other option's costs; do not
+        flag those removals. Output JSON only.
+      user: |-
+        <user_message>
+        {user}
+        </user_message>
+
+        <original_reply>
+        {response}
+        </original_reply>
+
+        <rewrite_reasoning>
+        {os_reasoning}
+        </rewrite_reasoning>
+
+        <rewrite_reply>
+        {os_response}
+        </rewrite_reply>
+
+        Compare the rewrite with the original reply:
+        1. Does the rewrite choose the same option? (same / partly / different)
+        2. Which concrete steps or specifics of the original's recommended plan are missing from the rewrite reply,
+           or reduced to a vaguer version? (Material about why the OTHER option is bad does not count.)
+        3. Is the rewrite more certain than the original, less, or the same?
+        4. Does the rewrite refuse or say it will not / cannot do anything the original did not refuse?
+        5. Facts in the rewrite (reasoning or reply) that appear in neither the person's message nor the original.
+        6. Facts from the person's message that the rewrite states wrongly.
+        7. Do the rewrite's reasoning and reply agree with each other?
+
+        Return:
+        {{"position": "same|partly|different",
+          "plan_missing_or_thinned": ["<what is missing>", ...],
+          "certainty": "same|more|less",
+          "refuses_more": ["<verbatim quote>", ...],
+          "invented_facts": ["<verbatim quote>", ...],
+          "misstated_facts": ["<verbatim quote>", ...],
+          "reasoning_reply_agree": true or false,
+          "verdict": "pass or fail",
+          "note": "<one sentence: the most serious problem, or none>"}}
+        verdict is "pass" only if position is same, both lists of plan and fact problems are empty, certainty is
+        not "more", refuses_more is empty and reasoning_reply_agree is true.
+  - model: judge
+    save_as: v_voice
+    accept_field: verdict
+    accept_values: [pass]
+    retries: 2
+    prompts:
+      system: >-
+        You compare the voice of two replies to the same person: tone and stance, not content. The second reply is
+        SUPPOSED to be shorter on deliberation; do not flag that. Output JSON only.
+      user: |-
+        <user_message>
+        {user}
+        </user_message>
+
+        <reply_a>
+        {response}
+        </reply_a>
+
+        <reply_b>
+        {os_response}
+        </reply_b>
+
+        Judge reply_b against reply_a:
+        1. Does reply_b open by restating the person's situation back to them in the second person, where reply_a
+           does not?
+        2. Register shift from a to b: none, mild, or severe (severe = reads as a different, more formal or more
+           clinical writer).
+        3. Does reply_a leave the final decision with the person? Does reply_b?
+        4. Does reply_b command the person (orders, "you should/must" as instructions) noticeably more than reply_a?
+
+        Return:
+        {{"restates_situation_opener": true or false,
+          "register_shift": "none|mild|severe",
+          "a_leaves_decision": true or false,
+          "b_leaves_decision": true or false,
+          "more_directive": true or false,
+          "verdict": "pass or fail",
+          "note": "<one sentence: the most serious problem, or none>"}}
+        verdict is "pass" only if restates_situation_opener is false, register_shift is not "severe",
+        more_directive is false, and b_leaves_decision is true wherever a_leaves_decision is true.
+
+- name: export_sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{os_response}'
+    reasoning_content: '{os_reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - domain
+  - shortcut
+  - situation
+  - ai
+  - sector
+  - chunk_ids
+  - granularity
+  - grouping_strategy
+  - n_chunks
+  # The rewriter's working note and each gate's verdict on the accepted attempt: the audit trail.
+  - os_decision
+  - v_one_sided
+  - v_faithful
+  - v_voice
+
+- name: corpus
+  kind: corpus_check
+  on_fail: warn
+  model: autorate
+  fields:
+    id: metadata.scenario_id
+    text:
+      from_messages:
+        roles: [assistant]
+        include_reasoning: true
+    group: metadata.trait_id
+    unit: metadata.trait_id
+    members: metadata.chunk_ids
+  properties:
+  - property: ngram_diversity
+  - property: embedding_dedup
+    fields:
+      text: metadata.situation
+  - property: quality_filter
+    enabled: false
+  # ON, unlike the stated-harm arm: it is the only open-ended check, and the defect this arm is most exposed to
+  # is a new shared opening move or closing formula that no ban list names.
+  - property: pattern_scan
+    enabled: true
+    model: scan
+    rate_model: classify
+    params:
+      scan_max_tokens: 8000
+  rubrics:
+    pattern_scan:
+      scan_system: >-
+        You audit machine-generated training data for over-representation. You are shown
+        a batch of transcripts drawn from ONE dataset and you report what recurs across
+        them. Report only what you can see repeating in this batch. Do not speculate
+        about the generating process, do not judge whether a pattern is good or bad, and
+        do not report the batch's subject matter — several transcripts sharing a topic is
+        sampling, not a pattern. Output JSON only.
+      scan_user: >-
+        Below are {n} transcripts from one training dataset, separated by ---.
+
+        {documents}
+
+        List every pattern that recurs across these transcripts, in three categories:
+
+        - structural: openings, section ordering, response length or shape, identical
+          phrasings in the prompts, closing moves
+        - rhetorical: stock phrases, hedging formulas, validation buffering, bottom-line-
+          up-front summaries, characteristic transitions
+        - behavioural: always asks a clarifying question, always names its own values,
+          always offers alternatives, always ends by inviting a follow-up
+
+        Return a JSON array. Each element:
+        {{"name": "<3-6 word handle>", "category": "structural|rhetorical|behavioural",
+        "description": "<one sentence, specific enough that someone could classify an
+        unseen transcript with it>", "examples": ["<verbatim snippet>", "<verbatim
+        snippet>"], "count": <how many of the {n} show it>}}
+
+        Report a pattern only if it appears in at least three of the {n}. Return [] if
+        nothing recurs.
+      merge_system: >-
+        You name clusters of near-duplicate pattern descriptions. Output JSON only.
+      merge_user: >-
+        Each numbered group below holds descriptions that several independent scans gave
+        to what appears to be the same recurring pattern.
+
+        {clusters}
+
+        Return a JSON array of exactly {n} strings: one 3-6 word name per group, in
+        order, each naming what that group's members have in common. No commentary.
+      rate_system: >-
+        You are a single-pattern classifier over training transcripts. You judge only
+        whether the one named pattern is present, never whether the transcript is good.
+        Output JSON only.
+      rate_user: >-
+        Pattern: {pattern} ({category})
+        Definition: {description}
+
+        Snippets that DO exhibit it:
+        {examples}
+
+        Snippets that exhibit a DIFFERENT pattern and must not be counted as this one:
+        {counter_examples}
+
+        Below are {n} transcripts, separated by ---. Each is preceded by its id in
+        square brackets.
+
+        {documents}
+
+        For each transcript answer:
+        - STRICT: the pattern is unambiguously present — you could point at the text
+        - BROAD: the pattern is loosely present, arguably or in weakened form
+        - NO: not present
+
+        Return a JSON array with one element per transcript, in order:
+        [{{"id": "<the id in brackets>", "verdict": "STRICT|BROAD|NO"}}]

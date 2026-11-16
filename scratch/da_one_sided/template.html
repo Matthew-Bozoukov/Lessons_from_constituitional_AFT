@@ -1,0 +1,462 @@
+<title>__TITLE__</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a threshold ledger with a survey per finding, then a two-column source/rewrite diff reader with a flag panel. */
+:root {
+  --bg: #f6f5f8; --surface: #ffffff; --ink: #1d1b22; --muted: #625d6e; --rule: #dedae6;
+  --da: #6d3fb5; --da-soft: #efe8fa; --abl: #8a5a2b; --abl-soft: #f6ede3;
+  --crit: #b42318; --crit-soft: #fdeceb; --warn: #9a6700; --warn-soft: #fdf3dc; --ok: #1f7a4d; --ok-soft: #e4f4ec;
+  --focus: #2f6fdb;
+  --f-display: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --f-text: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141219; --surface: #1d1a24; --ink: #ece9f2; --muted: #a39db0; --rule: #34303e;
+  --da: #b394ec; --da-soft: #2a2238; --abl: #d9a56f; --abl-soft: #2e2419;
+  --crit: #f2867c; --crit-soft: #3a1d1b; --warn: #e3b552; --warn-soft: #33290f; --ok: #6ccf9c; --ok-soft: #16301f;
+  --focus: #7aa7f5; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #141219; --surface: #1d1a24; --ink: #ece9f2; --muted: #a39db0; --rule: #34303e;
+  --da: #b394ec; --da-soft: #2a2238; --abl: #d9a56f; --abl-soft: #2e2419;
+  --crit: #f2867c; --crit-soft: #3a1d1b; --warn: #e3b552; --warn-soft: #33290f; --ok: #6ccf9c; --ok-soft: #16301f;
+  --focus: #7aa7f5; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-display); font-size: 15px; line-height: 1.5 }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 28px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+h1, h2, h3 { text-wrap: balance; margin: 0 }
+h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.01em }
+h2 { font-size: 21px; font-weight: 600 }
+h3 { font-size: 16px; font-weight: 600 }
+.lede { color: var(--muted); max-width: 78ch; margin: 8px 0 0 }
+.mono { font-family: var(--f-mono); font-size: 12.5px }
+.eyebrow { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted) }
+a { color: var(--da) }
+button, select, input, textarea { font: inherit; color: inherit }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px }
+section { display: grid; gap: 16px; margin-top: 40px }
+.prov { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 14px; color: var(--muted) }
+.prov span { min-width: 0; overflow-wrap: anywhere }
+
+/* verdict strip */
+.strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 22px }
+.stat { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; display: grid; gap: 2px }
+.stat b { font-family: var(--f-mono); font-size: 22px; font-variant-numeric: tabular-nums }
+.stat small { color: var(--muted); font-size: 12.5px; line-height: 1.35 }
+.stat.crit b { color: var(--crit) } .stat.warn b { color: var(--warn) } .stat.ok b { color: var(--ok) }
+
+/* findings ledger */
+.finding { background: var(--surface); border: 1px solid var(--rule); border-left: 4px solid var(--sev, var(--rule)); border-radius: 6px;
+  padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); gap: 16px }
+.finding[data-sev="critical"] { --sev: var(--crit) } .finding[data-sev="major"] { --sev: var(--warn) } .finding[data-sev="minor"] { --sev: var(--muted) }
+.finding p { margin: 6px 0 0; max-width: 72ch }
+.sevtag { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--sev) }
+.metrics { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px }
+.metric { font-family: var(--f-mono); font-size: 12px; background: var(--bg); border: 1px solid var(--rule); border-radius: 4px; padding: 2px 7px; font-variant-numeric: tabular-nums }
+.exlinks { margin-top: 8px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px }
+.exlinks button { background: none; border: 0; padding: 0; color: var(--da); cursor: pointer; text-decoration: underline; font-family: var(--f-mono); font-size: 12px }
+.vote { display: grid; gap: 8px; align-content: start }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden }
+.seg button { border: 0; background: var(--surface); padding: 6px 4px; cursor: pointer; font-size: 13px; border-right: 1px solid var(--rule) }
+.seg button:last-child { border-right: 0 }
+.seg button[aria-pressed="true"][data-v="agree"] { background: var(--ok-soft); color: var(--ok); font-weight: 600 }
+.seg button[aria-pressed="true"][data-v="disagree"] { background: var(--crit-soft); color: var(--crit); font-weight: 600 }
+.seg button[aria-pressed="true"][data-v="unsure"] { background: var(--warn-soft); color: var(--warn); font-weight: 600 }
+textarea { width: 100%; min-height: 54px; resize: vertical; background: var(--bg); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; font-size: 13.5px }
+.tally { font-size: 12px; color: var(--muted); font-family: var(--f-mono) }
+.others { font-size: 12.5px; color: var(--muted); display: grid; gap: 4px }
+.others q { color: var(--ink); quotes: none }
+
+/* reader */
+.reader { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; align-items: start }
+.list { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; display: grid; max-height: 80vh; overflow: auto; position: sticky; top: 12px }
+.list .filters { display: grid; gap: 6px; padding: 10px; border-bottom: 1px solid var(--rule); position: sticky; top: 0; background: var(--surface); z-index: 1 }
+.list select { width: 100%; background: var(--bg); border: 1px solid var(--rule); border-radius: 6px; padding: 5px 6px; font-size: 13px }
+.item { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 8px; align-items: center; text-align: left; padding: 8px 10px; border: 0;
+  border-bottom: 1px solid var(--rule); background: none; cursor: pointer }
+.item[aria-current="true"] { background: var(--da-soft) }
+.item .dot { width: 9px; height: 9px; border-radius: 50% }
+.item .t { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.item .fl { font-family: var(--f-mono); font-size: 11px; color: var(--crit) }
+.dot.damaged { background: var(--crit) } .dot.minor { background: var(--warn) } .dot.clean { background: var(--ok) }
+.pane { display: grid; gap: 14px; min-width: 0 }
+.head { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; display: grid; gap: 8px }
+.chips { display: flex; flex-wrap: wrap; gap: 6px }
+.chip { font-family: var(--f-mono); font-size: 11.5px; border-radius: 999px; padding: 2px 9px; background: var(--bg); border: 1px solid var(--rule); color: var(--muted) }
+.chip.damaged { color: var(--crit); background: var(--crit-soft); border-color: transparent }
+.chip.minor { color: var(--warn); background: var(--warn-soft); border-color: transparent }
+.chip.clean { color: var(--ok); background: var(--ok-soft); border-color: transparent }
+details.user { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 10px 14px }
+details.user summary { cursor: pointer; font-weight: 600 }
+.prose { font-family: var(--f-text); font-size: 15.5px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere }
+.prose p { margin: 0 0 0.8em }
+.sys { color: var(--muted); font-size: 14px }
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px }
+.col { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; min-width: 0 }
+.col > header { display: flex; justify-content: space-between; gap: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600 }
+.col.da > header { background: var(--da-soft); color: var(--da) } .col.abl > header { background: var(--abl-soft); color: var(--abl) }
+.col > .prose { padding: 12px 14px }
+.col .wc { font-family: var(--f-mono); font-weight: 400; font-size: 12px }
+.judge { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; display: grid; gap: 8px }
+.judge dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 0; font-size: 13.5px }
+.judge dt { color: var(--muted); font-family: var(--f-mono); font-size: 12px; padding-top: 2px }
+.judge dd { margin: 0 }
+.flagbox { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; display: grid; gap: 10px }
+.tags { display: flex; flex-wrap: wrap; gap: 6px }
+.tags label { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; border: 1px solid var(--rule); border-radius: 6px; padding: 4px 9px; cursor: pointer; background: var(--bg) }
+.tags input:checked + span { color: var(--crit); font-weight: 600 }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center }
+.btn { border: 1px solid var(--da); background: var(--da); color: var(--surface); border-radius: 6px; padding: 7px 14px; cursor: pointer; font-weight: 600 }
+.btn.ghost { background: none; color: var(--da) }
+.btn:disabled { opacity: 0.5; cursor: default }
+.status { font-size: 12.5px; color: var(--muted) }
+.navbtns { display: flex; gap: 8px }
+.banner { border: 1px solid var(--rule); background: var(--warn-soft); color: var(--ink); border-radius: 6px; padding: 8px 12px; font-size: 13.5px }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--rule); vertical-align: top }
+th { font-family: var(--f-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600 }
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px }
+.empty { color: var(--muted); padding: 14px 16px }
+@media (max-width: 860px) {
+  .finding { grid-template-columns: minmax(0, 1fr) }
+  .reader { grid-template-columns: minmax(0, 1fr) }
+  .list { position: static; max-height: 300px }
+  .cols { grid-template-columns: minmax(0, 1fr) }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">__EYEBROW__</div>
+    <h1>__TITLE__</h1>
+    <p class="lede" id="lede"></p>
+    <div class="prov mono" id="prov"></div>
+    <div class="strip" id="strip"></div>
+  </header>
+
+  <section id="findings-sec" aria-labelledby="f-h">
+    <div>
+      <h2 id="f-h">Checks against the agreed thresholds</h2>
+      <p class="lede">Each finding has its measurement and a few example rows. Mark whether you agree after reading the examples. Your answers save automatically and everyone with access can see them.</p>
+    </div>
+    <div id="auth" class="banner" hidden></div>
+    <div id="findings" style="display:grid;gap:12px"></div>
+    <div class="finding" data-sev="minor" id="overall-q">
+      <div>
+        <span class="sevtag">Overall</span>
+        <h3 id="oq-t"></h3>
+        <p id="oq-b"></p>
+      </div>
+      <div class="vote" data-q="overall"></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="r-h" id="reader-sec">
+    <div>
+      <h2 id="r-h">Examples</h2>
+      <p class="lede">Each example puts the DA source next to the one-sided rewrite, with the audit judge's reading, the three gate verdicts and the rewriter's decision note underneath. Flag any row that shows a problem and say what it is.</p>
+    </div>
+    <div class="reader">
+      <nav class="list" aria-label="Examples">
+        <div class="filters">
+          <label class="eyebrow" for="filt">Show</label>
+          <select id="filt">
+            <option value="all">All examples</option>
+            <option value="damaged">Judge: damaged</option>
+            <option value="minor">Judge: minor</option>
+            <option value="clean">Judge: clean</option>
+            <option value="flagged">Flagged by anyone</option>
+            <option value="mine">Flagged by me</option>
+          </select>
+        </div>
+        <div id="items"></div>
+      </nav>
+      <div class="pane" id="pane"></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="t-h">
+    <div>
+      <h2 id="t-h">Flags so far</h2>
+      <p class="lede">Every flag anyone has saved, newest first.</p>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Example</th><th>Who</th><th>Issues</th><th>Note</th></tr></thead>
+      <tbody id="flagrows"><tr><td colspan="4" class="empty">No flags yet. Open an example above and use "Flag this row".</td></tr></tbody>
+    </table></div>
+  </section>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+
+const FLAG_TAGS = DATA.flag_tags;
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const paras = (t) => esc(t).split(/\n\s*\n/).map((p) => `<p>${p}</p>`).join("");
+const words = (t) => (t || "").trim().split(/\s+/).filter(Boolean).length;
+const byId = Object.fromEntries(DATA.examples.map((e) => [e.id, e]));
+
+let db = null, user = null, me = null, canWrite = true;
+let reviews = {};          // uid -> review doc body
+let mine = { flags: {}, survey: {} };
+let current = DATA.examples[0].id;
+
+/* ---------- static header ---------- */
+function header() {
+  const s = DATA.summary;
+  $("#lede").textContent = DATA.lede;
+  $("#oq-t").textContent = DATA.overall_q.title; $("#oq-b").textContent = DATA.overall_q.body;
+  $("#prov").innerHTML = DATA.provenance.map((p) => `<span>${esc(p)}</span>`).join("");
+  $("#strip").innerHTML = DATA.strip.map((x) => `<div class="stat ${x.sev || ""}"><b>${esc(x.value)}</b><small>${esc(x.label)}</small></div>`).join("");
+}
+
+/* ---------- findings + survey ---------- */
+function voteBox(qid) {
+  const v = mine.survey[qid] || {};
+  const all = Object.entries(reviews).map(([uid, r]) => [uid, (r.survey || {})[qid]]).filter(([, a]) => a && a.verdict);
+  const n = (k) => all.filter(([, a]) => a.verdict === k).length;
+  const notes = all.filter(([uid, a]) => a.note && uid !== me?.id);
+  return `
+    <div class="seg" role="group" aria-label="Your verdict">
+      ${["agree", "disagree", "unsure"].map((k) => `<button type="button" data-q="${qid}" data-v="${k}" aria-pressed="${v.verdict === k}" ${canWrite ? "" : "disabled"}>${k === "unsure" ? "Not sure" : k[0].toUpperCase() + k.slice(1)}</button>`).join("")}
+    </div>
+    <textarea id="note-${qid}" data-q="${qid}" placeholder="Comment (optional)" ${canWrite ? "" : "disabled"}>${esc(v.note || "")}</textarea>
+    <div class="tally">${all.length ? `${n("agree")} agree · ${n("disagree")} disagree · ${n("unsure")} not sure` : "No answers yet"}</div>
+    <div class="others" data-others="${qid}">${notes.map(([uid, a]) => `<div><span data-uid="${esc(uid)}">Someone</span>: <q>${esc(a.note)}</q></div>`).join("")}</div>`;
+}
+function findings() {
+  $("#findings").innerHTML = DATA.findings.map((f) => `
+    <article class="finding" data-sev="${f.severity}">
+      <div>
+        <span class="sevtag">${esc(f.severity)}</span>
+        <h3>${esc(f.title)}</h3>
+        <p>${esc(f.body)}</p>
+        <div class="metrics">${f.metrics.map((m) => `<span class="metric">${esc(m)}</span>`).join("")}</div>
+        ${f.examples.length ? `<div class="exlinks">Examples: ${f.examples.map((id) => `<button type="button" data-goto="${esc(id)}">${esc(id)}</button>`).join("")}</div>` : ""}
+      </div>
+      <div class="vote" data-q="${f.id}">${voteBox(f.id)}</div>
+    </article>`).join("");
+  $("#overall-q .vote").innerHTML = voteBox("overall");
+  nameOthers();
+}
+function refreshVotes() {
+  document.querySelectorAll(".vote[data-q]").forEach((el) => {
+    const q = el.dataset.q, ta = el.querySelector("textarea");
+    const focused = ta && document.activeElement === ta;
+    if (focused) { // keep the viewer's typing; refresh only the tallies
+      const tmp = document.createElement("div"); tmp.innerHTML = voteBox(q);
+      el.querySelector(".tally").replaceWith(tmp.querySelector(".tally"));
+      el.querySelector(".others").replaceWith(tmp.querySelector(".others"));
+      el.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", String((mine.survey[q] || {}).verdict === b.dataset.v)));
+    } else el.innerHTML = voteBox(q);
+  });
+  nameOthers();
+}
+async function nameOthers() {
+  if (!user) return;
+  const els = [...document.querySelectorAll("[data-uid]")];
+  const ids = [...new Set(els.map((e) => e.dataset.uid))];
+  if (!ids.length) return;
+  const ps = await user.profiles(ids);
+  els.forEach((e) => { const p = ps[e.dataset.uid]; e.textContent = p?.isMe ? "You" : (p?.name || "Someone"); });
+}
+
+/* ---------- reader ---------- */
+function flagsFor(id) {
+  return Object.entries(reviews).map(([uid, r]) => [uid, (r.flags || {})[id]]).filter(([, f]) => f && f.tags && f.tags.length);
+}
+function listItems() {
+  const f = $("#filt").value;
+  const ex = DATA.examples.filter((e) => {
+    if (f === "all") return true;
+    if (f === "flagged") return flagsFor(e.id).length > 0;
+    if (f === "mine") return !!(mine.flags[e.id] && mine.flags[e.id].tags?.length);
+    return e.judge.overall === f;
+  });
+  $("#items").innerHTML = ex.length ? ex.map((e) => {
+    const n = flagsFor(e.id).length;
+    return `<button type="button" class="item" data-goto="${esc(e.id)}" aria-current="${e.id === current}">
+      <span class="dot ${e.judge.overall}" title="judge: ${e.judge.overall}"></span>
+      <span class="t">${esc(e.title)}</span>
+      <span class="fl">${n ? "⚑" + n : ""}</span></button>`;
+  }).join("") : `<div class="empty">Nothing matches this filter.</div>`;
+}
+function fmt(v) {
+  if (v === null || v === undefined || v === "") return "—";
+  if (Array.isArray(v)) return v.length ? v.map(esc).join("; ") : "none";
+  if (typeof v === "object") {
+    if ("original" in v || "rewrite" in v) return `original ${v.original ? "yes" : "no"} → rewrite ${v.rewrite ? "yes" : "no"}`;
+    return Object.entries(v).map(([k, x]) => `${esc(k)} ${esc(typeof x === "object" ? JSON.stringify(x) : x)}`).join(" · ");
+  }
+  return esc(v);
+}
+function judgePanel(j) {
+  return `<div class="judge">
+    <div class="row"><h3>Audit judge</h3><span class="chip ${j.overall}">${esc(j.overall)}</span><span class="status">${esc(DATA.judge_name)}</span></div>
+    <p class="prose" style="margin:0">${esc(j.summary)}</p>
+    <dl>${DATA.judge_fields.map(([k, label]) => `<dt>${esc(label)}</dt><dd>${fmt(j[k])}</dd>`).join("")}</dl></div>`;
+}
+function gatePanel(e) {
+  const g = e.gates || {};
+  const rows = [["one-sided", g.v_one_sided], ["faithful", g.v_faithful], ["voice", g.v_voice]]
+    .map(([k, v]) => `<dt>${k}</dt><dd>${v ? `${esc(v.verdict)} · ${esc(v.note)}` : "—"}</dd>`).join("");
+  return `<div class="judge">
+    <div class="row"><h3>Gates on the accepted attempt</h3><span class="status">google/gemini-3.8-flash</span></div>
+    <dl>${rows}</dl>
+    <details><summary class="status" style="cursor:pointer">Rewriter's decision note (not trained on)</summary><div class="prose sys" style="margin-top:6px">${paras(e.decision)}</div></details></div>`;
+}
+function flagPanel(id) {
+  const f = mine.flags[id] || { tags: [], note: "" };
+  const others = flagsFor(id).filter(([uid]) => uid !== me?.id);
+  return `<div class="flagbox" id="flagbox">
+    <div class="row"><h3>Flag this row</h3><span class="status" id="flagstatus">${f.tags?.length ? "Saved" : ""}</span></div>
+    ${canWrite ? "" : `<div class="banner">You can read this page but not save flags. Ask the owner for Contributor access.</div>`}
+    <div class="tags">${FLAG_TAGS.map(([k, label]) => `<label><input type="checkbox" value="${k}" ${f.tags?.includes(k) ? "checked" : ""} ${canWrite ? "" : "disabled"}><span>${label}</span></label>`).join("")}</div>
+    <textarea id="flagnote" placeholder="What is wrong? Quote the phrase if you can." ${canWrite ? "" : "disabled"}>${esc(f.note || "")}</textarea>
+    <div class="row">
+      <button type="button" class="btn" id="saveflag" ${canWrite ? "" : "disabled"}>Save flag</button>
+      <button type="button" class="btn ghost" id="clearflag" ${canWrite && f.tags?.length ? "" : "disabled"}>Remove my flag</button>
+    </div>
+    ${others.length ? `<div class="others">${others.map(([uid, o]) => `<div><span data-uid="${esc(uid)}">Someone</span>: ${esc(o.tags.map((t) => (FLAG_TAGS.find((x) => x[0] === t) || [, t])[1]).join(", "))}${o.note ? ` <q>${esc(o.note)}</q>` : ""}</div>`).join("")}</div>` : ""}
+  </div>`;
+}
+function pane() {
+  const e = byId[current];
+  const idx = DATA.examples.findIndex((x) => x.id === current);
+  $("#pane").innerHTML = `
+    <div class="head">
+      <div class="row" style="justify-content:space-between">
+        <div class="eyebrow">${esc(e.id)} · ${idx + 1} of ${DATA.examples.length}</div>
+        <div class="navbtns">
+          <button type="button" class="btn ghost" data-step="-1" ${idx ? "" : "disabled"}>Previous</button>
+          <button type="button" class="btn ghost" data-step="1" ${idx < DATA.examples.length - 1 ? "" : "disabled"}>Next</button>
+        </div>
+      </div>
+      <h3>${esc(e.title)}</h3>
+      <div class="chips">
+        <span class="chip ${e.judge.overall}">judge: ${esc(e.judge.overall)}</span>
+        <span class="chip">trait ${esc(e.trait_id)} · ${esc(e.trait_name)}</span>
+        <span class="chip">AI role: ${esc(e.ai)}</span>
+        <span class="chip">reasoning ${e.m.reasoning_ratio.toFixed(2)}× · reply ${e.m.response_ratio.toFixed(2)}×</span>
+      </div>
+      <div class="sys"><b>Shortcut the scenario tempts:</b> ${esc(e.shortcut)}</div>
+    </div>
+    <details class="user" open><summary>System prompt and user message (identical in both versions)</summary>
+      <div class="prose sys" style="margin-top:8px">${paras(e.system)}</div>
+      <div class="prose" style="margin-top:6px">${paras(e.user)}</div>
+    </details>
+    <div class="cols">
+      <div class="col da"><header>${esc(DATA.col_labels.src)} · reasoning <span class="wc">${words(e.src_reasoning)} words</span></header><div class="prose">${paras(e.src_reasoning)}</div></div>
+      <div class="col abl"><header>${esc(DATA.col_labels.abl)} · reasoning <span class="wc">${words(e.abl_reasoning)} words</span></header><div class="prose">${paras(e.abl_reasoning)}</div></div>
+    </div>
+    <div class="cols">
+      <div class="col da"><header>${esc(DATA.col_labels.src)} · reply <span class="wc">${words(e.src_response)} words</span></header><div class="prose">${paras(e.src_response)}</div></div>
+      <div class="col abl"><header>${esc(DATA.col_labels.abl)} · reply <span class="wc">${words(e.abl_response)} words</span></header><div class="prose">${paras(e.abl_response)}</div></div>
+    </div>
+    ${judgePanel(e.judge)}
+    ${gatePanel(e)}
+    ${flagPanel(e.id)}`;
+  nameOthers();
+}
+function flagTable() {
+  const rows = [];
+  for (const [uid, r] of Object.entries(reviews)) for (const [id, f] of Object.entries(r.flags || {})) if (f.tags?.length) rows.push({ uid, id, ...f });
+  rows.sort((a, b) => (b.at || 0) - (a.at || 0));
+  $("#flagrows").innerHTML = rows.length ? rows.map((r) => `<tr>
+      <td><button type="button" class="btn ghost" style="padding:2px 8px" data-goto="${esc(r.id)}">${esc(r.id)}</button></td>
+      <td><span data-uid="${esc(r.uid)}">Someone</span></td>
+      <td>${esc(r.tags.map((t) => (FLAG_TAGS.find((x) => x[0] === t) || [, t])[1]).join(", "))}</td>
+      <td>${esc(r.note || "")}</td></tr>`).join("")
+    : `<tr><td colspan="4" class="empty">No flags yet. Open an example above and use "Flag this row".</td></tr>`;
+  nameOthers();
+}
+function go(id, scroll) {
+  if (!byId[id]) return;
+  current = id; listItems(); pane();
+  if (scroll) document.getElementById("reader-sec").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+/* ---------- persistence: one review doc per viewer, writes serialized ---------- */
+let writing = Promise.resolve(), pending = false;
+function save(statusEl) {
+  if (!db || !me?.id) { setAuth("Saving needs you signed in to claude.ai with access to this page."); return Promise.resolve(); }
+  if (pending) return writing;
+  pending = true;
+  writing = writing.then(async () => {
+    pending = false;
+    const body = JSON.parse(JSON.stringify({ flags: mine.flags, survey: mine.survey, updated: Date.now() }));
+    try {
+      await db.doc("reviews/" + me.id).set(body);
+      if (statusEl) statusEl.textContent = "Saved";
+    } catch (err) {
+      if (err && err.code === "invalid_argument") { canWrite = false; setAuth("This page could not save your answer. You may have view-only access; ask the owner for Contributor access."); refreshVotes(); pane(); }
+      else if (statusEl) statusEl.textContent = "Not saved. Check your connection and try again.";
+    }
+  });
+  return writing;
+}
+function setAuth(msg) { const a = $("#auth"); a.textContent = msg; a.hidden = !msg; }
+const noteTimers = {};
+
+document.addEventListener("click", (ev) => {
+  const g = ev.target.closest("[data-goto]");
+  if (g) { go(g.dataset.goto, !g.closest(".list")); return; }
+  const st = ev.target.closest("[data-step]");
+  if (st) { const i = DATA.examples.findIndex((x) => x.id === current) + Number(st.dataset.step); if (DATA.examples[i]) go(DATA.examples[i].id, false); return; }
+  const v = ev.target.closest(".seg button");
+  if (v && canWrite) {
+    const q = v.dataset.q, cur = mine.survey[q] || {};
+    mine.survey[q] = { ...cur, verdict: cur.verdict === v.dataset.v ? null : v.dataset.v, at: Date.now() };
+    v.parentElement.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(mine.survey[q].verdict === b.dataset.v)));
+    save(); return;
+  }
+  if (ev.target.id === "saveflag") {
+    const tags = [...document.querySelectorAll("#flagbox input:checked")].map((i) => i.value);
+    const note = $("#flagnote").value.trim();
+    const s = $("#flagstatus");
+    if (!tags.length && !note) { s.textContent = "Pick at least one issue or write a note."; return; }
+    mine.flags[current] = { tags: tags.length ? tags : ["other"], note, at: Date.now() };
+    s.textContent = "Saving…"; save(s).then(() => { listItems(); flagTable(); });
+    return;
+  }
+  if (ev.target.id === "clearflag") {
+    delete mine.flags[current];
+    save().then(() => { pane(); listItems(); flagTable(); });
+  }
+});
+document.addEventListener("input", (ev) => {
+  const ta = ev.target.closest(".vote textarea");
+  if (!ta || !canWrite) return;
+  const q = ta.dataset.q;
+  clearTimeout(noteTimers[q]);
+  noteTimers[q] = setTimeout(() => { mine.survey[q] = { ...(mine.survey[q] || {}), note: ta.value.trim(), at: Date.now() }; save(); }, 900);
+});
+$("#filt").addEventListener("change", listItems);
+
+/* ---------- boot ---------- */
+header(); findings(); listItems(); pane(); flagTable();
+(async () => {
+  const c = window.claude;
+  if (!c || !c.use) { setAuth("Answers and flags save only when this page is opened on claude.ai."); canWrite = false; refreshVotes(); pane(); return; }
+  [db, user] = await Promise.all([c.use("db"), c.use("user")]);
+  me = user ? await user.me() : null;
+  if (!db || !me?.id) { canWrite = false; setAuth("You can read this page, but answers and flags save only when you are signed in to claude.ai with access to it."); refreshVotes(); pane(); return; }
+  // This page writes only the viewer's own reviews/<id>, which the {self} rule governs, so a refused write decides.
+  const timer = setTimeout(() => setAuth("Can't reach saved answers yet. Anything you change will save once the connection returns."), 10000);
+  db.collection("reviews").onSnapshot((snap) => {
+    if (!snap.metadata.fromCache) { clearTimeout(timer); setAuth(""); }
+    reviews = {};
+    snap.docs.forEach((d) => { reviews[d.id] = d.data() || {}; });
+    const own = reviews[me.id];
+    if (own && !pending) mine = { flags: { ...(own.flags || {}) }, survey: { ...(own.survey || {}) } };
+    refreshVotes(); listItems(); flagTable();
+    const fb = $("#flagbox"); if (fb && !fb.contains(document.activeElement)) pane();
+  }, (err) => { clearTimeout(timer); setAuth("Saved answers could not be loaded. Reload the page to try again."); });
+})();
+</script>
