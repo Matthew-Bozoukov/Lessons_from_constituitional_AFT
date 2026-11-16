@@ -412,6 +412,59 @@ def test_a_two_pass_run_scores_each_pass_and_publishes_them_nested(tmp_path, mon
     assert not (out / "mask_work").exists()
 
 
+def test_a_pass_resumed_with_every_answer_on_disk_reaches_no_model(tmp_path, monkeypatch):
+    """A three-pass run stopped after pass 1 is published as one pass with `passes=1
+    resume_from=<run>`: its answers are adopted, nothing is generated, and the target's
+    endpoint (whose first read boots the server) is never asked for."""
+    import csv, types
+    from pathlib import Path
+    from omegaconf import OmegaConf
+
+    prior = tmp_path / "prior"
+    data = prior / "mask_work" / "pass1" / "data"
+    sampled = runner.sample_data(runner._HARNESS / "test_csv_data", data, None, 0)
+    (data / "responses").mkdir()
+    for a in sampled:
+        with (data / "responses" / f"{a}_m.csv").open("w", newline="") as fh:
+            w = csv.writer(fh); w.writerow(["task_id", "generation(System Prompt + User Prompt)_run1"])
+            w.writerow(["t1", "an answer"])
+    (prior / "run_meta.json").write_text(json.dumps({"target": "org/m", "target_revision": "r", "mode": "think"}))
+    calls = []
+
+    def fake_stage(argv, env, cwd, log_dir=None):
+        calls.append(argv[0])
+        assert "MASK_TARGET_BASE_URL" not in env
+        if argv[0] == "process_metrics.py":
+            out = Path(env["MASK_DATA_DIR"]) / "metrics"
+            out.mkdir(exist_ok=True)
+            (out / "all_results.json").write_text(json.dumps({
+                a: {"m": {"honesty_score_1": 90.0, "unhonest_1": 10.0, "honest_1": 60.0, "total_responses": 5}}
+                for a in sampled}))
+        return ""
+
+    class NoServer:
+        model_name, api_key = "m", "k"
+        spec = types.SimpleNamespace(hf_path="org/m", revision="r", mode="think")
+        release = staticmethod(lambda: None)
+
+        @property
+        def base_url(self):
+            raise AssertionError("a pass with nothing to generate must not boot a server")
+
+    monkeypatch.setattr(runner, "_run_stage", fake_stage)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "x")
+    cfg = OmegaConf.create({"smoke": True, "passes": 1, "judge_model": "google/gemini-3-flash-preview",
+                            "judge_concurrency": 1, "temperature": 1.0, "max_tokens": 10, "lie_k": 1,
+                            "gen_concurrency": 4, "resume_from": str(prior)})
+    out = tmp_path / "run"
+    summary = runner.run(NoServer(), cfg, out)
+    assert "generate_responses.py" not in calls and "evaluate.py" in calls
+    assert summary["passes"] == 1 and summary["overall_honesty_score"] == 90.0
+    assert summary["resumed_from"] and summary["regenerated_archetypes"] == []
+    assert all((out / "rollouts" / f"{a}.csv").is_file() for a in sampled)   # one pass publishes flat
+    assert (prior / "mask_work" / "pass1" / "data" / "responses").is_dir()   # the prior run is untouched
+
+
 def test_generation_errors_reads_a_cell_past_the_stdlib_csv_limit(tmp_path):
     # A reasoning model that loops to its token cap writes a generation over 128 KB; the
     # harness (pandas) writes it fine, and the runner's stdlib reader must read it back.

@@ -408,12 +408,23 @@ def _generate_pass(k: int, passes: int, target, cfg: DictConfig, work: Path, sou
     n_rows = sum(v["n"] for v in sampled.values())
     env = {**env, "MASK_DATA_DIR": str(data_dir)}
     test = ["--test"] if smoke else []
-    print(f">>> MASK: generating {modelname} answers for {n_rows} rows "
-          f"({'smoke' if smoke else f'subsample {subsample}' if subsample else 'full'}; "
-          f"{env['MASK_GEN_CONCURRENCY']} in flight; pass {k}/{passes})", flush=True)
-    _run_stage(["generate_responses.py", "--model", target.model_name,
-                "--temperature", str(cfg.temperature), "--max_tokens", str(cfg.max_tokens),
-                "--lie_k", str(cfg.lie_k), *test], env, _HARNESS, logs)
+    # A resumed pass that already holds every archetype's answers reaches no model: the
+    # endpoint is never read, so (serving being lazy) no server starts. This is how a run
+    # cut short after a pass finished generating is scored and published without a GPU
+    # (2026-11-16: a three-pass base run stopped after pass 1, published as one pass).
+    to_generate = sorted(a for a in sampled
+                         if not (data_dir / "responses" / f"{a}_{modelname}.csv").is_file())
+    if prior_tree is not None and not to_generate:
+        print(f">>> MASK pass {k}: all {len(sampled)} archetypes' answers were resumed; nothing to "
+              "generate, so no model is reached", flush=True)
+    else:
+        env = {**env, "MASK_TARGET_BASE_URL": target.base_url, "MASK_TARGET_API_KEY": target.api_key}
+        print(f">>> MASK: generating {modelname} answers for {n_rows} rows "
+              f"({'smoke' if smoke else f'subsample {subsample}' if subsample else 'full'}; "
+              f"{env['MASK_GEN_CONCURRENCY']} in flight; pass {k}/{passes})", flush=True)
+        _run_stage(["generate_responses.py", "--model", target.model_name,
+                    "--temperature", str(cfg.temperature), "--max_tokens", str(cfg.max_tokens),
+                    "--lie_k", str(cfg.lie_k), *test], env, _HARNESS, logs)
     # CLAUDE.md gotcha 4, made visible: a thinking target that spends `max_tokens` inside its
     # trace returns no content, and the harness stores "[ERROR: ...]" in that cell, which the
     # judge then reads as "no belief"/"evasion" -- a silent 0 on the honesty axis. Measured
@@ -608,8 +619,9 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
 
     # The harness subprocesses read the target + judge endpoints from these (the patch points).
     env = dict(os.environ)
-    env["MASK_TARGET_BASE_URL"] = target.base_url
-    env["MASK_TARGET_API_KEY"] = target.api_key
+    # The target's endpoint is NOT read here: `target.base_url` is what boots the server, and
+    # a pass resumed with every answer already on disk has nothing to ask it
+    # (`_generate_pass` reads it only when an archetype is left to generate).
     env["MASK_JUDGE_MODEL"] = str(cfg.judge_model)
     # The judge is served by the ONE provider configs/endpoints/providers.yaml pins for its model
     # (an unlisted model raises here, before any generation). The vendored harness calls OpenRouter
