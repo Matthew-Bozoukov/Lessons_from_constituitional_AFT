@@ -19,6 +19,10 @@ fi
 export CLAUDE_CONFIG_DIR="$OUT/claude_config"
 PORT="${PORT:-8011}"
 export ANTHROPIC_BASE_URL=http://127.0.0.1:$PORT
+# The harness's own LLM call (reviewer selection, safetytooling stand-in) must hit the SAME server. Unset, it
+# defaulted to port 8000 while the server was on 8011, so every org review failed with "Connection error."
+# (all 2026-11-13/14 sepsis org runs; found by the 2026-11-17 transcript audit).
+export AGENT_BASE_URL=http://127.0.0.1:$PORT/v1
 export ANTHROPIC_AUTH_TOKEN=EMPTY
 export ANTHROPIC_API_KEY=
 export ANTHROPIC_MODEL="$MODEL"

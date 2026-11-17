@@ -3,7 +3,18 @@
 
 # KNOWN GAPS: read before trusting any org result
 
-## 1. OPEN: the org's peer-review step never runs (Kunwar to handle 2026-11-14)
+## 1. FIXED 2026-11-17 (root cause was OUR harness bug, not Qwen, not Shen's protocol)
+
+The 2026-11-17 transcript audit found the real cause: Shen's `complete_ticket` DOES start the review itself
+(tools.py:449 -> 310 -> 348); the reviewer-selection LLM call goes through our safetytooling stand-in, whose
+`AGENT_BASE_URL` defaulted to port 8000 while the sepsis runs served on 8011, so every call returned
+`Connection error.` (348 times across the org runs) and coders resubmitted in a loop (66-77 calls, several
+hitting the 100-turn cap; control and DA+tools orgs too, not only DA). Fix: `pod_run.sh` exports
+`AGENT_BASE_URL=http://127.0.0.1:$PORT/v1` (commit after f... on 2026-11-17). Consequence: EVERY org run
+before r3 (round 1 and r2) ran without peer review, so those orgs are not comparable with r3+ orgs. Single
+agents have no review step and are unaffected. The original (wrong) diagnosis is kept below for the record.
+
+### Original entry (2026-11-13, diagnosis superseded)
 
 Shen's org has exactly one channel between agents besides the shared files: a coder finishes, calls
 `complete_ticket`, which QUEUES an approval step; the coder is then meant to call `request_review`, a
