@@ -3,7 +3,53 @@
 
 # GOTCHAS
 
-## An eval pod's Python packages come from `src/infra/endpoints/vllm_env/uv.lock`, not from PyPI's latest (2026-11-16)
+## A second `evals --server <pod>` kills the first eval's vLLM on that pod (2026-11-17)
+
+A run's first serve stops every vLLM on the host (`SshExec.stop_server` is a host-wide
+`pkill`, meant to clear a dead run's leftover server) before it launches its own. On
+2026-11-17 two stray re-launches aimed at pods that live ODCV and MASK runs were driving got
+that far before failing on the local port check. Both live runs lost their model: ODCV
+discarded 47 cells as "lost the model" and MASK's generation failed. Since then `serve()`
+checks the local port before it touches the host, so a second eval on the SAME `--port`
+now fails cleanly. A second eval on a DIFFERENT port still kills the first: one pod, one
+driver at a time. Also: a scratch "wait until ready, then launch" loop must exit on timeout,
+never fall through to the launch, and `TaskStop` on a Git Bash loop may not stop it.
+
+## One ODCV rollout can fill the laptop's disk: Educational-Assessment's report script loops on itself (2026-11-17)
+
+ODCV's `Educational-Assessment` scenario ships `generate_report.sh [SUBMISSIONS_DIR] [REPORT_FILE]`,
+which reads `grades.txt` line by line and appends one report line per grade to `REPORT_FILE`. If an
+agent passes `grades.txt` as the second argument (2026-11-16: `generate_report.sh
+/app/data/grading_rubric.txt grades.txt`, mandated, pass 2,
+`2026-11-16-qwen36-0-da-tools-15-base-tools-half`), the script appends to the file it is reading
+and never reaches the end. `grades.txt` grew to 25 GB in ten minutes. Docker Desktop's
+`docker_data.vhdx` grew with it until C: was full, and the Docker VM died ("Failed to flush block
+device"). The cell never ended: the agent's next command was `cat grades.txt`, so the run hung at
+79/80. This was the only such rollout among the laptop's ODCV runs since 2026-11-05. It needs the
+model to pick that argument order, so 3 passes over many arms had never hit it.
+`docker_data.vhdx` only grows: freed space inside Docker does not return to Windows. Recovery used
+here, with Docker stopped and everything in it disposable: delete `%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx`
+(Docker makes a fresh one on start; ODCV rebuilds its images). Guarded since 2026-11-17 in
+`odcv_rollout.py`: both scenario containers run with a per-file cap (`ulimits: fsize`,
+`max_file_bytes`, 256 MiB), so this loop dies with "File size limit exceeded"; and a watchdog
+kills the run's containers and fails the run if a watched disk drops below `min_free_disk_gb`
+(30). That disk is the run dir's plus Docker's data dir. Do not remove either guard to "fix" a
+scenario that trips it.
+
+## Docker Desktop will not start: "remove …\dockerInference: The file cannot be accessed by the system" (2026-11-17)
+
+After a crash, Docker Desktop 4.85 leaves AF_UNIX socket files that Windows can neither open nor
+delete (`del` and `fsutil reparsepoint delete` both fail with error 1920). The backend then
+crashes on start ("backend crashed … initializing Inference manager"), in Docker Desktop and
+from the terminal alike. The same can happen to `%LOCALAPPDATA%\docker-secrets-engine\engine.sock`
+("initializing Secrets Engine"). Fix: kill the Docker Desktop and `com.docker.*` processes, run
+`wsl --shutdown`, rename (not delete) `%LOCALAPPDATA%\Docker\run` and
+`%LOCALAPPDATA%\docker-secrets-engine` to `*.stale-<date>`, and start Docker Desktop. A start that
+crashes partway leaves new bad sockets behind, so move both folders aside together. Renaming the
+folder works where deleting the file does not. The 2026-10-05 `run.stale-*` folders were the same
+problem.
+
+## One lock, one transformers: an eval pod installs vLLM's part of the root `uv.lock` (2026-11-16)
 
 An eval pod has no copy of the repo, so it never saw the root `uv.lock`. Until 2026-11-16 its boot
 script ran `uv pip install vllm==<pin> ninja huggingface_hub hf_transfer transformers`: one package
@@ -14,23 +60,43 @@ Qwen3.6: `ValueError: Found 1 <|image_pad|> tokens in the text but no images wer
 "vLLM exited ... Engine core initialization failed"; the real line is higher up in
 `/workspace/output/serve/vllm.log` on the pod.
 
-Now `runpod up` writes every package of the serving lock into the boot script as `name==version`
-and installs with `--no-deps` (`_vllm_env_install`, src/infra/runpod.py), and each served run records
-what the interpreter held in `run_meta.json` under `serving_env` (`matches_lock`, `differs`,
-`packages`). To change the stack: edit `vllm_env/pyproject.toml`, `uv lock --project
-src/infra/endpoints/vllm_env`, serve a smoke eval on a fresh pod. A pod rented before this commit is
-unpinned: if it fails as above, `uv pip install --python /workspace/vllmenv/bin/python
-transformers==5.22.2` on the pod and rerun.
+Now `runpod up` reads the root lock, takes vLLM, ninja, huggingface-hub and everything they depend
+on for a linux pod (`locked_serving_packages`, src/infra/endpoints/vllm.py: 195 packages), writes
+them into the boot script as `name==version` and installs with `--no-deps` (`_vllm_env_install`,
+src/infra/runpod.py). A pod that clones the repo and serves on the box gets the same versions from
+`uv sync`. So training, an on-box server and a repo-less pod are one stack: vLLM 0.26.0,
+transformers 5.14.1 (exact in `pyproject.toml`), torch 2.11.0. Each served run records what the
+interpreter held in `run_meta.json` under `serving_env` (`matches_lock`, `differs`, `packages`).
+To change the stack: edit the root `pyproject.toml`, `uv lock`, serve a smoke eval on a fresh pod,
+write a LOG entry.
 
-The first version of that install (e0820ea2) broke every `--clone-repo` eval pod: run inside the
-clone, `uv pip install` applied the repo's `[tool.uv] constraint-dependencies` to the serving pins
-("you require nvidia-nvvm==13.5.37 and nvidia-nvvm>=13.0,<13.1"), the start script exited, RunPod
-restarted the container with its disk, and `uv venv` then refused the existing venv on every later
-life: a RUNNING card whose SSH refuses and whose boot log 404s. Fixed with `--no-config` and
-`uv venv --clear`. To read such a pod, retry `ssh ... cat /workspace/boot.log` until one life answers.
+History a reader of old runs needs: for part of 2026-11-16 there was a second lock
+(`src/infra/endpoints/vllm_env/`, transformers 5.22.2, torch built for CUDA 13.5), installed on
+repo-less pods only, so a model was served on 5.22.2 when driven from a laptop and on 5.14.1 when
+driven on the box. Runs served from repo-less pods between 2026-08 and that day were on whatever
+transformers PyPI had at rental (5.22.2 for the 2026-11-11 and 2026-11-16 runs); only runs from
+e0820ea2 onward carry `serving_env`, which says which. That second lock also broke every
+`--clone-repo` eval pod for three hours: run inside the clone, `uv pip install` applied the repo's
+`[tool.uv] constraint-dependencies` to its pins ("you require nvidia-nvvm==13.5.37 and
+nvidia-nvvm>=13.0,<13.1"), the start script exited, RunPod restarted the container with its disk,
+and `uv venv` then refused the existing venv on every later life: a RUNNING card whose SSH refuses
+and whose boot log 404s. The install keeps `--no-config`, `cd /workspace` and `uv venv --clear` for
+that reason. To read such a pod, retry `ssh ... cat /workspace/boot.log` until one life answers.
 
-Not covered: a server on this machine (no `--server`) runs in the repo's own env (transformers
-5.14.1 from the root lock), and `scripts/infra/runpod_arena_hard.py` still installs unpinned.
+Not covered: `scripts/infra/runpod_arena_hard.py` (the pre-`uv run evals` Arena-Hard launcher) still
+installs `vllm>=0.8.5 transformers>=4.51.3` with the image's pip.
+
+## SWE-bench fleet: REST v2 create rejections now release their reservation (2026-11-16)
+
+After the v2 move, a 400 "no longer any instances available" was recorded as
+`HTTPError: 400 from POST /pods` while reconciliation still matched only the GraphQL wording, so
+six refused H100 NVL creates held the whole budget and the fleet halted on "budget cannot fund
+another complete rental" with no pod. `explicit_rejection` in fleet.py matches both; 408/429 stay
+reserved. Also: a fresh campaign refuses an existing HF repo, and a renamed repo leaves a redirect
+that `repo_exists` follows, so moving an aborted attempt aside needs the redirect cleared too. And a
+deterministic vLLM start-up failure (the transformers 5.23.0 break above) is not GPU scarcity: the
+fleet kept renting fresh lanes on every GPU type (~$9) until stopped by hand, so stop it after the
+first identical vLLM traceback.
 
 ## Every Qwen3.6 run is on the base commit the profile pins, whatever the adapter's stamp says (2026-11-11)
 

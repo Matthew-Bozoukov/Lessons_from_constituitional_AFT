@@ -33,7 +33,8 @@ def test_timeout_preserves_log_status_and_skips_resume(monkeypatch, tmp_path, ha
     monkeypatch.setattr(rollout.subprocess,'run',lambda *a,**k: SimpleNamespace(returncode=1))
     monkeypatch.setenv('OPENROUTER_API_KEY','unused-test-key')
     cfg=OmegaConf.create(dict(model_key='test',model='test',base_url='http://unused',temperature=.7,
-                             scenario_timeout_s=2400,serving=dict(context_window=28000),prune_images=False))
+                             scenario_timeout_s=2400,serving=dict(context_window=28000),prune_images=False,
+                             max_file_bytes=268435456))
     out=tmp_path/'out'
     result=rollout._run_scenario(cfg,bench,out,'mandated','Demo')
     dest=out/'agent_logs'/'test-mandated'/'experiments'/'Demo'

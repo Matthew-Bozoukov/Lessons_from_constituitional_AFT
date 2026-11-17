@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -29,6 +30,10 @@ load_dotenv()
 # vendored docker-compose.yml with those two constraints replaced by a per-run
 # Compose project plus a network alias, so the agent still reaches the
 # orchestrator at the hostname its harness hardcodes.
+# Both services also get a per-file size cap (RLIMIT_FSIZE, `max_file_bytes` in the
+# config): a write past it kills the writing process with "File size limit exceeded".
+# Without it one agent turned a scenario script into an append-to-itself loop that wrote
+# 25 GB in ten minutes and filled the driver laptop's disk (docs/GOTCHAS.md, 2026-11-17).
 COMPOSE_TEMPLATE = """\
 networks:
   default:
@@ -62,6 +67,8 @@ services:
       orchestrator:
         condition: service_healthy
     restart: "no"
+    ulimits:
+      fsize: ${MAX_FILE_BYTES}
     networks:
       - default
       - internal_net
@@ -73,6 +80,8 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
+    ulimits:
+      fsize: ${MAX_FILE_BYTES}
     healthcheck:
       test: >-
         python3 -c 'import urllib.request; urllib.request.urlopen("http://localhost:5000/get_auto_approve_status"); print(1)' || exit 1
@@ -292,6 +301,58 @@ def _build_workspace(bench_dir: Path, variant: str, scenario: str, ws: Path,
         (team_dir / "team_spec.json").write_text(json.dumps(spec, indent=2))
 
 
+def _project_prefix(cfg, out_dir: Path) -> str:
+    """The Compose project prefix every scenario of one run shares.
+
+    The hash namespaces projects so two runs (different arms) can execute the SAME scenario
+    concurrently on one docker host without sharing containers, networks or a `down -v`.
+    It comes FIRST so the [:60] cap can never clip the distinguishing part (raw model_keys
+    can be identical up to a late seed suffix), and it includes the run directory because
+    two experiments can evaluate the SAME checkpoint.
+    """
+    tag = hashlib.sha256(f"{cfg.model_key}:{out_dir.resolve()}".encode()).hexdigest()[:12]
+    return f"odcv-{tag}-"
+
+
+def _docker_disk_paths(out_dir: Path) -> list[Path]:
+    """Host paths whose filesystem fills when scenario containers write.
+
+    Docker Desktop keeps its whole VM disk in one host file (Windows: under
+    %LOCALAPPDATA%/Docker; macOS: ~/Library/Containers/com.docker.docker); native Linux
+    docker writes under /var/lib/docker. The run directory is watched too.
+    """
+    candidates = [out_dir, Path("/var/lib/docker"),
+                  Path.home() / "Library" / "Containers" / "com.docker.docker"]
+    if os.environ.get("LOCALAPPDATA"):
+        candidates.append(Path(os.environ["LOCALAPPDATA"]) / "Docker")
+    return [c for c in candidates if c.exists()]
+
+
+def _disk_watchdog(paths: list[Path], min_free_gb: float, prefix: str,
+                   stop: threading.Event, tripped: list[str], interval_s: float = 10.0) -> None:
+    """Kill this run's scenario containers if any watched disk drops below min_free_gb.
+
+    The per-file cap stops one runaway file; this stops everything else that could fill
+    the disk (many files, a log flood) before Docker's VM disk takes the host down with it.
+    Appends the reason to `tripped`, which tells the caller to fail the run.
+    """
+    while not stop.wait(interval_s):
+        for path in paths:
+            free_gb = shutil.disk_usage(path).free / 1e9
+            if free_gb < min_free_gb:
+                tripped.append(f"{path}: {free_gb:.1f} GB free < min_free_disk_gb={min_free_gb}")
+                ids = subprocess.run(
+                    ["docker", "ps", "-q", "--filter", f"name={prefix}"],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=120,
+                ).stdout.split()
+                if ids:
+                    subprocess.run(["docker", "kill", *ids], stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL, timeout=300)
+                print(f"!!! DISK WATCHDOG: {tripped[-1]}; killed {len(ids)} container(s)",
+                      flush=True)
+                return
+
+
 def _compose(project: str, ws: Path, env: dict, args: list[str], timeout: int):
     """Run a docker compose subcommand for one scenario project."""
     return subprocess.run(
@@ -331,13 +392,7 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         return {"scenario": scenario, "variant": variant, "status": "cached"}
 
     dest.mkdir(parents=True, exist_ok=True)
-    # The model_key tag namespaces the Compose project so two runs (different arms) can
-    # execute the SAME scenario concurrently on one docker host without sharing containers,
-    # networks or a `down -v`. Hashed and placed FIRST so the [:60] cap can never clip the
-    # distinguishing part (raw model_keys can be identical up to a late seed suffix).
-    # Include the run directory: two experiments can evaluate the SAME checkpoint.
-    tag = hashlib.sha256(f"{cfg.model_key}:{out_dir.resolve()}".encode()).hexdigest()[:12]
-    project = f"odcv-{tag}-{variant}-{scenario}".lower().replace("_", "-")[:60]
+    project = f"{_project_prefix(cfg, out_dir)}{variant}-{scenario}".lower().replace("_", "-")[:60]
     ws = out_dir / "workspaces" / variant / scenario
     team_spec = team_spec_for(cfg, variant)
     preamble = Preamble.from_cfg(cfg)
@@ -360,6 +415,8 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         STRICT_TOOL_VALIDATION='1' if cfg.get('strict_tool_validation', False) else '0',
         # ODCV-Peer: names the mounted spec; empty = single seat, upstream behaviour.
         TEAM_SPEC_FILE="/app/team_in/team_spec.json" if team_spec else "",
+        # Per-file size cap inside both containers (see COMPOSE_TEMPLATE).
+        MAX_FILE_BYTES=str(int(cfg.max_file_bytes)),
         # Compose reads these for the build; keep BuildKit output terse.
         DOCKER_BUILDKIT="1",
         BUILDKIT_PROGRESS="plain",
@@ -529,11 +586,22 @@ def main(
         results.append(result)
         print(f'>>> first scheduled cell verified: {variant}/{scenario}; continuing same pass', flush=True)
     pending = jobs[len(results):]
+    stop, tripped = threading.Event(), []
+    watchdog = threading.Thread(
+        target=_disk_watchdog,
+        args=(_docker_disk_paths(out_dir), float(cfg.min_free_disk_gb),
+              _project_prefix(cfg, out_dir), stop, tripped),
+        daemon=True,
+    )
+    watchdog.start()
+
+    def _cell(v: str, s: str) -> dict:
+        if tripped:  # queued cells never start once the disk watchdog has fired
+            return {"scenario": s, "variant": v, "status": "aborted_low_disk"}
+        return _run_scenario(cfg, bench_dir, out_dir, v, s)
+
     with ThreadPoolExecutor(max_workers=int(cfg.concurrency)) as ex:
-        futures = {
-            ex.submit(_run_scenario, cfg, bench_dir, out_dir, v, s): (v, s)
-            for v, s in pending
-        }
+        futures = {ex.submit(_cell, v, s): (v, s) for v, s in pending}
         for fut in as_completed(futures):
             res = fut.result()
             results.append(res)
@@ -545,6 +613,11 @@ def main(
                 f"{res['status']:<12} {res.get('elapsed_s', 0):>6.1f}s  ETA {eta_min:.0f}m",
                 flush=True,
             )
+    stop.set()
+    if tripped:
+        raise RuntimeError(f"ODCV disk watchdog stopped the run: {tripped[0]}. Free space "
+                           f"before re-running; cells already done are kept in {out_dir} "
+                           f"for --resume.")
 
     usage_after = openrouter_usage(settle_s=90)
     manifest = {

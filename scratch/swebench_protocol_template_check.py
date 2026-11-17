@@ -11,8 +11,23 @@ import runpy
 import typing
 import urllib.request
 
+from jinja2 import nodes
+from jinja2.ext import Extension
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 import yaml
+
+# Every Lite v5 run before 2026-11-16 served this base commit. Later pins move the template
+# into chat_template.jinja with {% generation %} tags; prompts must still render identically.
+REFERENCE_REVISION = '6a9e13bd6fc8f0983b9b99948120bc37f49c13e9'
+
+
+class GenerationTags(Extension):
+    """{% generation %} marks assistant spans for transformers' masks; it emits nothing itself."""
+    tags = {'generation'}
+
+    def parse(self, parser):
+        next(parser.stream)
+        return nodes.Scope(parser.parse_statements(('name:endgeneration',), drop_needle=True))
 
 
 def extract(source, names, scope):
@@ -51,18 +66,24 @@ def main():
         ('vllm/entrypoints/chat_utils.py', ['_parse_chat_message_content', '_postprocess_messages'])]:
         extract(fetch(f'https://raw.githubusercontent.com/vllm-project/vllm/v{version}/{path}',
                       path.replace('/', '_')), names, scope)
-    url = f"https://huggingface.co/{cfg['base']}/resolve/{cfg['base_revision']}/tokenizer_config.json"
-    template = json.loads(fetch(url, 'tokenizer_config.json'))['chat_template']
+    def chat_template(revision, tag):
+        base = f"https://huggingface.co/{cfg['base']}/resolve/{revision}/"
+        template = json.loads(fetch(base + 'tokenizer_config.json', tag + '-tokenizer_config.json')).get('chat_template')
+        # Newer Qwen3.6 commits keep it only in chat_template.jinja, as serving's fallback reads.
+        return template if template is not None else fetch(base + 'chat_template.jinja', tag + '-chat_template.jinja')
+    template = chat_template(cfg['base_revision'], 'pinned')
+    reference = chat_template(REFERENCE_REVISION, 'reference')
     pin_path = Path('src/infra/endpoints/vllm.py')
     hashes[str(pin_path)] = hashlib.sha256(pin_path.read_bytes()).hexdigest()
     pins = {}
     extract(pin_path.read_text(), ['pin_template', 'pin_prefix'], pins)
-    jinja = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
+    jinja = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, extensions=[GenerationTags])
 
     def fail(message):
         raise ValueError(message)
     jinja.globals['raise_exception'] = fail
     renderer = jinja.from_string(pins['pin_template'](template, 'think'))
+    reference_renderer = jinja.from_string(pins['pin_template'](reference, 'think'))
     tests = runpy.run_path('tests/test_swebench_protocol.py')
     checks = []
     for kind in ('no_tool', 'bad_tool', 'bad_json', 'null_args', 'bad_command'):
@@ -93,6 +114,9 @@ def main():
             active = renderer.render(messages=conversation[:-1], tools=wire['tools'],
                 add_generation_prompt=True, enable_thinking=False, preserve_thinking=False)
             assert active.count('TRACE-1') == 1, kind
+            for messages, text in ((conversation, rendered), (conversation[:-1], active)):
+                assert text == reference_renderer.render(messages=messages, tools=wire['tools'],
+                    add_generation_prompt=True, enable_thinking=False, preserve_thinking=False), kind
             assert rendered.endswith('<|im_start|>assistant\n<think>\n'), kind
             if kind == 'bad_json':
                 assert '{oops' in rendered
@@ -104,11 +128,13 @@ def main():
             checks.append({'case': kind, 'retained_raw_reasoning_once': True,
                            'previous_user_turn_reasoning_omitted': True,
                            'active_turn_reasoning_retained_once': True,
-                           'rendered_under_actual_pinned_template': True})
+                           'rendered_under_actual_pinned_template': True,
+                           'byte_identical_to_reference_revision': True})
         finally:
             test.doCleanups()
     result = {'status': 'passed', 'model_inference': False, 'vllm': version,
-              'base': cfg['base'], 'base_revision': cfg['base_revision'], 'checks': checks,
+              'base': cfg['base'], 'base_revision': cfg['base_revision'],
+              'reference_revision': REFERENCE_REVISION, 'checks': checks,
               'source_sha256': hashes, 'evidence_dir': str(root),
               'limitations': 'Pinned text-only vLLM function replay and Jinja rendering, not a running CUDA server.'}
     for path in (root/'results.json', Path('output/swebench-protocol-template-latest.json')):

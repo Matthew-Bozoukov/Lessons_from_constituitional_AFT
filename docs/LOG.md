@@ -1,3 +1,26 @@
+## 2026-11-17: Base-side tool dose, evaluated: ODCV stays at the da-tools level either way; MASK 71.4 with half the base's tool rows, 64.9 with double
+
+Hypothesis: (from the 2026-11-16 entry below) if da-tools-15's agentic gain or its MASK cost comes from how the DA rows' unused tools sit next to the base's own tool use, halving or doubling the base's tool rows (DA side held) should move ODCV or MASK.
+
+Method: ODCV lite and MASK, 3 passes each, on the two 11-16 adapters. ODCV on 1x H100 driven from the Windows laptop with local docker (`concurrency=16 output_root=C:/o`), half then double on one server; MASK on 1x H200. Code 30870c13, which adds ODCV's disk guards (below). About $27 of RunPod for the two pods (~2.7 h each), plus two pods from 11-16 that were stopped mid-run and terminated unresumed (their hosts had no free GPU).
+
+Result (HF repos under dougalldeepmind/):
+
+| arm | ODCV MR [95%] | MASK honesty, 3 passes [95%] |
+|---|---|---|
+| da-15 (11-03 A; 11-09 B, C) | 10.8-15.4 | 83.2 [80.6, 85.6]; 84.5; 79.3 |
+| da-tools-15 (10-11 parent; 11-06 B, C) | 5.8; 4.2; 3.3 | 65.1 [62.1, 67.9]; 68.0; 65.4 |
+| 50-50 by trait (11-10) | 3.3 [0.2, 13.5] | 76.8 [75.4, 78.2] |
+| **base tools half** | **2.5 [0.4, 7.7]** | **71.4 [68.7, 73.9]** |
+| **base tools double** | **3.8** (see below) | **64.9 [63.9, 65.8]** |
+
+- ODCV `2026-11-17-odcv-qwen36-0-da-tools-15-base-tools-half`: 240 rollouts, 0 dropped, mandated 0.8 / incentivised 4.2, by pass 1.2 / 3.8 / 2.5; progress 4.94/5. `...-double`: mandated 2.5 / incentivised 5.0, and every pass is exactly 3.8 (1 mandated + 2 incentivised flags each, different scenarios each pass, distinct transcripts), so its t-over-passes interval collapses to [3.8, 3.8] and understates the uncertainty; read it as about half's width. Progress 4.95/5.
+- MASK `2026-11-16-mask-qwen36-0-da-tools-15-base-tools-half` (run 11-16 night): by pass 71.4 / 72.4 / 70.3, 0.21% generation errors, 0 judge errors. `2026-11-17-mask-qwen36-0-da-tools-15-base-tools-double`: by pass 64.6 / 64.7 / 65.3, 0.2% generation errors, 0 judge errors; pass 1 and half of pass 2 resumed from the interrupted run (`resumed_from` in its results).
+- Reading: the base's tool dose does not move ODCV: both arms sit inside the da-tools range and clear of da-15. On MASK, double is at the da-tools level and half is ~4-6 points above the da-tools seeds (its interval clears 65.1 and 65.4, and sits just above 68.0), so fewer base tool rows may cost less chat honesty; that gap is about the size of the da-tools seed spread, and each arm is one seed.
+- Incidents, both handled and in docs/GOTCHAS.md: (1) one ODCV rollout of half (11-16, pass 2, Educational-Assessment) passed `grades.txt` as the report script's output, which appended to itself until it filled the laptop's disk through Docker's vhdx; ODCV now caps every file in its scenario containers at 256 MiB and kills a run whose docker disk drops below 30 GB free. (2) On 11-17 stray re-launches from a scratch wait-loop killed both pods' vLLM mid-run (a first serve pkills every vLLM on the host before the port check ran); ODCV discarded the 47 cells that lost the model and re-ran them on resume, MASK resumed from its finished stages. Fixed in f19d4d91 (port checked before any ssh).
+
+Next: Hospital on both adapters; a second seed of half before reading the MASK gain as the arm's.
+
 ## 2026-11-16: da-tools-15 with the DA tools in Qwen-Agent's ✿FUNCTION✿ format instead of the native block: mix and seed-0 adapter (nothing evaluated)
 
 Hypothesis: every eval hands the model its tools through vLLM's `tools=`, which Qwen3.6's template renders as the native `# Tools` / `<tools>` JSON block, and da-tools-15's DA rows use that same block. If the agentic gain needs that surface form, it should shrink when the DA rows list the same tools in another format Qwen understands; if the "deployed with tools" frame is enough, it should survive. (The 2026-10-01 canary 2x2 already showed the gain does not depend on the block being unique to DA rows, so the variable here is the match with eval-time rendering, not the match with the base.)
@@ -10,6 +33,30 @@ Method: Qwen-Agent's own `qwen` function-calling prompt (QwenLM/Qwen-Agent @ 31a
 Result: none yet. Nothing evaluated.
 
 Next: ODCV lite and MASK, 3 passes each (the 2026-11-10 protocol), against da-tools-15 seeds a/b/c and da-15. Optional: ODCV with the tools rendered in this format, to see whether the model learned the frame tied to the format.
+
+## 2026-11-16: One lock for training and serving; an eval pod installs vLLM's part of the root uv.lock (transformers 5.14.1)
+
+Hypothesis: the second lock added this morning (`src/infra/endpoints/vllm_env`, transformers 5.22.2) is unnecessary, because the root `uv.lock` already holds a complete, working serving stack: every on-box eval serves from it. If a repo-less pod installs the same versions, a model is served on one stack wherever the eval is typed.
+
+Method: `locked_serving_packages()` (src/infra/endpoints/vllm.py) now walks the root lock from vllm, ninja and huggingface-hub, keeping the dependency edges whose markers hold on a linux x86_64 Python 3.12 pod; `runpod up` writes those as `name==version` into the boot script. `transformers==5.14.1` is exact in `pyproject.toml`; `vllm_env/` is deleted. `serving_env_record` counts the repo's own env (the serving packages plus the rest of the lock) as matching. Checked on pod `ypcnmfoyika7dh` (H200, rented for the prefilled AM and MASK runs, no extra rental): (1) the 195 versions against the repo env `uv sync` had built there; (2) a fresh venv from them: `uv pip check`, imports, `hf download`; (3) `/workspace/vllmenv` rebuilt with the exact lines `_vllm_env_install` emits, then `uv run evals --target dougalldeepmind/2026-10-05-qwen36-0-da-15 --name mmlu --server root@103.196.86.136:24592 --no-push subset.per_subject=1` from the laptop.
+
+Result: 195 packages (vLLM 0.26.0, transformers 5.14.1, torch 2.11.0+cu130), none missing from or different to the pod's repo env; `uv pip check` clean. The smoke served DA-15 from the rebuilt venv and reported "195 packages, as locked in uv.lock" (`serving_env.matches_lock` true, `differs` empty); MMLU 49/57 (86.0%), 100% parsed, no truncation, not published. Against the lock it replaces: 103 of the shared packages change version, including torch (CUDA 13.5 build to 13.0) and transformers 5.22.2 to 5.14.1. Full suite: the same 11 failures as main.
+
+Not checked: a boot from `runpod up` itself on this branch (the install lines were run by hand on a live pod, which is the same script but not the same path), and whether laptop-driven results move between 5.22.2 and 5.14.1. Runs served from repo-less pods on 2026-11-11 and 2026-11-16 (the MASK+tools arms, base MASK+tools) were on 5.22.2; on-box runs (Petri reruns of 2026-11-05, tonight's prefill and Petri runs) were on 5.14.1.
+
+Next steps: the first `uv run runpod up --eval` after this merges confirms the boot path. `scripts/infra/runpod_arena_hard.py` still installs `vllm>=0.8.5 transformers>=4.51.3`.
+
+## 2026-11-16: SWE-bench Lite v5 on da-tools-15 seed a: 170/300 (56.7%), against Figure 10's da-15 182 and control 178
+
+Hypothesis: adding unused tool definitions to the Difficult Advice data (da-tools-15) costs no general agentic coding ability, as Figure 10 shows for plain DA. da-tools-15 seed a is the matched pair of Figure 10's 15% point: its mixture `2026-10-11-da-tools-15-mix` equals `2026-10-05-da-15-mix` row for row except `tools` on 646 of 650 DA rows.
+
+Method: `dougalldeepmind/2026-10-11-qwen36-0-da-tools-15` @ 2b14c0d8, all 300 Lite tasks, the unchanged lite-v5 mini protocol (temperature 1, top-p 0.95, top-k 20, 16,384 response / 262,144 context and task tokens, 500 steps, longest-first schedule), one rollout each, official SWE-bench 4.1.0 grading. Fresh Vast CPU 60929798 (Quebec, 122 CPUs, 396 GiB, $1.16/hr; 300 images cached and gold 9/9, no-fix 2 expected passes before any GPU). Fleet: 6 lanes, $120 cumulative GPU cap. H100 NVL was mostly out of stock, so the lanes ran a mix: 2 H100 NVL, 2 then 2 more H200 (leases expired and were replaced), 1 RTX PRO 6000. Base served at the profile pin 8f33b989 (all 15 safetensors byte-identical to 6a9e13bd; every protocol replay prompt renders byte-identically under both templates, asserted in the qualification's template check).
+
+Result: **170/300 resolved (56.7%, Wilson 51.0-62.2)**. All 300 rollouts ended Submitted; 3 patches failed to apply; 0 infrastructure-invalid at the end (one task needed one infrastructure retry); 0 ungraded. Paired against the Figure 10 runs (same tasks, McNemar exact): da-15 182, 156 both, 14 only da-tools, 26 only da-15, p = 0.08; control 178, p = 0.23; base 179, p = 0.20. A 12-task gap at one sampled rollout per task is not significant; it is not evidence of preservation either. The two Requests no-fix passes are included as in every arm. [Results](https://huggingface.co/datasets/dougalldeepmind/2026-11-16-swebench-qwen36-0-da-tools-15-lite-v5/tree/04105316aaf3d904ddaa77299fa206c72e2c7899) (87,528 files hash-verified by the supervisor). Cost: GPU $56.12 conservative ledger ($52.30 RunPod-recorded) for the completed campaign plus ~$9.33 for seven failed boots in an aborted attempt; Vast CPU $11.39 all in (preparation, six qualifications, campaign, transfer). About $77 total.
+
+Four repo changes since the last fleet run (2026-09-28) each stopped the launch, fixed on `nika/swebench-lite-dat`: the CPU env lacked `tenacity` (d7e71a56); lite.yaml still named 6a9e13bd after the profile pin (d87c125b); the template check read `chat_template` from tokenizer_config.json (e87ca833); REST v2 create rejections never released their budget reservation, halting the fleet with no pod (0e9fd71a); and transformers 5.23.0 (2026-11-13) stops vLLM 0.26 serving Qwen3.6-27B (diagnosed here on the CPU host with the processor alone; on main the locked serving env from e0820ea2 is the fix, so this branch's own pin was dropped). The two aborted attempts are kept as `...-lite-v5-attempt1-aborted` and `-attempt2-aborted` on the Hub; host logs in `output/swebench_cpu_20261116/`. CPU destroyed and registry emptied after verification.
+
+Next: if the da-tools vs da-15 gap matters for the paper, a second rollout per task (or seeds b/c) is what would separate it from sampling noise.
 
 ## 2026-11-16: Base-side tool-use dose on da-tools-15: half and double the base's tool rows at fixed size, two adapters trained
 
