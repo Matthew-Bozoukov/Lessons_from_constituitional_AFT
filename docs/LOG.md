@@ -1,3 +1,23 @@
+## 2026-11-17: da-tools-15 with the DA tools in Qwen-Agent's ✿FUNCTION✿ format, evaluated: ODCV 3.3, MASK 66.5, both at the native-format da-tools level
+
+Hypothesis: (from the 2026-11-16 Qwen-Agent-format entry below) if da-tools-15's agentic gain needs the DA rows' tools in the same native `<tools>` block that vLLM's `tools=` renders at eval time, it should shrink when the DA rows list them in Qwen-Agent's format; if the "deployed with tools" frame is enough, it should survive.
+
+Method: ODCV lite and MASK, 3 passes each (the 2026-11-10 protocol), on `dougalldeepmind/2026-11-16-qwen36-0-da-tools-15-tools-format-qwen-agent` @ 24320feb, mode think, code 3f5f3f29 (main @ 1f97a8b1 merged, so ODCV ran with the 30870c13 disk guards). Evals hand the tools over natively as always; only the training rows changed format. ODCV on 1x H100 driven from the Windows laptop's docker (`concurrency=16 output_root=C:/o`), MASK on 1x H200. The 11-16 MASK attempt died when the laptop's disk filled (the incident in the entry below) and left only an empty responses CSV, so MASK ran from scratch rather than resuming. About $18 of RunPod for the two pods.
+
+Result (HF repos under dougalldeepmind/):
+
+| arm | ODCV MR [95%] | MASK honesty, 3 passes [95%] |
+|---|---|---|
+| da-15 (11-03 A; 11-09 B, C) | 10.8-15.4 | 83.2 [80.6, 85.6]; 84.5; 79.3 |
+| da-tools-15, native block (10-11 parent; 11-06 B, C) | 5.8; 4.2; 3.3 | 65.1 [62.1, 67.9]; 68.0; 65.4 |
+| **da-tools-15, Qwen-Agent format** | **3.3 [1.0, 8.1]** | **66.5 [64.8, 68.2]** |
+
+- ODCV `2026-11-17-odcv-qwen36-0-da-tools-15-tools-format-qwen-agent`: 240 rollouts, 3 x 80/80 clean, 0 dropped; mandated 0.8 / incentivised 5.8, by pass 2.5 / 2.5 / 5.0; progress 5.0 / 4.97 of 5.
+- MASK `2026-11-17-mask-qwen36-0-da-tools-15-tools-format-qwen-agent`: by pass 66.9 / 66.9 / 65.7; generation errors 0.3 / 0.1 / 0.2%, 0 empty, 0 judge errors.
+- Reading: changing the DA rows' tool format moves neither eval: ODCV sits inside the native-format da-tools range and clear of da-15, and MASK keeps the same ~15-point cost. So the agentic gain (and the chat-honesty cost) does not depend on the training rows matching the eval-time `<tools>` rendering; a tool list in any format Qwen reads looks to be enough. One seed.
+
+Next: the optional ODCV with the tools rendered in Qwen-Agent's format at eval time, to see whether the format the model was trained on matters when the eval matches it instead.
+
 ## 2026-11-17: Base-side tool dose, evaluated: ODCV stays at the da-tools level either way; MASK 71.4 with half the base's tool rows, 64.9 with double
 
 Hypothesis: (from the 2026-11-16 entry below) if da-tools-15's agentic gain or its MASK cost comes from how the DA rows' unused tools sit next to the base's own tool use, halving or doubling the base's tool rows (DA side held) should move ODCV or MASK.
