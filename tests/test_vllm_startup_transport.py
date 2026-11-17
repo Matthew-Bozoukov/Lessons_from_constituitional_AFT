@@ -1,6 +1,7 @@
 # ABOUTME: A lost SSH acknowledgement or process probe must not kill a healthy vLLM server.
 # ABOUTME: Transport recovery checks readiness without launching a second server or sampling requests.
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -72,3 +73,21 @@ def test_taken_local_port_refuses_before_tunnelling(monkeypatch):
         with pytest.raises(RuntimeError,match='--port'):
             executor.start_server(['python','-m','vllm.entrypoints.openai.api_server'],{})
         tunnel.assert_not_called()
+
+
+def test_taken_local_port_refuses_before_the_host_is_touched(monkeypatch):
+    # 2026-11-17: a second eval aimed at a pod another eval was driving failed the port
+    # check only after serve()'s first stop() had pkilled the live run's vLLM on that pod.
+    # The port is now checked before ANY ssh: no stop, no adapter fetch, no launch.
+    import socket
+    with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as holder:
+        holder.bind(('127.0.0.1',0)); holder.listen(1)
+        executor=vllm.SshExec('test-host',port=holder.getsockname()[1])
+        ssh=Mock(return_value='started')
+        monkeypatch.setattr(executor,'_ssh',ssh)
+        server=vllm.VllmServer(work_dir=Path('x'),port=holder.getsockname()[1],executor=executor)
+        spec=SimpleNamespace(adapter=True,hf_path='org/a',revision=None,model_key='a',
+                             base_model='base',base_revision='rev',mode='think')
+        with pytest.raises(RuntimeError,match='--port'):
+            server.serve(spec)
+        ssh.assert_not_called()

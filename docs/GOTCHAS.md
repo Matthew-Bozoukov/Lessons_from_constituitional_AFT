@@ -3,6 +3,18 @@
 
 # GOTCHAS
 
+## A second `evals --server <pod>` kills the first eval's vLLM on that pod (2026-11-17)
+
+A run's first serve stops every vLLM on the host (`SshExec.stop_server` is a host-wide
+`pkill`, meant to clear a dead run's leftover server) before it launches its own. On
+2026-11-17 two stray re-launches aimed at pods that live ODCV and MASK runs were driving got
+that far before failing on the local port check. Both live runs lost their model: ODCV
+discarded 47 cells as "lost the model" and MASK's generation failed. Since then `serve()`
+checks the local port before it touches the host, so a second eval on the SAME `--port`
+now fails cleanly. A second eval on a DIFFERENT port still kills the first: one pod, one
+driver at a time. Also: a scratch "wait until ready, then launch" loop must exit on timeout,
+never fall through to the launch, and `TaskStop` on a Git Bash loop may not stop it.
+
 ## One ODCV rollout can fill the laptop's disk: Educational-Assessment's report script loops on itself (2026-11-17)
 
 ODCV's `Educational-Assessment` scenario ships `generate_report.sh [SUBMISSIONS_DIR] [REPORT_FILE]`,

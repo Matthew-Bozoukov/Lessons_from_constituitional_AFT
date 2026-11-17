@@ -830,6 +830,9 @@ class LocalExec:
 
         return hf_snapshot(hf_path, revision=revision)
 
+    def check_port(self) -> None:
+        """Nothing to claim first: this executor's stop only ever ends its own process."""
+
     def start_server(self, argv: list[str], env_extra: dict) -> None:
         import os
 
@@ -1091,6 +1094,20 @@ class SshExec:
             f"print(snapshot_download('{hf_path}', revision={revision!r}))\""), timeout=1800)
         return out.strip().splitlines()[-1]
 
+    def check_port(self) -> None:
+        """Refuse a taken local port BEFORE anything reaches the host.
+
+        A first serve stops whatever vLLM the host runs (`stop_server` is a host-wide pkill,
+        there to clear a dead run's leftover server) and then launches its own. When the
+        local port is taken, the usual cause is another eval still driving that same host
+        through it, and that pkill would kill its server mid-run: on 2026-11-17 a stray
+        second launch failed on the port check in start_server only AFTER the pkill, and both
+        live runs lost their model. Only checked while this executor holds no tunnel; a
+        restart within a run stops its own tunnel first and start_server checks again.
+        """
+        if self.tunnel is None:
+            assert_local_port_free(self.bind, self.port)
+
     def start_server(self, argv: list[str], env_extra: dict) -> None:
         # nohup-ing the command INLINE over ssh keeps the channel open until the ssh
         # client times out (CLAUDE.md gotcha 8 — observed twice this migration). The
@@ -1199,6 +1216,9 @@ class VllmServer:
         Returns:
             The OpenAI-compatible base URL.
         """
+        # Before the stop below, which on a remote host kills every vLLM there: see
+        # SshExec.check_port.
+        self.executor.check_port()
         adapter_dir = (self.executor.fetch_adapter(spec.hf_path, spec.revision)
                        if spec.adapter else None)
         # A different base COMMIT is a different base: two adapters trained against
