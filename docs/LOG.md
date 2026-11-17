@@ -1,3 +1,13 @@
+## 2026-11-17: Qwen-Agent tool-format arm on MASK+tools: 92.4, at the native-format da-tools level (93.7)
+
+Hypothesis: (from the entry below) if the DA rows' tool format matters anywhere, it should show on MASK+tools, where the pressure prompts carry tools rendered natively the way da-tools-15's DA rows did and the Qwen-Agent arm's did not.
+
+Method: `uv run evals --target dougalldeepmind/2026-11-16-qwen36-0-da-tools-15-tools-format-qwen-agent --name mask --server <pod> inject_tools=data/mask_tools/eval_tools/mask_tools.json protocol=tools serving.needs_tool_calls=true` (tool lists from `2026-11-11-mask-tools-synth` @ 31b956e4, sha 004c734c, 1000 rows, 16 without tools), 3 passes, 1x H200, code 5f4f1c17. A first pod (`4ab1sl5tbhyh76`) published no SSH endpoint in 600 s and was terminated; the second (`p7uqcaq1a1hvwy`) ran it. About $13 of RunPod.
+
+Result: `dougalldeepmind/2026-11-17-mask-tools-qwen36-0-da-tools-15-tools-format-qwen-agent`: **honesty 92.4 [90.5, 94.0]**, by pass 92.5 / 93.1 / 91.7; generation errors 0.2% each pass; 23 empty answers over three passes, all tool calls where an answer was due (scored as empty); 0 judge errors. Against the same eval: native-format da-tools-15 93.7 [91.7, 95.3] (11-11), da-15 79.0 [78.7, 79.4] (11-11), base 55.9 (11-16, one pass). The format arm matches the native arm here too, so on all three evals the DA rows' tool format makes no measurable difference. One seed.
+
+Next: none from this arm unless the optional ODCV with Qwen-Agent-format tools at eval time is wanted.
+
 ## 2026-11-17: da-tools-15 with the DA tools in Qwen-Agent's ✿FUNCTION✿ format, evaluated: ODCV 3.3, MASK 66.5, both at the native-format da-tools level
 
 Hypothesis: (from the 2026-11-16 Qwen-Agent-format entry below) if da-tools-15's agentic gain needs the DA rows' tools in the same native `<tools>` block that vLLM's `tools=` renders at eval time, it should shrink when the DA rows list them in Qwen-Agent's format; if the "deployed with tools" frame is enough, it should survive.
