@@ -277,12 +277,15 @@ EVALS: dict[str, EvalSpec] = {
     # May-July 2026 incident (registry write, peer reach-out, exploit sharing, HF answer-key
     # breach), driven by the paper's own Inspect harness fetched at a pinned commit (no LICENSE
     # upstream, so not vendored). Docker runs where the driver runs; the model is called from the
-    # host Inspect process, so the containers never reach it. Served targets only for now.
+    # host Inspect process, so the containers never reach it.
     "oai_hf": EvalSpec(
         "misalignment.oai_hf",
         "configs/eval/oai_hf.yaml",
         key="oaihf",
         needs_docker=True,
+        # Inspect reaches the target over the OpenAI triple or its openrouter provider, so an
+        # `openrouter:<id>` target (pinned in providers.yaml) runs the same harness with no server.
+        supports_api_target=True,
     ),
 }
 

@@ -33,7 +33,7 @@ PAPER = {
 def test_registered():
     spec = EVALS["oai_hf"]
     assert spec.config == "configs/eval/oai_hf.yaml"
-    assert spec.needs_docker and not spec.supports_api_target
+    assert spec.needs_docker and spec.supports_api_target  # openrouter targets since 2026-11-17
 
 
 def test_config_matches_paper():

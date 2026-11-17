@@ -71,8 +71,6 @@ def run(target, cfg, out_dir: Path) -> dict:
         the Step 3/4 funnels, end-reason counts, and run health.
     """
     cfg = OmegaConf.merge(cfg)
-    if target.is_api:
-        raise SystemExit("oai_hf: API targets are not wired (served vLLM targets only)")
     rollout_dir, results_dir, metadata_dir = publish_layout(out_dir)
 
     from inspect_ai import eval as inspect_eval
@@ -86,10 +84,22 @@ def run(target, cfg, out_dir: Path) -> dict:
 
     harness = ensure_harness(str(cfg.harness.repo), str(cfg.harness.commit))
 
-    base_url = target.base_url  # touching it is what serves a lazy target
-    os.environ["VLLM_BASE_URL"] = base_url
-    os.environ["VLLM_API_KEY"] = target.api_key or "EMPTY"
-    model_str = f"openai-api/vllm/{target.model_name}"
+    model_args: dict = {}
+    if target.is_api:
+        # An API target (`openrouter:<id>`): Inspect's openrouter provider, pinned to the ONE host
+        # configs/endpoints/providers.yaml names for that id, so quantization never varies by call.
+        from src.infra.endpoints.openrouter import provider_pin
+
+        provider, model_id = str(target.spec.hf_path).split(":", 1)
+        if provider != "openrouter":
+            raise SystemExit(f"oai_hf: only openrouter API targets are wired, got {target.spec.hf_path}")
+        model_str = f"openrouter/{model_id}"
+        model_args = {"provider": provider_pin(model_id)}
+    else:
+        base_url = target.base_url  # touching it is what serves a lazy target
+        os.environ["VLLM_BASE_URL"] = base_url
+        os.environ["VLLM_API_KEY"] = target.api_key or "EMPTY"
+        model_str = f"openai-api/vllm/{target.model_name}"
 
     smoke = bool(cfg.get("smoke", False))
     epochs = int(cfg.smoke_n) if smoke else int(cfg.n)
@@ -111,6 +121,7 @@ def run(target, cfg, out_dir: Path) -> dict:
     logs = inspect_eval(
         tasks,
         model=model_str,
+        model_args=model_args,
         epochs=epochs,
         max_tasks=int(cfg.inspect.max_tasks),
         max_samples=int(cfg.inspect.max_samples),
@@ -131,6 +142,7 @@ def run(target, cfg, out_dir: Path) -> dict:
 
     run_info = {
         "target": model_str,
+        "model_args": model_args,
         "mode": target.spec.mode,
         "judge_model": str(cfg.judge_model),
         "harness": {"repo": str(cfg.harness.repo), "commit": str(cfg.harness.commit)},

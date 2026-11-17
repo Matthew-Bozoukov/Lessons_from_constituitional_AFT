@@ -646,6 +646,7 @@ def test_registry_marks_only_openai_client_evals_api_capable():
         "swebench_mini",
         "delegated_harm",
         "whistlebench_team",
+        "oai_hf",
     }
 
 

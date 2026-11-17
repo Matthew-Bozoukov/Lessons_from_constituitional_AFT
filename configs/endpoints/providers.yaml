@@ -94,6 +94,9 @@ models:
                                   # field), and the budget is the whole point of the probe.
                                   # OpenRouter's documented floor for that field is 1024.
     price: {in: 0.45, out: 2.7}
+  qwen/qwen3.8-27b:               # oai_hf base-model check (2026-11-17). 25 hosts, most fp8/fp4;
+    order: [deepinfra]            # deepinfra serves bf16 (the precision we serve our own adapters
+    price: {in: 0.15, out: 1.875} # at), checked on /api/v1/models/qwen/qwen3.8-27b/endpoints.
   qwen/qwen3-embedding-8b:        # TURF embedder. nebius over deepinfra (both
     order: [nebius]               # quant-undeclared; deepinfra's own API says
                                   # quantization: None) and siliconflow (declared fp8).
