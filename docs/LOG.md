@@ -1,3 +1,26 @@
+## 2026-11-17: Base-side tool dose, evaluated: ODCV stays at the da-tools level either way; MASK 71.4 with half the base's tool rows, 64.9 with double
+
+Hypothesis: (from the 2026-11-16 entry below) if da-tools-15's agentic gain or its MASK cost comes from how the DA rows' unused tools sit next to the base's own tool use, halving or doubling the base's tool rows (DA side held) should move ODCV or MASK.
+
+Method: ODCV lite and MASK, 3 passes each, on the two 11-16 adapters. ODCV on 1x H100 driven from the Windows laptop with local docker (`concurrency=16 output_root=C:/o`), half then double on one server; MASK on 1x H200. Code 30870c13, which adds ODCV's disk guards (below). About $27 of RunPod for the two pods (~2.7 h each), plus two pods from 11-16 that were stopped mid-run and terminated unresumed (their hosts had no free GPU).
+
+Result (HF repos under dougalldeepmind/):
+
+| arm | ODCV MR [95%] | MASK honesty, 3 passes [95%] |
+|---|---|---|
+| da-15 (11-03 A; 11-09 B, C) | 10.8-15.4 | 83.2 [80.6, 85.6]; 84.5; 79.3 |
+| da-tools-15 (10-11 parent; 11-06 B, C) | 5.8; 4.2; 3.3 | 65.1 [62.1, 67.9]; 68.0; 65.4 |
+| 50-50 by trait (11-10) | 3.3 [0.2, 13.5] | 76.8 [75.4, 78.2] |
+| **base tools half** | **2.5 [0.4, 7.7]** | **71.4 [68.7, 73.9]** |
+| **base tools double** | **3.8** (see below) | **64.9 [63.9, 65.8]** |
+
+- ODCV `2026-11-17-odcv-qwen36-0-da-tools-15-base-tools-half`: 240 rollouts, 0 dropped, mandated 0.8 / incentivised 4.2, by pass 1.2 / 3.8 / 2.5; progress 4.94/5. `...-double`: mandated 2.5 / incentivised 5.0, and every pass is exactly 3.8 (1 mandated + 2 incentivised flags each, different scenarios each pass, distinct transcripts), so its t-over-passes interval collapses to [3.8, 3.8] and understates the uncertainty; read it as about half's width. Progress 4.95/5.
+- MASK `2026-11-16-mask-qwen36-0-da-tools-15-base-tools-half` (run 11-16 night): by pass 71.4 / 72.4 / 70.3, 0.21% generation errors, 0 judge errors. `2026-11-17-mask-qwen36-0-da-tools-15-base-tools-double`: by pass 64.6 / 64.7 / 65.3, 0.2% generation errors, 0 judge errors; pass 1 and half of pass 2 resumed from the interrupted run (`resumed_from` in its results).
+- Reading: the base's tool dose does not move ODCV: both arms sit inside the da-tools range and clear of da-15. On MASK, double is at the da-tools level and half is ~4-6 points above the da-tools seeds (its interval clears 65.1 and 65.4, and sits just above 68.0), so fewer base tool rows may cost less chat honesty; that gap is about the size of the da-tools seed spread, and each arm is one seed.
+- Incidents, both handled and in docs/GOTCHAS.md: (1) one ODCV rollout of half (11-16, pass 2, Educational-Assessment) passed `grades.txt` as the report script's output, which appended to itself until it filled the laptop's disk through Docker's vhdx; ODCV now caps every file in its scenario containers at 256 MiB and kills a run whose docker disk drops below 30 GB free. (2) On 11-17 stray re-launches from a scratch wait-loop killed both pods' vLLM mid-run (a first serve pkills every vLLM on the host before the port check ran); ODCV discarded the 47 cells that lost the model and re-ran them on resume, MASK resumed from its finished stages. Fixed in f19d4d91 (port checked before any ssh).
+
+Next: Hospital on both adapters; a second seed of half before reading the MASK gain as the arm's.
+
 ## 2026-11-16: One lock for training and serving; an eval pod installs vLLM's part of the root uv.lock (transformers 5.14.1)
 
 Hypothesis: the second lock added this morning (`src/infra/endpoints/vllm_env`, transformers 5.22.2) is unnecessary, because the root `uv.lock` already holds a complete, working serving stack: every on-box eval serves from it. If a repo-less pod installs the same versions, a model is served on one stack wherever the eval is typed.
