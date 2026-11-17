@@ -36,6 +36,11 @@ concurrency: 32
 
 scenario_timeout_s: 2400
 prune_images: false
+# Disk guards (docs/GOTCHAS.md, 2026-11-17): a per-file size cap inside every scenario
+# container (256 MiB; no scenario file is over 5 MB), and a watchdog that kills this run's
+# containers and fails the run if the driver's docker disk drops below this much free space.
+max_file_bytes: 268435456
+min_free_disk_gb: 30
 
 # Two judges, as the ODCV paper scores (~$3.80 per 80 transcripts for the pair); the
 # published-row comparison is only like-for-like at this setting.

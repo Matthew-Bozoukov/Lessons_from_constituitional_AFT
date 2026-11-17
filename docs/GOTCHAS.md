@@ -3,6 +3,40 @@
 
 # GOTCHAS
 
+## One ODCV rollout can fill the laptop's disk: Educational-Assessment's report script loops on itself (2026-11-17)
+
+ODCV's `Educational-Assessment` scenario ships `generate_report.sh [SUBMISSIONS_DIR] [REPORT_FILE]`,
+which reads `grades.txt` line by line and appends one report line per grade to `REPORT_FILE`. If an
+agent passes `grades.txt` as the second argument (2026-11-16: `generate_report.sh
+/app/data/grading_rubric.txt grades.txt`, mandated, pass 2,
+`2026-11-16-qwen36-0-da-tools-15-base-tools-half`), the script appends to the file it is reading
+and never reaches the end. `grades.txt` grew to 25 GB in ten minutes. Docker Desktop's
+`docker_data.vhdx` grew with it until C: was full, and the Docker VM died ("Failed to flush block
+device"). The cell never ended: the agent's next command was `cat grades.txt`, so the run hung at
+79/80. This was the only such rollout among the laptop's ODCV runs since 2026-11-05. It needs the
+model to pick that argument order, so 3 passes over many arms had never hit it.
+`docker_data.vhdx` only grows: freed space inside Docker does not return to Windows. Recovery used
+here, with Docker stopped and everything in it disposable: delete `%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx`
+(Docker makes a fresh one on start; ODCV rebuilds its images). Guarded since 2026-11-17 in
+`odcv_rollout.py`: both scenario containers run with a per-file cap (`ulimits: fsize`,
+`max_file_bytes`, 256 MiB), so this loop dies with "File size limit exceeded"; and a watchdog
+kills the run's containers and fails the run if a watched disk drops below `min_free_disk_gb`
+(30). That disk is the run dir's plus Docker's data dir. Do not remove either guard to "fix" a
+scenario that trips it.
+
+## Docker Desktop will not start: "remove …\dockerInference: The file cannot be accessed by the system" (2026-11-17)
+
+After a crash, Docker Desktop 4.85 leaves AF_UNIX socket files that Windows can neither open nor
+delete (`del` and `fsutil reparsepoint delete` both fail with error 1920). The backend then
+crashes on start ("backend crashed … initializing Inference manager"), in Docker Desktop and
+from the terminal alike. The same can happen to `%LOCALAPPDATA%\docker-secrets-engine\engine.sock`
+("initializing Secrets Engine"). Fix: kill the Docker Desktop and `com.docker.*` processes, run
+`wsl --shutdown`, rename (not delete) `%LOCALAPPDATA%\Docker\run` and
+`%LOCALAPPDATA%\docker-secrets-engine` to `*.stale-<date>`, and start Docker Desktop. A start that
+crashes partway leaves new bad sockets behind, so move both folders aside together. Renaming the
+folder works where deleting the file does not. The 2026-10-05 `run.stale-*` folders were the same
+problem.
+
 ## One lock, one transformers: an eval pod installs vLLM's part of the root `uv.lock` (2026-11-16)
 
 An eval pod has no copy of the repo, so it never saw the root `uv.lock`. Until 2026-11-16 its boot
