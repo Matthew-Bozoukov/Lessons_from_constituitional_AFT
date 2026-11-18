@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from omegaconf import OmegaConf
 from peft import LoraConfig
 from transformers import (
+    AutoConfig,
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
@@ -608,7 +609,8 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         raise ValueError(
             f"train.packing needs varlen attention (flash_attention_2/3), not {attn_impl!r}: "
             "sdpa would let packed examples attend to each other")
-    if packing and profile.family == "Qwen3.6":
+    # Keyed on the ARCHITECTURE, not the family name: Qwen3.6 and Qwen3.8 are both qwen3_5.
+    if packing and AutoConfig.from_pretrained(model_id, revision=base_revision).model_type == "qwen3_5":
         # The gated-delta layers' short causal conv (kernel 4) respects pack boundaries only
         # through the fused kernel's `seq_idx`; the torch fallback runs straight across them and
         # leaks 3 positions into every example. causal-conv1d has no wheel for this torch/CUDA
@@ -618,7 +620,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
 
         if _qwen.causal_conv1d_fn is None:
             raise ValueError(
-                "train.packing on Qwen3.6 needs the causal-conv1d kernel (seq_idx boundaries); "
+                "train.packing on qwen3_5 (Qwen3.6/3.8) needs the causal-conv1d kernel (seq_idx boundaries); "
                 "it is not installed. It is the `train` extra: `uv sync --extra train` with the "
                 "CUDA toolchain exported (src/infra/runpod.py KERNEL_BUILD; docs/GOTCHAS.md "
                 "2026-09-21), which `runpod up --train` does for you -- or train padded.")

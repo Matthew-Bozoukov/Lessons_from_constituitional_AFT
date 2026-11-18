@@ -53,7 +53,8 @@ from typing import Any, Callable, Sequence
 
 import requests
 
-from src.infra.endpoints.vllm import POD_VENV, locked_serving_packages, pin_prefix, ssh_argv
+from src.infra.endpoints.vllm import (POD_VENV, locked_serving_packages, pin_prefix, ssh_argv,
+                                      template_pins)
 from src.model_profile import gpu_entry, gpu_for, pinned_revision
 
 REST = "https://api.runpod.io/v2"
@@ -444,7 +445,7 @@ def bootstrap_script(
     # base answered fine while the adapter returned empty until the flag was pinned.
     pin_block, template_flag = "", ""
     if mode:
-        prefix = pin_prefix(mode)          # canonical; repr() below handles the escaping
+        prefix = pin_prefix(mode, template_pins(base))  # canonical; repr() handles the escaping
         pin_block = (
             "$VENV/bin/python - <<'PYEOF'\n"
             "import pathlib\n"

@@ -277,3 +277,113 @@ def test_history_before_the_last_user_message_is_context_end_to_end(tok):
     with pytest.raises(AssertionError, match="NO think block"):
         gate_generation_boundary([broken], tok, max_length=4096,
                                  profile=QWEN36_PROFILE, thinking=True)
+
+
+# --- Qwen3.8-27B: same literals, and rendered byte-identically to Qwen3.6 -------------------
+# configs/models/qwen38.yaml renders with preserve_thinking=false + reasoning_effort=medium
+# (Kunwar, 2026-11-18: "match qwen"). These prove that choice does what it says on the live
+# 3.8 tokenizer: every row shape a mixture holds renders to the SAME text as on 3.6, so the
+# 3.6 masking proofs above carry over, and the served (pinned) template does the same.
+
+QWEN38_PROFILE = model_profile("qwen38")
+
+
+@pytest.fixture(scope="module")
+def tok38():
+    transformers = pytest.importorskip("transformers")
+    try:
+        return transformers.AutoTokenizer.from_pretrained(
+            QWEN38_PROFILE.model, revision=QWEN38_PROFILE.revision, local_files_only=True)
+    except OSError:
+        pytest.skip("Qwen3.8-27B tokenizer not in the local HF cache (tests are no-network)")
+
+
+_TOOLS = [{"type": "function", "function": {
+    "name": "bash", "description": "Run a shell command.",
+    "parameters": {"type": "object", "properties": {"command": {"type": "string"}},
+                   "required": ["command"]}}}]
+_CALL = {"type": "function", "function": {"name": "bash", "arguments": {"command": "ls"}}}
+ROW_SHAPES = {
+    "single turn": ([{"role": "user", "content": "q"},
+                     {"role": "assistant", "content": "a", "reasoning_content": "r"}], None),
+    "multi-turn history": ([{"role": "user", "content": "q1"},
+                            {"role": "assistant", "content": "a1"},
+                            {"role": "user", "content": "q2"},
+                            {"role": "assistant", "content": "a2", "reasoning_content": "r2"}], None),
+    "system + unused tools": ([{"role": "system", "content": "You are an agent."},
+                               {"role": "user", "content": "q"},
+                               {"role": "assistant", "content": "a", "reasoning_content": "r"}], _TOOLS),
+    "tool chain": ([{"role": "user", "content": "work"},
+                    {"role": "assistant", "content": "", "reasoning_content": "s1", "tool_calls": [_CALL]},
+                    {"role": "tool", "content": "out"},
+                    {"role": "assistant", "content": "done", "reasoning_content": "s2"}], _TOOLS),
+}
+
+
+def test_qwen38_literals_match_the_live_template(tok38):
+    msgs = [{"role": "user", "content": "hi"}]
+    kw = QWEN38_PROFILE.render_kwargs
+    think = tok38.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True,
+                                      enable_thinking=True, **kw)
+    nothink = tok38.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True,
+                                        enable_thinking=False, **kw)
+    assert think.endswith(QWEN38_PROFILE.assistant_header + QWEN38_PROFILE.prefill)
+    assert nothink.endswith(QWEN38_PROFILE.assistant_header + QWEN38_PROFILE.empty_think)
+    assert len(tok38("\n\n", add_special_tokens=False)["input_ids"]) == 1
+
+
+@pytest.mark.parametrize("shape", sorted(ROW_SHAPES))
+def test_qwen38_renders_every_row_shape_exactly_as_qwen36(tok, tok38, shape):
+    from src.model_profile import render_chat
+
+    msgs, tools = ROW_SHAPES[shape]
+    r36 = render_chat(tok, msgs, tools, render_kwargs=QWEN36_PROFILE.render_kwargs)
+    r38 = render_chat(tok38, msgs, tools, render_kwargs=QWEN38_PROFILE.render_kwargs)
+    assert r38 == r36
+    assert "Reasoning effort" not in r38
+    assert tok38(r38)["input_ids"] == tok(r36)["input_ids"]
+
+
+def test_qwen38_template_default_would_differ(tok38):
+    # The two choices are load-bearing: left at the 3.8 default, the system turn gains the
+    # xhigh sentence and an earlier answer keeps an (empty) think block.
+    msgs, _ = ROW_SHAPES["multi-turn history"]
+    default = tok38.apply_chat_template(msgs, tokenize=False)
+    assert default.startswith("<|im_start|>system\nReasoning effort is set to xhigh.")
+    assert "assistant\n<think>\n\n</think>\n\na1" in default
+
+
+def test_qwen38_mask_supervises_only_current_turns(tok38):
+    from src.model_profile import render_chat
+    from src.train.mask_gate import expected_supervised_text, gate_generation_boundary
+
+    rows = [render_chat(tok38, m, t, render_kwargs=QWEN38_PROFILE.render_kwargs)
+            for m, t in ROW_SHAPES.values()]
+    for row in rows:
+        got = tok38.decode([v for v in build_labels(row, tok38, 4096, QWEN38_PROFILE)["labels"]
+                            if v != -100])
+        assert got == expected_supervised_text(row, QWEN38_PROFILE.prefill, QWEN38_PROFILE.empty_think)
+    history = tok38.decode([v for v in build_labels(rows[list(ROW_SHAPES).index("multi-turn history")],
+                                                    tok38, 4096, QWEN38_PROFILE)["labels"] if v != -100])
+    assert history == "r2\n</think>\n\na2<|im_end|>", "an earlier answer is context, never a target"
+    census = gate_generation_boundary(rows, tok38, max_length=4096, profile=QWEN38_PROFILE,
+                                      thinking=True)
+    assert census["absent_current"] == 0
+
+
+def test_qwen38_served_template_ignores_request_kwargs(tok38):
+    # The serve-time pin (vllm.pin_template + template_pins) must give the trained render even
+    # when a client asks for the 3.8 defaults back.
+    from src.infra.endpoints.vllm import pin_template, template_pins
+
+    pins = template_pins(QWEN38_PROFILE.model)
+    assert pins == {"preserve_thinking": False, "reasoning_effort": "medium"}
+    served = pin_template(tok38.chat_template, "think", pins)
+    msgs, _ = ROW_SHAPES["multi-turn history"]
+    prompt = msgs[:3]
+    got = tok38.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True,
+                                    chat_template=served, reasoning_effort="xhigh",
+                                    preserve_thinking=True, enable_thinking=False)
+    assert "Reasoning effort" not in got and "<think>\n\n</think>\n\na1" not in got
+    assert got.endswith(QWEN38_PROFILE.assistant_header + QWEN38_PROFILE.prefill)
+    assert template_pins(QWEN36_PROFILE.model) == {}, "Qwen3.6 serving stays unchanged"

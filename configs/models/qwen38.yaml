@@ -1,0 +1,65 @@
+# ABOUTME: ModelProfile for Qwen3.8-27B: same architecture and tool format as Qwen3.6-27B, a
+# ABOUTME: different chat template, rendered here exactly as Qwen3.6 is (render_kwargs below).
+# Read by src/model_profile.py. `uv run train ... model=qwen38` names this file by its stem,
+# which is also the KEY every artifact name spells the model with (`<date>-qwen38-<seed>-<mix>`).
+# Derived from qwen36.yaml on 2026-11-18; every fact below was re-checked on 3.8 that day
+# (tests/test_masking_tokenizer.py, the qwen38 section) or is inherited and marked so.
+
+model: "Qwen/Qwen3.8-27B"
+# Hub head on 2026-11-18 ("Add a response template and generation tags", 2026-11-07). The
+# weights are those of 8c0b3d30 (2026-11-05); the template is what changed. config.json and
+# tokenizer_config.json are byte-identical to Qwen3.6-27B @ 8f33b989 except
+# `transformers_version` (Qwen3_5ForConditionalGeneration, 262,144 positions).
+revision: 37561816e66b5b9153b1b64c10968c18c1e6f4a0
+match: qwen38
+thinking: true
+family: "Qwen3.8"
+
+# INHERITED from qwen36 (same architecture, same parameter count): unmeasured on 3.8.
+gpu:
+  train: "NVIDIA H200"
+  inference:
+    default: "NVIDIA H100 80GB HBM3"
+    oai_hf: "NVIDIA H200"
+
+# Serving facts INHERITED from qwen36: the template emits the same XML tool calls
+# (`<tool_call><function=NAME><parameter=...>`) and the same <think>...</think> block, so the
+# vLLM 0.26 parsers are the same; confirmed on the first 3.8 serve (oai_hf smoke).
+serving:
+  max_num_seqs: 192
+  reasoning_parser: qwen3
+  tool_call_parser: qwen3_xml
+  supports_prefix_caching: true
+
+# Template literals, VERIFIED against the live 3.8 tokenizer (tests/test_masking_tokenizer.py).
+# render_kwargs: chosen by Kunwar 2026-11-18, "match qwen": with both, a 3.8 render is
+#   byte-identical to the Qwen3.6 render of the same row.
+#   preserve_thinking: false -- 3.8's default is ON (an earlier turn keeps an empty think
+#     block and its answer is TRAINED); off, the template renders reasoning only from the last
+#     user message onwards and earlier answers are context, as on 3.6. Serving pins it false.
+#   reasoning_effort: medium -- the only level that adds nothing to the system turn. The
+#     default, xhigh, prepends "Reasoning effort is set to xhigh. Please think carefully ..."
+#     to every system turn (and creates one where a row has none). Serving pins it too
+#     (vllm.template_pins), so a model is served with the prompt it was trained on.
+template:
+  assistant_header: "<|im_start|>assistant\n"
+  turn_end: "<|im_end|>"
+  prefill: "<think>\n"
+  empty_think: "<think>\n\n</think>\n\n"
+  think_close: "</think>"
+  render_kwargs:
+    preserve_thinking: false
+    reasoning_effort: medium
+
+train:
+  model_class: image_text_to_text
+  # Same module paths as 3.6 (checked against the smoke run's printed module paths).
+  lora_target_modules: 'model\.language_model\..*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$'
+  load_in_4bit: false
+  attn_implementation: flash_attention_2
+  memory:
+    # INHERITED from qwen36 (same architecture and size), at Kunwar's "match qwen" 2026-11-18;
+    # not re-probed on 3.8.
+    H200:
+      max_padded_tokens: 8000
+      provenance: "inherited from qwen36.yaml (scratch/probe_batch_memory.py, commit 83343e7, 4xH200 pod, 2026-08-08); same arch and size, not re-probed on 3.8"

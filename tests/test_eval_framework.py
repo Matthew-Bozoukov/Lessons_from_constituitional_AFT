@@ -961,3 +961,18 @@ def test_tunnel_refuses_a_local_port_another_process_holds():
     finally:
         holder.close()
     assert_local_port_free("127.0.0.1", port)  # free again: no error
+
+
+def test_pin_template_pins_the_family_render_kwargs():
+    from src.infra.endpoints.vllm import pin_prefix
+
+    # No family pins: exactly the two lines every pre-qwen38 server got.
+    assert pin_prefix("think") == ("{%- set enable_thinking = true -%}\n"
+                                   "{%- set preserve_thinking = false -%}\n")
+    assert pin_prefix("think", {}) == pin_prefix("think")
+    pinned = pin_prefix("think", {"preserve_thinking": False, "reasoning_effort": "medium"})
+    assert pinned == pin_prefix("think") + '{%- set reasoning_effort = "medium" -%}\n'
+    with pytest.raises(AssertionError, match="preserve_thinking"):
+        pin_prefix("think", {"preserve_thinking": True})
+    with pytest.raises(AssertionError):
+        pin_prefix("think", {"enable_thinking": False})

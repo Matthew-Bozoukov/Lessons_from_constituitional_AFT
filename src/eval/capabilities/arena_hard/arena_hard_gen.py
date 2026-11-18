@@ -84,14 +84,15 @@ def prompt_token_counter(cfg):
     if not cfg.generation.get("exact_prompt_budget", False):
         return None
     from transformers import AutoTokenizer
-    from src.infra.endpoints.vllm import pin_template
+    from src.infra.endpoints.vllm import pin_template, template_pins
     identity = cfg.get("target_identity", {})
     revision, mode = identity.get("base_revision"), identity.get("mode")
     if not revision or mode not in ("think", "nothink", "default"):
         raise ValueError("Exact Arena prompt budgeting requires a pinned HF base and mode")
     tokenizer = AutoTokenizer.from_pretrained(str(cfg.base_model), revision=str(revision))
     if mode != "default":
-        tokenizer.chat_template = pin_template(tokenizer.chat_template, mode)
+        tokenizer.chat_template = pin_template(tokenizer.chat_template, mode,
+                                               template_pins(str(cfg.base_model)))
     @lru_cache(maxsize=None)
     def count(prompt):
         rendered = tokenizer.apply_chat_template([{"role": "user", "content": prompt}],

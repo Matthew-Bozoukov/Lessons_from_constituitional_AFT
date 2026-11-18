@@ -33,7 +33,7 @@ def check_mix_subject_ok(model_subject: str) -> bool:
         return False
 from huggingface_hub.errors import EntryNotFoundError, RepositoryNotFoundError
 
-from src.model_profile import pinned_revision, serving_params
+from src.model_profile import find_profile, pinned_revision, serving_params
 
 # The Weights & Biases variables a training pod may carry (src/train/launch.py reads them);
 # pushed by `push_hf_env` only when set locally, never invented.
@@ -537,7 +537,7 @@ def resolve_target(hf_path: str, revision: str | None = None) -> TargetSpec:
     return spec
 
 
-def pin_template(template_text: str, mode: str) -> str:
+def pin_template(template_text: str, mode: str, template_kwargs: Mapping | None = None) -> str:
     """Pin thinking mode into a chat template (pure; unit-tested offline).
 
     A top-level Jinja `set` executes after the render context is built, so it shadows any
@@ -549,12 +549,27 @@ def pin_template(template_text: str, mode: str) -> str:
     trace and an answered turn loses its own. Training renders the same way (the profile's
     `render_kwargs`). From 2026-08-04 to 2026-10-05 think mode pinned it true, keeping every
     earlier turn's reasoning in view; arms trained then were also served that way.
+
+    `template_kwargs` are the family's TRAINING render kwargs (`template_pins`), pinned the
+    same way so a model is served with the prompt it was trained on: Qwen3.8 renders with
+    `reasoning_effort: medium` (no effort sentence in the system turn, as on Qwen3.6), and a
+    server left to the template default would add the xhigh sentence to every prompt.
     """
-    return pin_prefix(mode) + template_text
+    return pin_prefix(mode, template_kwargs) + template_text
 
 
-def pin_prefix(mode: str) -> str:
-    """The two Jinja lines `pin_template` prepends. Depends on `mode` ALONE, not the template.
+def template_pins(base_model: str) -> dict:
+    """The render kwargs a base model's profile trains with, which serving must pin too.
+
+    Empty for an unprofiled model and for Qwen3.6 (whose profile renders with the template
+    default), so their pinned templates are unchanged.
+    """
+    profile = find_profile(str(base_model))
+    return dict(profile.render_kwargs) if profile else {}
+
+
+def pin_prefix(mode: str, template_kwargs: Mapping | None = None) -> str:
+    """The Jinja lines `pin_template` prepends. Depends on `mode` and the family's pins only.
 
     Split out because the RunPod bootstrap pins the template ON the pod, where the text is
     only available at boot from the tokenizer -- but the prefix is decidable here. One
@@ -563,8 +578,19 @@ def pin_prefix(mode: str) -> str:
     """
     assert mode in ("think", "nothink"), mode
     flag = "true" if mode == "think" else "false"
-    return (f"{{%- set enable_thinking = {flag} -%}}\n"
-            "{%- set preserve_thinking = false -%}\n")
+    lines = [f"{{%- set enable_thinking = {flag} -%}}\n",
+             "{%- set preserve_thinking = false -%}\n"]
+    for key, value in sorted((template_kwargs or {}).items()):
+        if key == "preserve_thinking":
+            # Already pinned false above; a family that TRAINS with it on would be served
+            # with history its training never rendered, so refuse rather than diverge.
+            assert value is False, (
+                f"preserve_thinking={value!r} in a profile's render_kwargs: serving pins it "
+                "false, so training and serving would render history differently")
+            continue
+        assert key.isidentifier() and key != "enable_thinking", key
+        lines.append(f"{{%- set {key} = {json.dumps(value)} -%}}\n")
+    return "".join(lines)
 
 
 # The two serving namespaces are DISJOINT BY CONSTRUCTION — no key appears in both, so
@@ -1244,7 +1270,7 @@ class VllmServer:
             with open(hf_download(base_model, "chat_template.jinja", **rev), encoding="utf-8") as f:
                 template = f.read()
         return self.executor.write_file(f"chat_template_{mode}.jinja",
-                                        pin_template(template, mode))
+                                        pin_template(template, mode, template_pins(base_model)))
 
     def _start(self, spec: TargetSpec, adapter_dir: str | None) -> None:
         # Facts come from two places, both authoritative and neither overridable: the
