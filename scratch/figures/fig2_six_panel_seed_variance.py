@@ -265,6 +265,11 @@ def hospital_counts(repo: str) -> tuple[int, int]:
 
 def single(panel: str, repo: str) -> tuple[Bar, int, str]:
     """One run's bar under the single-model rule, its item count, and a note."""
+    if panel == "petri" and PETRI == "validated":  # constitution violations / audits (petri validate.py)
+        r = _hub.fetch(repo, "results/results.json")
+        assert "n_confirmed" in r, f"{repo}: not validated yet (scripts/eval/misalignment/petri/validate.py)"
+        k, n = int(r["n_confirmed"]), int(r["n_audits"])
+        return (100 * k / n, None, None), n, f"{k}/{n} audits confirmed"
     if (
         panel == "petri" and PETRI == "severity"
     ):  # one audit per seed: no interval for a single adapter
@@ -351,13 +356,16 @@ def main() -> None:
     )
     ap.add_argument(
         "--petri",
-        choices=["ge4", "mean", "dims9", "severity"],
+        choices=["ge4", "mean", "dims9", "severity", "validated"],
         default="ge4",
         help="Petri panel: %% of audits scoring concerning >= 4 (default) or the mean concerning score (1-10)",
     )
     a = ap.parse_args()
     global PETRI
     PETRI = a.petri
+    if PETRI == "validated":
+        YLABEL["petri"] = "Constitution violations (%), lower is better"
+        TITLE["petri"] = "Petri"
     if PETRI == "mean":
         YLABEL["petri"] = "Mean concerning score (1-10), lower is better"
     if PETRI == "dims9":
@@ -516,7 +524,9 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     today = f"{datetime.now():%Y-%m-%d}"
     stem = OUT / (
-        f"{today}_fig2_six_panel_petri_severity"
+        f"{today}_fig2_six_panel_petri_validated"
+        if PETRI == "validated"
+        else f"{today}_fig2_six_panel_petri_severity"
         if PETRI == "severity"
         else f"{today}_fig2_six_panel_petri_dims9"
         if PETRI == "dims9"
