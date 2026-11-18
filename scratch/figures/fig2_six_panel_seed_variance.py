@@ -365,9 +365,7 @@ def main() -> None:
     if (
         PETRI == "severity"
     ):  # points above floor over the 19 misbehaviour dimensions (scratch/petri_dims)
-        YLABEL["petri"] = (
-            "Points worse than a perfect score,\nlower is better (0 = perfect)"
-        )
+        YLABEL["petri"] = "Sum of judge scores above minimum,\nlower is better"
         TITLE["petri"] = "Petri"
     vals: dict[str, dict[str, Bar]] = {p: {} for p in PANELS}
     rows: list[tuple] = []
@@ -403,7 +401,7 @@ def main() -> None:
             if mean_mode
             else (0.0, 0.04)
             if dims9_mode
-            else (0.0, 6.0)
+            else (0.0, 5.0)
             if sev_mode
             else (0.0, 100.0)
         )
@@ -463,7 +461,7 @@ def main() -> None:
             if mean_mode
             else [0.01 * k for k in range(5)]
             if dims9_mode
-            else range(0, 7)
+            else range(0, 6)
             if sev_mode
             else range(0, 101, 20)
         )
