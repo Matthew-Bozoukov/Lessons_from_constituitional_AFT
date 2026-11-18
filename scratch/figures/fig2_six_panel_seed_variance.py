@@ -243,12 +243,16 @@ def petri_dims9(repo: str) -> list[float]:
     )
     per: dict[str, dict] = {}
     for f in logs:
-        for smp in read_eval_log(hf_hub_download(rid, f, repo_type="dataset")).samples or []:
+        for smp in (
+            read_eval_log(hf_hub_download(rid, f, repo_type="dataset")).samples or []
+        ):
             for sc in (smp.scores or {}).values():
                 if isinstance(sc.value, dict) and "concerning" in sc.value:
                     per[str(smp.id)] = sc.value
     assert len(per) == 90, f"{repo}: {len(per)} scored audits, expected 90"
-    return [sum((float(v[d]) - 1) / 9 for d in DIMS9) / len(DIMS9) for v in per.values()]
+    return [
+        sum((float(v[d]) - 1) / 9 for d in DIMS9) / len(DIMS9) for v in per.values()
+    ]
 
 
 def hospital_counts(repo: str) -> tuple[int, int]:
@@ -261,7 +265,16 @@ def hospital_counts(repo: str) -> tuple[int, int]:
 
 def single(panel: str, repo: str) -> tuple[Bar, int, str]:
     """One run's bar under the single-model rule, its item count, and a note."""
-    if panel == "petri" and PETRI == "dims9":  # one audit per seed: no interval for a single adapter
+    if (
+        panel == "petri" and PETRI == "severity"
+    ):  # one audit per seed: no interval for a single adapter
+        from scratch.petri_dims.fig_petri_misbehaviour import audits, points
+
+        s = [points(a) for a in audits(repo)]
+        return (sum(s) / len(s), None, None), len(s), f"{len(s)} audits"
+    if (
+        panel == "petri" and PETRI == "dims9"
+    ):  # one audit per seed: no interval for a single adapter
         s = petri_dims9(repo)
         return (sum(s) / len(s), None, None), len(s), f"{len(s)} audits"
     if panel == "petri" and PETRI == "mean":
@@ -269,7 +282,9 @@ def single(panel: str, repo: str) -> tuple[Bar, int, str]:
         n = len(s)
         m = sum(s) / n
         sd = math.sqrt(sum((x - m) ** 2 for x in s) / (n - 1))
-        h = 1.96 * sd / math.sqrt(n)  # 95% over the audits, the unit the Wilson bar uses
+        h = (
+            1.96 * sd / math.sqrt(n)
+        )  # 95% over the audits, the unit the Wilson bar uses
         return (m, max(1.0, m - h), min(10.0, m + h)), n, f"{n} audits"
     if panel == "petri":
         k, n = petri_counts(repo)
@@ -294,14 +309,27 @@ def recipe(panel: str, repos: list[str]) -> tuple[Bar, str]:
         bar, _, note = singles[0]
         return bar, note
     means = [b[0] for b, _, _ in singles]
-    if panel == "petri" and PETRI == "dims9":  # 0-1 mean: t on the log-odds over the draws
+    if (
+        panel == "petri" and PETRI == "severity"
+    ):  # 0-171 points: t on log-odds over draws
+        t = logit_t(means, singles[0][1], scale=171.0)
+        return (
+            sum(means) / len(means),
+            t["lo"],
+            t["hi"],
+        ), f"{len(means)} draws {[round(m, 3) for m in means]}"
+    if (
+        panel == "petri" and PETRI == "dims9"
+    ):  # 0-1 mean: t on the log-odds over the draws
         t = logit_t(means, singles[0][1], scale=1.0)
         return (
             sum(means) / len(means),
             t["lo"],
             t["hi"],
         ), f"{len(means)} draws {[round(m, 4) for m in means]}"
-    if panel == "petri" and PETRI == "mean":  # 1-10 mean: t on the log-odds of (mean - 1) / 9
+    if (
+        panel == "petri" and PETRI == "mean"
+    ):  # 1-10 mean: t on the log-odds of (mean - 1) / 9
         t = logit_t([m - 1 for m in means], singles[0][1], scale=9.0)
         return (
             sum(means) / len(means),
@@ -323,7 +351,7 @@ def main() -> None:
     )
     ap.add_argument(
         "--petri",
-        choices=["ge4", "mean", "dims9"],
+        choices=["ge4", "mean", "dims9", "severity"],
         default="ge4",
         help="Petri panel: %% of audits scoring concerning >= 4 (default) or the mean concerning score (1-10)",
     )
@@ -334,6 +362,13 @@ def main() -> None:
         YLABEL["petri"] = "Mean concerning score (1-10), lower is better"
     if PETRI == "dims9":
         YLABEL["petri"] = "Mean judge score (0-1), lower is better"
+    if (
+        PETRI == "severity"
+    ):  # points above floor over the 19 misbehaviour dimensions (scratch/petri_dims)
+        YLABEL["petri"] = (
+            "Points worse than a perfect score,\nlower is better (0 = perfect)"
+        )
+        TITLE["petri"] = "Petri"
     vals: dict[str, dict[str, Bar]] = {p: {} for p in PANELS}
     rows: list[tuple] = []
     for p in PANELS:
@@ -362,7 +397,16 @@ def main() -> None:
         )
         mean_mode = p == "petri" and PETRI == "mean"
         dims9_mode = p == "petri" and PETRI == "dims9"
-        y0, y1 = (1.0, 3.5) if mean_mode else (0.0, 0.04) if dims9_mode else (0.0, 100.0)
+        sev_mode = p == "petri" and PETRI == "severity"
+        y0, y1 = (
+            (1.0, 3.5)
+            if mean_mode
+            else (0.0, 0.04)
+            if dims9_mode
+            else (0.0, 6.0)
+            if sev_mode
+            else (0.0, 100.0)
+        )
         for i, arm in enumerate(ARMS):
             m, lo, hi = vals[p][arm]
             ax.bar(
@@ -392,7 +436,11 @@ def main() -> None:
             ax.text(
                 i,
                 top + 0.014 * (y1 - y0),
-                f"{m:.3f}" if dims9_mode else f"{m:.2f}" if mean_mode else f"{m:.1f}",
+                f"{m:.3f}"
+                if dims9_mode
+                else f"{m:.2f}"
+                if (mean_mode or sev_mode)
+                else f"{m:.1f}",
                 ha="center",
                 va="bottom",
                 fontsize=12 if crowded else 15,
@@ -415,6 +463,8 @@ def main() -> None:
             if mean_mode
             else [0.01 * k for k in range(5)]
             if dims9_mode
+            else range(0, 7)
+            if sev_mode
             else range(0, 101, 20)
         )
         ax.set_xticks(range(len(ARMS)))
@@ -468,7 +518,9 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     today = f"{datetime.now():%Y-%m-%d}"
     stem = OUT / (
-        f"{today}_fig2_six_panel_petri_dims9"
+        f"{today}_fig2_six_panel_petri_severity"
+        if PETRI == "severity"
+        else f"{today}_fig2_six_panel_petri_dims9"
         if PETRI == "dims9"
         else f"{today}_fig2_six_panel_petri_mean"
         if PETRI == "mean"
