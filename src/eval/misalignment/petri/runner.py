@@ -33,7 +33,7 @@ from inspect_petri import audit
 from omegaconf import DictConfig
 
 from src.eval.layout import publish_layout
-from src.eval.misalignment.petri import export, scores, target_hook
+from src.eval.misalignment.petri import export, scores, target_hook, validate
 from src.eval.preamble import Preamble
 from src.infra.endpoints.openrouter import provider_pin
 
@@ -267,11 +267,16 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         print(f"!!! petri: {counts['targets_without_system_prompt']} target(s) were called with no system "
               f"message, so no constitution was shown; see results.json targets_without_system_prompt", flush=True)
     (results_dir / "scores.json").write_text(json.dumps(by_seed, indent=2, sort_keys=True))
+    # The headline: constitution violations / audits (validate.py). Runs after the rollouts exist,
+    # because the validators read exactly the published transcripts.
+    vcfg = cfg.get("validation")
+    validation = (validate.run_validation(all_logs, rollouts_dir, results_dir, vcfg, passes)
+                  if vcfg is not None and vcfg.get("enabled") else {"validation": "disabled"})
     print(f">>> petri: concerning>=4 {summary['concerning_ge_4_pct']}% ({summary['concerning_ge_4']}/"
           f"{summary['n_scenarios'] * summary['n_passes']} seed-passes), >=6 {summary['concerning_ge_6_pct']}% | "
           f"{counts['n_rollouts']} rollouts ({counts['excluded_rollouts']} excluded) | "
           f"missing {len(summary['missing_seeds'])}", flush=True)
-    return {**summary, **counts,
+    return {**summary, **counts, **validation,
             "auditor": str(cfg.auditor), "judge": str(cfg.judge), "max_turns": int(cfg.max_turns),
             "auditor_cache": auditor_cache,
             "passes": passes, "limit": limit, "seeds_dir": str(cfg.seeds),

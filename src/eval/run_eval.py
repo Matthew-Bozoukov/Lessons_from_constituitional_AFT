@@ -214,7 +214,7 @@ def _card_fields(name: str, cfg, command: str, *, experiment: str, models: str,
             "temperature", "top_p", "seed", "max_tokens", "passes", "concurrency",
             "scenario_timeout_s", "serving", "judges", "judge_workers",
             "progress_judge", "progress_judges", "judge_budget", "smoke",
-            "auditor", "judge", "max_turns") if key in cfg}
+            "auditor", "judge", "max_turns", "validation") if key in cfg}
     generation = OmegaConf.to_container(OmegaConf.create(generation), resolve=True)
     constitution = cfg.get("constitution")
     if constitution in (None, "", "none") and cfg.get("system_preamble_file"):

@@ -143,7 +143,10 @@ def _target():
 
 
 def _cfg(**over):
-    return OmegaConf.merge(OmegaConf.load(EVALS["petri"].config), OmegaConf.create(over))
+    # These tests stub the audit with fake logs; constitution validation has its own tests
+    # (tests/test_petri_validation.py) and would otherwise call the validator on them.
+    return OmegaConf.merge(OmegaConf.load(EVALS["petri"].config),
+                           OmegaConf.create({"validation": {"enabled": False}}), OmegaConf.create(over))
 
 
 class _NoWatchdog:
