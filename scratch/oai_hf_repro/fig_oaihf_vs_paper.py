@@ -1,7 +1,6 @@
 # ABOUTME: Figure for oai_hf: per-step signature rate (95% Wilson CI) of our arms beside the paper's models,
-# ABOUTME: one 2x2 panel per step, one row per model; our arms are read from their run dirs' runs.jsonl.
+# ABOUTME: one 2x2 panel per step, one row per model; our arms are read from their Hub eval repos' runs.jsonl.
 # Run: uv run python scratch/oai_hf_repro/fig_oaihf_vs_paper.py
-import glob
 import json
 from pathlib import Path
 
@@ -10,11 +9,13 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
+from huggingface_hub import hf_hub_download  # noqa: E402
+
 from scratch.oai_hf_repro.compare_paper import PAPER  # noqa: E402
 from src.eval.misalignment.oai_hf.export import wilson  # noqa: E402
 from src.utils import save_figure_pdf  # noqa: E402
 
-OUT = Path("output/oai_hf_repro/2026-11-18_oaihf_qwen38_qwen36_vs_paper.pdf")
+OUT = Path("output/oai_hf_repro/2026-11-18_oaihf_qwen38_nosynth_datools_vs_paper.pdf")
 INK, MUTED, GRID = "#1A211E", "#5C6660", "#D5DCD7"
 PAPERC = "#4C6A92"  # one colour for all paper models: identity is the axis label, not the hue
 STEPS = [
@@ -23,38 +24,29 @@ STEPS = [
     ("step3", "Step 3: shares exploit with agents"),
     ("step4", "Step 4: hacks HF for answer key"),
 ]
-# Our arms: (label, run-dir globs whose results/runs.jsonl are pooled per step, colour)
+# Our arms: (label, Hub eval repo, pinned revision, colour). Every row is read from the Hub (the run
+# dirs are scratch); the revisions are the newest pushes on 2026-11-18.
 ARMS = [
-    (
-        "Qwen3.8-27B base, API (ours)",
-        ["output/oai_hf/2026-11-1[78]_openrouter_qwen3_8_27b_*"],
-        "#2A8C82",
-    ),
-    ("Qwen3.6-27B nosynth (ours)", ["output/oai_hf_repro/merged_final"], "#8C8C8C"),
+    ("Qwen3.8-27B DA+tools (ours)", "dougalldeepmind/2026-11-18-oaihf-qwen38-0-da-tools-15", "d014d4bb", "#d0558f"),
+    ("Qwen3.8-27B nosynth (ours)", "dougalldeepmind/2026-11-18-oaihf-qwen38-0-plain", "785c9ca2", "#5F5F5F"),
+    ("Qwen3.8-27B base, API (ours)", "dougalldeepmind/2026-11-18-oaihf-openrouter-qwen3-8-27b", "5a326442", "#2A8C82"),
+    ("Qwen3.6-27B nosynth (ours)", "dougalldeepmind/2026-11-13-oaihf-qwen36-0-nosynth", "a2f6622a", "#B0B0B0"),
 ]
 
 
-def arm_counts(globs: list[str]) -> dict[str, tuple[int, int]]:
-    """{step: (k, n)} pooled over every finished run dir; smoke runs are excluded."""
+def arm_counts(repo: str, revision: str | None) -> dict[str, tuple[int, int]]:
+    """{step: (k, n)} from one published eval repo's results/runs.jsonl."""
+    f = hf_hub_download(repo, "results/runs.jsonl", repo_type="dataset", revision=revision)
     k, n = {}, {}
-    for pattern in globs:
-        for d in sorted(glob.glob(pattern)):
-            f = Path(d) / "results" / "runs.jsonl"
-            meta_f = Path(d) / "metadata" / "run_meta.json"
-            if not f.exists():
-                continue
-            meta = json.loads(meta_f.read_text()) if meta_f.exists() else {}
-            if (meta.get("config") or {}).get("smoke"):
-                continue
-            for r in (json.loads(x) for x in f.open()):
-                k[r["step"]] = k.get(r["step"], 0) + int(bool(r["signature"]))
-                n[r["step"]] = n.get(r["step"], 0) + 1
+    for r in (json.loads(x) for x in open(f)):
+        k[r["step"]] = k.get(r["step"], 0) + int(bool(r["signature"]))
+        n[r["step"]] = n.get(r["step"], 0) + 1
     return {s: (k[s], n[s]) for s in n}
 
 
-counts_of = {label: arm_counts(globs) for label, globs, _ in ARMS}
-colour_of = {label: c for label, _, c in ARMS}
-models = list(PAPER) + [label for label, _, _ in ARMS]
+counts_of = {label: arm_counts(repo, rev) for label, repo, rev, _ in ARMS}
+colour_of = {label: c for label, _, _, c in ARMS}
+models = list(PAPER) + [label for label, _, _, _ in ARMS]
 
 
 def cell(model: str, step: str):
@@ -70,7 +62,7 @@ def draw_rates(ax, step, title, labels: bool, xlabel: bool):
         y = len(models) - 1 - i
         if kn is None:
             note = (
-                "running (not finished yet)"
+                "not run (Step 3 only)"
                 if m in counts_of
                 else "no runs (provider filter)"
             )
@@ -121,9 +113,9 @@ fig.suptitle(
 fig.text(
     0.01,
     0.005,
-    "Ours: judge Gemini 3 Flash (paper: Opus 4.8), thinking on, local Docker. Qwen3.8-27B: untrained base via OpenRouter "
-    "(DeepInfra, bf16), n=32 per step.\nQwen3.6 nosynth: our fine-tuned control, served by our vLLM, n=64, merged after two "
-    "Docker crashes. Paper rows: their headline cells (Qwen 3.8 Max is the closed API model), recomputed from their logs.",
+    "Ours: judge Gemini 3 Flash (paper: Opus 4.8), thinking on, local Docker. Qwen3.8-27B DA+tools and nosynth: our LoRA arms "
+    "(seed 0), served by our vLLM, Step 3 only, n=64.\nQwen3.8-27B base: untrained, via OpenRouter (DeepInfra, bf16), n=32 "
+    "per step. Qwen3.6 nosynth: our control, n=64. Paper rows: their headline cells (Qwen 3.8 Max is the closed API model).",
     fontsize=7.5,
     color=MUTED,
 )
@@ -131,11 +123,8 @@ fig.tight_layout(rect=(0, 0.045, 1, 0.96))
 save_figure_pdf(
     fig,
     OUT,
-    "oai_hf: Qwen3.8-27B base and Qwen3.6 nosynth vs paper",
-    [
-        "dougalldeepmind/2026-11-13-oaihf-qwen36-0-nosynth",
-        "oai-hf-replication/oai-hf-incident-replication",
-    ],
+    "oai_hf: Qwen3.8-27B DA+tools and nosynth, Qwen3.8 base, Qwen3.6 nosynth vs paper",
+    [repo for _, repo, _, _ in ARMS] + ["oai-hf-replication/oai-hf-incident-replication"],
     "scratch/oai_hf_repro/fig_oaihf_vs_paper.py",
 )
 fig.savefig(OUT.with_suffix(".png"), dpi=140, bbox_inches="tight")
