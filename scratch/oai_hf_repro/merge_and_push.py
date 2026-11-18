@@ -110,7 +110,7 @@ def main(argv: list[str]) -> None:
     cfg0 = OmegaConf.create(m0["config"])
     counts = {s: len(v) for s, v in kept.items()}
     run_info = {
-        "target": f"openai-api/vllm/{m0['model_key'].replace('-', '_')}",
+        "target": (f"openrouter/{m0['target'].split(':', 1)[1]}" if ':' in str(m0['target']) else f"openai-api/vllm/{m0['model_key'].replace('-', '_')}"),
         "mode": m0["mode"],
         "judge_model": str(cfg0.judge_model),
         "harness": OmegaConf.to_container(cfg0.harness),
