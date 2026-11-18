@@ -3,6 +3,14 @@
 
 # KNOWN GAPS: read before trusting any org result
 
+## 0. OPEN (2026-11-18): reviews are now ROUTED but never CARRIED OUT
+
+After the port fix (gap 1), runs r3-r5 picked reviewers 21 times with 0 connection errors, but no review was
+ever performed: 0 `approve_ticket`, 0 `request_changes`. In Shen's harness a review is queued in the
+reviewer's backlog and only runs when that coder next asks for work; every chosen reviewer was still busy on
+its own ticket when the 2-hour limit (or its 100-turn cap) ended the run. So no org run so far includes Shen's
+review step. Changing when reviews run would change Shen's protocol: his call.
+
 ## 1. FIXED 2026-11-17 (root cause was OUR harness bug, not Qwen, not Shen's protocol)
 
 The 2026-11-17 transcript audit found the real cause: Shen's `complete_ticket` DOES start the review itself

@@ -18,9 +18,20 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-RUNS_DIR, TEST_JSON, PREFIXES = sys.argv[1], sys.argv[2], sys.argv[3:]
+RUNS_DIR, TEST_JSON, ARGS = sys.argv[1], sys.argv[2], sys.argv[3:]
+# Either plain prefixes (pooled for both setups: r2_ r3_ r4_) or per-setup lists
+# (single=r2_,r3_,r4_ org=r3_,r4_,r5_): orgs before r3 ran with the reviewer call broken (KNOWN_GAPS #1), so
+# they are a different condition from r3+ orgs while single agents (no review step) pool across r2-r4.
+if any("=" in a for a in ARGS):
+    POOL = {k: v.split(",") for k, v in (a.split("=", 1) for a in ARGS)}
+    POOL = {"single_sepsis": POOL.get("single", []), "org8_sepsis": POOL.get("org", [])}
+else:
+    POOL = {"single_sepsis": ARGS, "org8_sepsis": ARGS}
+PREFIXES = sorted({p for v in POOL.values() for p in v})
 if not PREFIXES:
-    raise SystemExit("give at least one replicate prefix, e.g. r2_ r3_ r4_")
+    raise SystemExit(
+        "give replicate prefixes, e.g. r2_ r3_ r4_, or single=r2_,r3_,r4_ org=r3_,r4_,r5_"
+    )
 if "r1_" in PREFIXES and len(PREFIXES) > 1:
     raise SystemExit(
         "round 1 ran on the original harness; summarise it alone (prefix r1_), never pooled"
@@ -51,7 +62,7 @@ cells = {}
 for s, _, _ in SETUPS:
     for a, _ in fs.ARMS:
         runs = []
-        for p in PREFIXES:
+        for p in POOL[s]:
             r = fs.load(f"{tag_prefix[p]}{s}_{a}")
             if r:
                 r["business"], r["ethics"] = (
@@ -71,7 +82,8 @@ def summary(vals: list[float]) -> str:
 
 
 lines = [
-    f"# Shen sepsis spread across runs {' '.join(PREFIXES)} (2026-11-17)",
+    f"# Shen sepsis spread (2026-11-18): single agent runs {' '.join(POOL['single_sepsis'])}; org runs "
+    f"{' '.join(POOL['org8_sepsis'])}",
     "",
     "Mean ± SD [min-max] over the runs that produced decisions; ‡ = recomputed (Shen's scorer could not read "
     "the output). Unscored runs are listed, not imputed.",
@@ -206,10 +218,11 @@ fig.legend(
 fig.text(
     0.01,
     -0.12,
-    f"Shen et al. sepsis task, 100 patients (28 with sepsis). Runs {' '.join(PREFIXES)}: small markers = one run, "
+    f"Shen et al. sepsis task, 100 patients (28 with sepsis). Single agent: runs {' '.join(POOL['single_sepsis'])}; "
+    f"org: runs {' '.join(POOL['org8_sepsis'])}.\nSmall markers = one run, "
     "large = mean, line = range.\nIncludes ‡ runs recomputed from the agents' own decisions files; unscored runs "
-    "are left out (see the results table).\nOPEN GAP: the org peer-review step never ran in any run "
-    "(scratch/shen_software/KNOWN_GAPS.md).",
+    "are left out (see the results table).\nOrg peer review: in runs r3-r5 reviewers were picked 21 times but never "
+    "carried out a review (0 approvals, 0 change requests); see scratch/shen_software/KNOWN_GAPS.md.",
     fontsize=9.5,
     color="#555555",
 )
