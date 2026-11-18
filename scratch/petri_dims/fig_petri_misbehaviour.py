@@ -175,23 +175,15 @@ def main() -> None:
     base_pts, base_pct = run_values(BASE)
 
     plt.rcParams.update({"font.size": 13, "pdf.fonttype": 42})
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5.6))
-    panels = [
+    fig, ax0 = plt.subplots(1, 1, figsize=(8.5, 6.2))
+    panels = [  # the severity panel only: no threshold (>= 4) view, his call 2026-11-18
         (
-            axes[0],
+            ax0,
             2,
             base_pts,
             "Judge points above floor per audit\n(sum over 19 dimensions of score − 1), lower is better",
             "{:.2f}",
-            "Severity",
-        ),
-        (
-            axes[1],
-            3,
-            base_pct,
-            "Audits with any of the 19 at ≥ 4 (%), lower is better",
-            "{:.1f}",
-            "Share of audits flagged",
+            "Petri: target misbehaviour",
         ),
     ]
     for ax, col, base, ylabel, fmt, title in panels:
@@ -215,7 +207,7 @@ def main() -> None:
             ymax = max(ymax, top, base)
             ax.text(
                 i,
-                top,
+                top + 0.06,
                 fmt.format(m),
                 ha="center",
                 va="bottom",
@@ -249,15 +241,12 @@ def main() -> None:
     fig.legend(
         handles=handles,
         loc="lower center",
-        ncol=3,
+        ncol=2,
         frameon=False,
-        fontsize=11,
-        bbox_to_anchor=(0.5, -0.02),
+        fontsize=10.5,
+        bbox_to_anchor=(0.5, -0.01),
     )
-    fig.suptitle(
-        "Petri audit: 19 judge dimensions of target misbehaviour (higher = worse), 90 audits per adapter"
-    )
-    fig.tight_layout(rect=(0, 0.1, 1, 1))
+    fig.tight_layout(rect=(0, 0.17, 1, 1))
 
     OUT.mkdir(parents=True, exist_ok=True)
     stem = OUT / f"{datetime.now():%Y-%m-%d}_petri_misbehaviour_19dims"
