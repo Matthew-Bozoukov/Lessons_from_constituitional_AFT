@@ -211,15 +211,15 @@ def test_frozen_requests_reject_drift_and_are_identical_for_distinct_responders(
     bank = tmp_path / 'bank.json'
     save(bank, payload)
     cfg.author.bank = {'path': str(bank), 'sha256': hashlib.sha256(bank.read_bytes()).hexdigest()}
-    loaded, _, bank_sha, _ = runner.load_request_bank(cfg, manifest, scenarios)
+    loaded, _, bank_sha, _ = runner.load_request_bank(cfg, manifest, scenarios, humans, notes)
     assert loaded == records
     changed = {**manifest, 'revision': 'changed'}
     with pytest.raises(ValueError, match='source/identity mismatch'):
-        runner.load_request_bank(cfg, changed, scenarios)
+        runner.load_request_bank(cfg, changed, scenarios, humans, notes)
     original_sha = cfg.author.bank.sha256
     cfg.author.bank.sha256 = '0' * 64
     with pytest.raises(ValueError, match='SHA256'):
-        runner.load_request_bank(cfg, manifest, scenarios)
+        runner.load_request_bank(cfg, manifest, scenarios, humans, notes)
     cfg.author.bank.sha256 = original_sha
     monkeypatch.setattr(runner, 'OpenAI', lambda **kw: None)
     monkeypatch.setattr(runner, 'Judge', lambda *a: SimpleNamespace(ledger={'charged_or_reserved_usd': 0}))
@@ -259,7 +259,71 @@ def test_frozen_request_bank_cannot_admit_rejected_or_missing_author_text(worlds
     save(bank, runner.request_bank(records, _target('author'), cfg, manifest))
     cfg.author.bank = {'path': str(bank), 'sha256': hashlib.sha256(bank.read_bytes()).hexdigest()}
     with pytest.raises(ValueError, match='Invalid frozen author|does not cover every'):
-        runner.load_request_bank(cfg, manifest, scenarios)
+        runner.load_request_bank(cfg, manifest, scenarios, humans, notes)
+
+
+def _full_bank_and_subset(worlds, tmp_path, dropped='benchmark_rescore'):
+    """A bank authored over every scenario, plus a config that schedules all but `dropped`."""
+    from src.eval.misalignment.delegated_harm import runner
+    from src.eval.misalignment.delegated_harm.source import digest, save
+    cfg, scenarios, humans, notes, manifest = worlds
+    cfg = OmegaConf.create(OmegaConf.to_container(cfg))
+    cfg.author.variants = cfg.generation.repetitions = 1
+    records = {(k, 0): {'scenario': k, 'variant': 0, 'accepted': True,
+                       'text': f'banked request for {k}', 'sha256': digest(f'banked request for {k}')}
+               for k in scenarios}
+    bank = tmp_path / 'bank.json'
+    save(bank, runner.request_bank(records, _target('bank-author'), cfg, manifest))
+    cfg.author.bank = {'path': str(bank), 'sha256': hashlib.sha256(bank.read_bytes()).hexdigest()}
+    sub = OmegaConf.create(OmegaConf.to_container(cfg))
+    sub.scenarios = [k for k in cfg.scenarios if k != dropped]
+    sub.source.excluded[dropped] = 'dropped by the test'
+    return cfg, sub, records, prepare(sub)
+
+
+def test_frozen_bank_serves_a_declared_subset_with_the_banked_texts(worlds, tmp_path, monkeypatch):
+    from src.eval.misalignment.delegated_harm import runner
+    _, sub, records, (sub_scenarios, sub_humans, sub_notes, sub_manifest) = _full_bank_and_subset(worlds, tmp_path)
+    loaded, _, _, _ = runner.load_request_bank(sub, sub_manifest, sub_scenarios, sub_humans, sub_notes)
+    assert loaded == {key: row for key, row in records.items() if key[0] != 'benchmark_rescore'}
+    sub.deliveries = ['subagent']
+    sub._run_eval = {'push': False}
+    monkeypatch.setattr(runner, 'OpenAI', lambda **kw: None)
+    monkeypatch.setattr(runner, 'Judge', lambda *a: SimpleNamespace(ledger={'charged_or_reserved_usd': 0}))
+    monkeypatch.setattr(runner, 'author_one', lambda *a, **kw: pytest.fail('Frozen runs must never re-author'))
+    seen = {}
+    def episode(client, model, label, sc, cell, brief, cfg, path):
+        seen[cell['scenario']] = brief
+        return {'status': 'complete', 'mechanical': {}}
+    monkeypatch.setattr(runner, 'episode', episode)
+    monkeypatch.setattr(runner, 'judge_episode', lambda *a: {'metrics': {'joint_success': True}})
+    summary = runner.run(_target('responder'), sub, tmp_path / 'run')
+    assert seen == {k: records[(k, 0)]['text'] for k in sub.scenarios}
+    assert summary['arms']['subagent']['scheduled'] == len(sub.scenarios)
+    assert 'benchmark_rescore' in summary['excluded_scenarios']
+
+
+def test_frozen_bank_subset_still_checks_the_whole_bank(worlds, tmp_path):
+    from src.eval.misalignment.delegated_harm import runner
+    from src.eval.misalignment.delegated_harm.source import save
+    cfg, sub, records, (sub_scenarios, sub_humans, sub_notes, sub_manifest) = _full_bank_and_subset(worlds, tmp_path)
+    _, scenarios, humans, notes, manifest = worlds
+    load = runner.load_request_bank
+    # A scheduled world that drifted.
+    drifted = {**sub_manifest, 'worlds': {**sub_manifest['worlds'], sub.scenarios[0]: 'changed'}}
+    with pytest.raises(ValueError, match='source/identity mismatch'):
+        load(sub, drifted, sub_scenarios, sub_humans, sub_notes)
+    # An UNSCHEDULED scenario's human request that drifted still invalidates the bank.
+    tampered = {**sub_humans, 'benchmark_rescore': sub_humans['benchmark_rescore'] + ' (edited)'}
+    with pytest.raises(ValueError, match='source/identity mismatch'):
+        load(sub, sub_manifest, sub_scenarios, tampered, sub_notes)
+    # A bank that lacks a scheduled scenario is refused, not silently served short.
+    short = tmp_path / 'short.json'
+    save(short, runner.request_bank({k: r for k, r in records.items() if k[0] in sub_scenarios},
+                                    _target('bank-author'), sub, sub_manifest))
+    cfg.author.bank = {'path': str(short), 'sha256': hashlib.sha256(short.read_bytes()).hexdigest()}
+    with pytest.raises(ValueError, match='source/identity mismatch'):
+        load(cfg, manifest, scenarios, humans, notes)
 
 
 def test_default_requires_bank_before_source_preparation_or_any_model_calls(tmp_path, monkeypatch):
@@ -307,7 +371,7 @@ def test_bank_preparation_never_runs_episodes_and_retains_validation_evidence(
         assert summary['accepted_requests'] == summary['expected_requests'] == len(scenarios)
         cfg.author.bank = {'path': str(tmp_path / 'metadata/request_bank.json'),
                            'sha256': summary['request_bank_sha256']}
-        loaded, _, sha, _ = runner.load_request_bank(cfg, manifest, scenarios)
+        loaded, _, sha, _ = runner.load_request_bank(cfg, manifest, scenarios, humans, notes)
         assert sha == summary['request_bank_sha256'] and len(loaded) == len(scenarios)
         assert not (tmp_path / 'metadata/request_bank_candidate.json').exists()
     else:

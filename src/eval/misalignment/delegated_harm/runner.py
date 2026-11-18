@@ -312,8 +312,16 @@ def request_bank(author_records, target, cfg, manifest):
         'requests': {f'{k}__v{v}': r for (k, v), r in author_records.items()}}
 
 
-def load_request_bank(cfg, manifest, scenarios):
-    """Require immutable bytes, matching worlds and complete accepted author variants."""
+def load_request_bank(cfg, manifest, scenarios, human, notes):
+    """Require immutable bytes, matching worlds and complete accepted author variants.
+
+    The scheduled scenarios may be a SUBSET of the bank's: a run can drop a scenario (declared in
+    source.excluded with its reason) and still serve the other scenarios' exact banked texts, so it
+    stays comparable with runs that scheduled them all. The bank itself is checked whole: its file
+    hash, its source revision and patches, its human-request and source-note digests recomputed over
+    ITS OWN scenario set from the full upstream files, and every row. World hashes are checked for
+    the scheduled scenarios, the only worlds a run loads; unscheduled rows are validated, never served.
+    """
     from src.infra.huggingface import hf_download
     bank = cfg.author.get('bank') or {}
     if bank.get('path'):
@@ -330,25 +338,34 @@ def load_request_bank(cfg, manifest, scenarios):
     if not bank.get('sha256') or sha != str(bank['sha256']):
         raise ValueError('Frozen request bank SHA256 is missing or mismatched')
     payload = json.loads(data)
-    expected_source = {k: manifest[k] for k in (
-        'revision', 'patches', 'worlds', 'human_requests_sha256', 'source_notes_sha256')}
-    if (payload.get('version') != 1 or payload.get('source') != expected_source
+    source = payload.get('source') or {}
+    banked = set(source.get('worlds') or {})
+    selected = set(scenarios)
+    if (payload.get('version') != 1
+            or set(source) != {'revision', 'patches', 'worlds', 'human_requests_sha256', 'source_notes_sha256'}
+            or source['revision'] != manifest['revision'] or source['patches'] != manifest['patches']
+            or not selected <= banked or not banked <= set(human) or not banked <= set(notes)
+            or any(source['worlds'][k] != manifest['worlds'][k] for k in selected)
+            or source['human_requests_sha256'] != digest({k: human[k] for k in banked})
+            or source['source_notes_sha256'] != digest({k: notes[k] for k in banked})
             or payload.get('variants') != int(cfg.author.variants)
             or payload.get('subject_model_label') != str(cfg.subject_model_label)
             or not payload.get('author')):
         raise ValueError('Frozen request bank protocol/source/identity mismatch')
-    expected = {(k, v) for k in scenarios for v in range(int(cfg.author.variants))}
+    variants = range(int(cfg.author.variants))
     rows = payload['requests']
-    if set(rows) != {f'{k}__v{v}' for k, v in expected}:
+    if set(rows) != {f'{k}__v{v}' for k in banked for v in variants}:
         raise ValueError('Frozen request bank does not cover every scenario/variant')
     records = {}
-    for k, v in expected:
-        row = rows[f'{k}__v{v}']
-        if (row.get('accepted') is not True or not str(row.get('text', '')).strip()
-                or row.get('sha256') != digest(row['text'])
-                or row.get('scenario') != k or row.get('variant') != v):
-            raise ValueError(f'Invalid frozen author request: {k}__v{v}')
-        records[(k, v)] = row
+    for k in sorted(banked):
+        for v in variants:
+            row = rows[f'{k}__v{v}']
+            if (row.get('accepted') is not True or not str(row.get('text', '')).strip()
+                    or row.get('sha256') != digest(row['text'])
+                    or row.get('scenario') != k or row.get('variant') != v):
+                raise ValueError(f'Invalid frozen author request: {k}__v{v}')
+            if k in selected:
+                records[(k, v)] = row
     return records, payload, sha, data
 
 
@@ -404,8 +421,8 @@ def run(target, cfg, out_dir):
     if needs_authors and request_mode == 'frozen' and not cfg.author.get('bank'):
         raise ValueError('Frozen requests need author.bank; first prepare and pin one shared request bank')
     scenarios, human, notes, manifest = prepare(cfg)
-    if set(scenarios) != set(COMPONENTS):
-        raise ValueError("Selected scenario set needs an exact predeclared rubric set")
+    if not scenarios or not set(scenarios) <= set(COMPONENTS):
+        raise ValueError("Every selected scenario needs a predeclared rubric")
     expected = cfg.get("expected_revisions", {}).get(target.spec.hf_path)
     if expected and target.spec.revision != expected:
         raise ValueError("Target revision drifted from the configured pin")
@@ -416,7 +433,7 @@ def run(target, cfg, out_dir):
         raise ValueError('Delegated-harm variant, repeat and turn counts must be positive')
     author_records, bank_payload, bank_sha, bank_bytes = {}, None, None, None
     if needs_authors and request_mode == 'frozen':
-        author_records, bank_payload, bank_sha, bank_bytes = load_request_bank(cfg, manifest, scenarios)
+        author_records, bank_payload, bank_sha, bank_bytes = load_request_bank(cfg, manifest, scenarios, human, notes)
     for name in ("metadata", "rollouts", "results"):
         (out_dir / name).mkdir(parents=True, exist_ok=True)
     manifest.update(target=asdict(target.spec), components=COMPONENTS,
@@ -461,7 +478,7 @@ def run(target, cfg, out_dir):
             'interpretation': 'Request authoring and validation only; no responder behavior was evaluated.',
         }
         try:
-            _, _, bank_sha, _ = load_request_bank(validation_cfg, manifest, scenarios)
+            _, _, bank_sha, _ = load_request_bank(validation_cfg, manifest, scenarios, human, notes)
         except ValueError as exc:
             summary.update(status='request_bank_preparation_failed', error=str(exc))
             save(out_dir / 'metadata/request_bank_preparation.json', summary)

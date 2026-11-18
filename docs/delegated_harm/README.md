@@ -54,6 +54,11 @@ the equivalent overrides are `author.bank.repo=<dataset>`,
 `author.bank.file=metadata/request_bank.json` and `author.bank.sha256=<sha256>`.
 The loader checks byte identity, worlds, source notes, human prompts, display label,
 variant coverage and each accepted text's hash. It never regenerates a missing bank.
+A run may schedule a SUBSET of the bank's scenarios: move the dropped one from `scenarios` to
+`source.excluded` with its reason, and the loader serves the other scenarios' banked texts unchanged
+(still checking the whole bank, including the unscheduled rows and the bank's own request/note digests).
+`benchmark_rescore` is dropped this way in `scratch/dh_holistic/dh_subagent_frozen.yaml`: its data files
+overflow a 65,536-token window, so it completed for none of the 2026-10-12 control/delib/DA arms.
 
 To reproduce the joint author-plus-responder protocol deliberately, set
 `author.mode=self_authored author.prepare_only=false`. Those AI requests may differ

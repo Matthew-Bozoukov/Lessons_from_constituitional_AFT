@@ -1,0 +1,88 @@
+# ABOUTME: The 2026-10-12 Fig. 13 protocol (AI-parent delivery, frozen request bank, Gemini 3 Flash judge).
+# ABOUTME: Run: uv run evals --name delegated_harm --config scratch/dh_holistic/dh_subagent_frozen.yaml --target <hf-lora> --server root@<ip>:<port>
+# Built from dougalldeepmind/2026-10-12-dh-qwen36-0-plain metadata/run_meta.json (the resolved config every Fig. 13 arm ran),
+# with three changes: the bank points at that run's published request_bank.json (sha-checked, same bytes as all four arms),
+# expected_base_revisions is the repo default (the Oct arms were on 6a9e13bd),
+# and benchmark_rescore is not scheduled (source.excluded says why); the loader serves the other 11 banked texts.
+seed: 9284
+subject_model_label: Evaluated model
+constitution: none
+source:
+  repo: https://github.com/jacobcd52/delegated-harm-bench.git
+  revision: d22a373851242146c39ecbcba787e652457da8a5
+  path: output/subagents_research/upstream
+  excluded:
+    egress_exception: Release omits worlds/egress_exception/trace/capture/version.out;
+      no invented replacement.
+    benchmark_rescore: 'Dropped 2026-11-18 from every arm: its data files (20.3k +
+      14.6k tokens) overflow the 49,152 input tokens a 65,536 window leaves after
+      16,384 output; in the 2026-10-12 runs it completed for none of control/delib/DA.'
+deliveries:
+- subagent
+scenarios:
+- cost_reallocation
+- crossclient_benchmark
+- halt_threshold
+- handover_gap
+- permit_hours
+- policy_threshold
+- retention_hold
+- sample_shortcut
+- scorecard_scrub
+- summary_laundering
+- tier_screen_off
+generation:
+  temperature: 0.6
+  top_p: 0.95
+  max_tokens: 16384
+  max_turns: 90
+  parallel: 8
+  request_timeout: 600
+  repetitions: 3
+author:
+  mode: frozen
+  prepare_only: false
+  bank:
+    repo: dougalldeepmind/2026-10-12-dh-qwen36-0-plain
+    revision: 83ea239bc1cedd10bf1f28ac5929fce39206b2c8
+    file: metadata/request_bank.json
+    sha256: 99f838806b330cdfee589eb9e7af7d1488db6fdb0be69562cf7136274bfbc98b
+  variants: 3
+  temperature: 0.7
+  max_tokens: 16384
+  attempts: 6
+judge:
+  model: google/gemini-3-flash-preview
+  max_tokens: 8192
+  author_max_tokens: 8192
+  cache_ttl: 1h
+  workers: 4
+  attempts: 4
+  budget_usd: 14
+serving:
+  context_window: 65536
+  concurrency: 8
+  needs_tool_calls: true
+  reuses_long_prefixes: true
+checkpoint_every: 36
+expected_base_revisions:
+  Qwen/Qwen3.6-27B: 8f33b98937c6031bb49e713dee3e8e185aafd26f
+expected_revisions: {}
+analysis:
+  bootstrap_draws: 10000
+  seed: 9284
+  wait_timeout_seconds: 21600
+  poll_seconds: 45
+  metrics:
+    benign_complete: Useful work completed
+    joint_success: Useful work completed, harmful part refused
+    harmful_action: Harmful action taken
+    concern_any_human: Concern raised with any human
+    concern_other_human: Concern raised with another human
+    concern_authorized_approver: Concern raised with the approver
+    justified_deferral: Justified deferral
+    safe_substitution: Safe alternative provided
+  deliveries:
+    chat: AI peer
+    subagent: AI parent
+    chat_human: Human requester
