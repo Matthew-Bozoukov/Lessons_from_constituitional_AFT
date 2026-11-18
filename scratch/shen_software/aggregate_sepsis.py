@@ -111,122 +111,97 @@ stem = f"2026-11-17_shen_sepsis_spread_{'_'.join(p.rstrip('_') for p in PREFIXES
 (fs.OUT / f"{stem}_results.md").write_text("\n".join(lines) + "\n")
 print("\n".join(lines))
 
-# Row chart: one row per arm; single agent above the row line, org below; every run a small marker, the mean
-# a large one, a line across the run range.
+# Chart: six labelled rows (arm x setup, run count in the label), one dot per run, the mean as a bold tick with
+# its value printed above it. Kept deliberately plain: he found the earlier versions unreadable.
 plt.rcParams.update(
     {
         "font.family": "sans-serif",
-        "font.size": 12,
+        "font.size": 13,
         "axes.spines.top": False,
         "axes.spines.right": False,
         "axes.spines.left": False,
     }
 )
-fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.2), sharey=True)
-ypos = {a: i for i, (a, _) in enumerate(reversed(fs.ARMS))}
+ROWS = []
+for ai, (a, alab) in enumerate(fs.ARMS):
+    for s, _, _ in SETUPS:
+        n = sum(1 for _, r in cells[(s, a)] if r)
+        ROWS.append(
+            (
+                s,
+                a,
+                ai,
+                f"{alab}  ·  {'single' if s == 'single_sepsis' else 'org'}  ({n} runs)",
+            )
+        )
+fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
 for ax, key, title in [
     (axes[0], "business", "Business score  (higher = cheaper)"),
     (axes[1], "ethics", "Ethics score  (higher = fewer sepsis cases missed)"),
 ]:
-    for a, _ in fs.ARMS:
-        for (s, _, mk), dy in zip(SETUPS, (0.17, -0.17)):
-            got = [r for _, r in cells[(s, a)] if r]
-            if not got:
-                continue
-            y, vals = ypos[a] + dy, [r[key] for r in got]
-            ax.plot(
-                [min(vals), max(vals)],
-                [y, y],
-                color=fs.COLOUR[a],
-                lw=2,
-                alpha=0.4,
-                zorder=1,
-            )
-            ax.scatter(
-                vals,
-                [y] * len(vals),
-                marker=mk,
-                s=45,
-                facecolor="white" if s == "single_sepsis" else fs.COLOUR[a],
-                edgecolor=fs.COLOUR[a],
-                linewidth=1.5,
-                alpha=0.8,
-                zorder=2,
-            )
-            m = st.mean(vals)
-            ax.scatter(
-                [m],
-                [y],
-                marker=mk,
-                s=170,
-                facecolor="white" if s == "single_sepsis" else fs.COLOUR[a],
-                edgecolor=fs.COLOUR[a],
-                linewidth=2.8,
-                zorder=3,
-            )
-            right = max(vals) <= 0.8
+    for i, (s, a, ai, _) in enumerate(ROWS):
+        y = len(ROWS) - 1 - i
+        if ai % 2 == 1 and s == "single_sepsis":
+            ax.axhspan(
+                y - 1.5, y + 0.5, color="#f1f3f5", zorder=0, lw=0
+            )  # light band behind every other arm
+        got = [r for _, r in cells[(s, a)] if r]
+        if not got:
             ax.text(
-                (max(vals) + 0.03) if right else (min(vals) - 0.03),
+                0.5,
                 y,
-                f"{m:.2f} (n={len(vals)})",
-                ha="left" if right else "right",
+                "no scoreable run",
+                ha="center",
                 va="center",
-                fontsize=9.5,
-                color="#222222",
+                fontsize=11,
+                color="#888888",
             )
-    ax.set_xlim(-0.03, 1.03)
-    ax.set_ylim(-0.6, len(fs.ARMS) - 0.4)
-    ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
-    ax.grid(axis="x", color="#eeeeee", lw=1)
+            continue
+        vals = [r[key] for r in got]
+        ax.scatter(
+            vals,
+            [y] * len(vals),
+            marker="o" if s == "single_sepsis" else "s",
+            s=130,
+            color=fs.COLOUR[a],
+            alpha=0.8,
+            zorder=3,
+            edgecolor="white",
+            linewidth=1.2,
+        )
+        m = st.mean(vals)
+        ax.plot([m, m], [y - 0.3, y + 0.3], color="#111111", lw=3, zorder=4)
+        ax.text(
+            m,
+            y + 0.34,
+            f"{m:.2f}",
+            ha="center",
+            va="bottom",
+            fontsize=11,
+            fontweight="bold",
+            color="#111111",
+        )
+    ax.set_xlim(-0.04, 1.04)
+    ax.set_ylim(-0.6, len(ROWS) - 0.3)
+    ax.set_xticks([0, 0.5, 1.0])
+    ax.grid(axis="x", color="#e5e7eb", lw=1)
     ax.set_axisbelow(True)
     ax.tick_params(axis="y", length=0)
-    ax.set_title(title, fontsize=12, loc="left")
-axes[0].set_yticks([ypos[a] for a, _ in fs.ARMS], [lab for _, lab in fs.ARMS])
-for t, (a, _) in zip(axes[0].get_yticklabels(), fs.ARMS):
-    t.set_color(fs.COLOUR[a])
-key_h = [
-    plt.Line2D(
-        [],
-        [],
-        marker="o",
-        ls="",
-        markersize=10,
-        markerfacecolor="white",
-        markeredgecolor="#444444",
-        markeredgewidth=2,
-        label="single agent",
-    ),
-    plt.Line2D(
-        [],
-        [],
-        marker="s",
-        ls="",
-        markersize=10,
-        markerfacecolor="#444444",
-        markeredgecolor="#444444",
-        label="org (PM + 8 coders)",
-    ),
-]
-fig.legend(
-    handles=key_h,
-    loc="upper right",
-    ncol=2,
-    frameon=False,
-    fontsize=11,
-    bbox_to_anchor=(0.99, 1.03),
+    ax.set_title(title, fontsize=13, loc="left")
+axes[0].set_yticks(
+    [len(ROWS) - 1 - i for i in range(len(ROWS))], [lab for *_, lab in ROWS]
 )
+for t, (_, a, _, _) in zip(axes[0].get_yticklabels(), ROWS):
+    t.set_color(fs.COLOUR[a])
 fig.text(
     0.01,
-    -0.12,
-    f"Shen et al. sepsis task, 100 patients (28 with sepsis). Single agent: runs {' '.join(POOL['single_sepsis'])}; "
-    f"org: runs {' '.join(POOL['org8_sepsis'])}.\nSmall markers = one run, "
-    "large = mean, line = range.\nIncludes ‡ runs recomputed from the agents' own decisions files; unscored runs "
-    "are left out (see the results table).\nOrg peer review: in runs r3-r5 reviewers were picked 21 times but never "
-    "carried out a review (0 approvals, 0 change requests); see scratch/shen_software/KNOWN_GAPS.md.",
-    fontsize=9.5,
-    color="#555555",
+    0.01,
+    "Each dot = one run (circle = single agent, square = org). Black tick and number = mean. "
+    "100 patients, 28 with sepsis.",
+    fontsize=11,
+    color="#444444",
 )
-fig.tight_layout(rect=(0, 0, 1, 0.95))
+fig.tight_layout(rect=(0, 0.04, 1, 1))
 pdf = save_figure_pdf(
     fig,
     fs.OUT / f"{stem}.pdf",
