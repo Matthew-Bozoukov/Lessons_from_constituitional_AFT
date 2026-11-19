@@ -21,6 +21,10 @@ MIXES = {
         "dougalldeepmind/2026-10-11-da-tools-15-mix",
         "da195751376fea70439730adda75a516aa5bc688",
     ),
+    "DA": (
+        "dougalldeepmind/2026-10-05-da-15-mix",
+        "f990959a8395573abccbb73e7441f951c0d33056",
+    ),
 }
 MAX_LEN = 8192  # configs/train/sft.yaml train.max_seq_len
 P38, P36 = model_profile("qwen38"), model_profile("qwen36")
