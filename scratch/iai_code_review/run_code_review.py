@@ -31,7 +31,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 AGENT_A = "openrouter/x-ai/grok-4.20"  # one of upstream's pinned OpenRouter endpoints, a paper Agent A
-SERVING = {"context_window": 32768, "concurrency": 8, "needs_tool_calls": True}
+SERVING = {"context_window": 65536, "concurrency": 32, "needs_tool_calls": True}
 
 
 def main() -> None:
@@ -55,6 +55,11 @@ def main() -> None:
     ap.add_argument("--epochs", type=int, required=True)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--max-turns", type=int, default=8)
+    ap.add_argument("--max-samples", type=int, default=32, help="episodes in parallel")
+    ap.add_argument("--max-connections", type=int, default=32,
+                    help="per-model request cap; Inspect hands it to every model in the eval")
+    ap.add_argument("--fail-on-error", type=float, default=0.1,
+                    help="abort a condition past this fraction of errored episodes")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
     if bool(args.model_b) == bool(args.target):
@@ -89,7 +94,7 @@ def main() -> None:
         "capabilities": args.capability,
         "epochs": args.epochs,
         "limit": args.limit,
-        "max_turns": args.max_turns,
+        "max_turns": args.max_turns, "max_samples": args.max_samples, "max_connections": args.max_connections, "fail_on_error": args.fail_on_error,
         "graders": False,
         "self_report_probe": False,
     }
@@ -144,7 +149,9 @@ def main() -> None:
                 model=args.model_a,
                 log_dir=str(out / cap),
                 retry_on_error=2,
-                fail_on_error=3,
+                fail_on_error=args.fail_on_error,
+                max_samples=args.max_samples,
+                max_connections=args.max_connections,
             )
     finally:
         if server is not None:
