@@ -59,7 +59,16 @@ def main(argv: list[str]) -> None:
     out_dir, parts = Path(args[0]), [Path(p) for p in args[1:]]
     if out_dir.exists():
         raise SystemExit(f"{out_dir} exists; pick a new merged dir")
-    metas = [json.loads(next(f for f in (p / "metadata" / "run_meta.json", p / "run_meta.json") if f.exists()).read_text()) for p in parts]
+    metas = [
+        json.loads(
+            next(
+                f
+                for f in (p / "metadata" / "run_meta.json", p / "run_meta.json")
+                if f.exists()
+            ).read_text()
+        )
+        for p in parts
+    ]
     for k in SAME:
         vals = {str(m.get(k)) for m in metas}
         assert len(vals) == 1, f"parts disagree on {k}: {vals}"
@@ -110,7 +119,11 @@ def main(argv: list[str]) -> None:
     cfg0 = OmegaConf.create(m0["config"])
     counts = {s: len(v) for s, v in kept.items()}
     run_info = {
-        "target": (f"openrouter/{m0['target'].split(':', 1)[1]}" if ':' in str(m0['target']) else f"openai-api/vllm/{m0['model_key'].replace('-', '_')}"),
+        "target": (
+            f"openrouter/{m0['target'].split(':', 1)[1]}"
+            if ":" in str(m0["target"])
+            else f"openai-api/vllm/{m0['model_key'].replace('-', '_')}"
+        ),
         "mode": m0["mode"],
         "judge_model": str(cfg0.judge_model),
         "harness": OmegaConf.to_container(cfg0.harness),
@@ -165,8 +178,8 @@ def main(argv: list[str]) -> None:
         cfg0,
         merged_meta["command"],
         experiment=(
-            f"oai_hf eval of {m0['target']} (mode={m0['mode']}); steps run on separate pods "
-            f"and merged ({run_info['selection_rule']})"
+            f"oai_hf eval of {m0['target']} (mode={m0['mode']}); merged from {len(parts)} "
+            f"run parts: {', '.join(p.name for p in parts)} ({run_info['selection_rule']})"
         ),
         models=json.dumps(
             {

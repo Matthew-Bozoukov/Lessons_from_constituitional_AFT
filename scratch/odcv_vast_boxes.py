@@ -101,7 +101,7 @@ def up(count: int = 2, label_prefix: str = "nika-odcv", disk_gb: int = 200,
         min_reliability: Host reliability floor; see the postmortem note above.
         dry_run: Show what would be rented and rent nothing.
     """
-    assert label_prefix.startswith("nika-"), (
+    assert label_prefix.startswith(("nika-", "kn-")), (
         f"label_prefix {label_prefix!r} must start with 'nika-' -- the vast account is "
         f"shared and teammates' instances must stay distinguishable")
     offers = _offers(min_cores, min_ram_gb, min_disk_gb, min_reliability)
@@ -153,7 +153,7 @@ def ls() -> None:
         return
     for i in rows:
         label = i.get("label") or ""
-        mine = label.startswith("nika-")
+        mine = label.startswith(("nika-", "kn-"))
         print(f"  {i.get('id')}  {label or '(unlabelled)':<24} "
               f"{i.get('actual_status')}  {i.get('public_ipaddr')}  "
               f"${i.get('dph_total', 0):.3f}/hr  "
@@ -201,7 +201,7 @@ def wait_ready(instance: int, timeout_min: float = 20.0, poll_s: float = 20.0) -
 def down(instance: int) -> None:
     """Destroy exactly ONE instance, then report what is left without touching it."""
     inst = next((i for i in _instances() if str(i.get("id")) == str(instance)), None)
-    if inst and not str(inst.get("label") or "").startswith("nika-"):
+    if inst and not str(inst.get("label") or "").startswith(("nika-", "kn-")):
         raise SystemExit(
             f"instance {instance} is labelled {inst.get('label')!r}, not ours. Refusing.")
     # -y: the CLI otherwise blocks on an interactive confirmation, which in a script
