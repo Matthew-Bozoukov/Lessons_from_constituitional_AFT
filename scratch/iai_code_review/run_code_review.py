@@ -74,8 +74,17 @@ def main() -> None:
 
     server = None
     model_b = args.model_b
+    import subprocess
+
+    def _git(*a: str) -> str:
+        return subprocess.run(
+            ["git", "-C", args.upstream, *a], capture_output=True, text=True
+        ).stdout.strip()
+
     meta = {
         "upstream": args.upstream,
+        "upstream_commit": _git("rev-parse", "HEAD"),
+        "upstream_local_diff": _git("diff"),
         "model_a": args.model_a,
         "capabilities": args.capability,
         "epochs": args.epochs,
