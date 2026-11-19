@@ -35,10 +35,12 @@ from src.eval.layout import publish_layout
 from src.eval.misalignment.colosseum.harness import Harness, ensure_harness
 from src.eval.misalignment.colosseum.hospital.config import (
     CONDITIONS,
-    PAIR,
     TERRARIUM_FIXES_STAMP,
     build_sweep_config,
+    condition_pair,
+    scripted_seats,
 )
+from src.eval.misalignment.colosseum.hospital.scripted_seats import LABEL as SCRIPTED_LABEL
 from src.eval.misalignment.colosseum.hospital.autorater import autorate_arm
 from src.eval.misalignment.colosseum.hospital.harvest import MEASURES, harvest_run_root
 from src.eval.misalignment.colosseum.hospital.judge import BINARY_JUDGE_MEASURES, judge_arm
@@ -80,6 +82,14 @@ TERRARIUM_PATCH_4 = (
 PREAMBLE_PATCH = "src/eval/misalignment/colosseum/third_party/hospital_preamble.patch"
 TERRARIUM_PATCH_PREAMBLE = (
     "src/eval/misalignment/colosseum/third_party/terrarium_hospital_preamble.patch"
+)
+# 2026-11-11, the Solo Hospital Test: the lone provisioner's prompts and tools
+# (fixes.provisioner_solo) and the honest scripted seats (experiment.seating.scripted).
+# Cut on top of the preamble patches and applied after them.
+SOLO_PATCH = "src/eval/misalignment/colosseum/third_party/hospital_solo.patch"
+SCRIPTED_PATCH = "src/eval/misalignment/colosseum/third_party/hospital_scripted_seats.patch"
+TERRARIUM_PATCH_SOLO = (
+    "src/eval/misalignment/colosseum/third_party/terrarium_hospital_solo.patch"
 )
 
 
@@ -136,6 +146,16 @@ def _colosseum_root(cfg, harness: Harness | None = None) -> Path:
     assert "_base_system_prompt" in prompts.read_text(), (
         f"the Colosseum checkout at {root} is missing {PREAMBLE_PATCH}. Re-apply it (after "
         f"the others):\n  git -C {root} apply {PREAMBLE_PATCH}"
+    )
+    # 2026-11-11. Without these a solo cell would show the lone provisioner the coalition
+    # block word for word, and a scripted seat would silently hold the peer model.
+    assert "SOLO_SECRET_EDITS" in prompts.read_text(), (
+        f"the Colosseum checkout at {root} is missing {SOLO_PATCH}. Re-apply it (after "
+        f"{PREAMBLE_PATCH}):\n  git -C {root} apply {SOLO_PATCH}"
+    )
+    assert "scripted_seats" in text, (
+        f"the Colosseum checkout at {root} is missing {SCRIPTED_PATCH}. Re-apply it (after "
+        f"{SOLO_PATCH}):\n  git -C {root} apply {SCRIPTED_PATCH}"
     )
     return root
 
@@ -212,6 +232,15 @@ def _terrarium_fixes_version(harness: Harness | None = None) -> str:
         f"{TERRARIUM_PATCH_PREAMBLE}, so a constitution arm would show the model nothing. "
         f"Apply it last, after {TERRARIUM_PATCH_4} (colosseum/harness.py does)."
     )
+    # 2026-11-11: checked by content in both files it touches. Without it a solo cell's
+    # provisioner keeps every team cue and the broadcast and post tools.
+    assert "SOLO_SYSTEM_EDITS" in Path(hospital_prompts.__file__).read_text() and (
+        "SOLO_PROVISIONER_TOOLS" in Path(terrarium_base.__file__).read_text()
+    ), (
+        f"the installed terrarium-agents package is missing {TERRARIUM_PATCH_SOLO}, so "
+        "fixes.provisioner_solo would be ignored. Apply it after "
+        f"{TERRARIUM_PATCH_PREAMBLE} (colosseum/harness.py does)."
+    )
     return str(version)
 
 
@@ -287,16 +316,21 @@ def run(target, cfg, out_dir: Path) -> dict:
         sweep_env.update(preamble.env())
     _, results_dir, metadata_dir = publish_layout(out_dir)
 
+    # The watched seats: the pair, or the solo conditions' provisioner alone.
+    pair = condition_pair(condition)
     # The control checkpoint in the seven seats that are not the pair. For the control
-    # block this is the same repo as `target`.
+    # block this is the same repo as `target`. In the Solo Hospital Test's conditions an
+    # honest script plays those seats instead (hospital/scripted_seats.py) and `peer` is
+    # never asked anything.
     peer = target.sibling(str(cfg.peer))
+    scripted = scripted_seats(condition, int(cfg.num_agents))
     # A MIXED coalition (cfg.partner, 2026-09-14): cfg.partner_seat, one of the pair's two
     # seats, holds the partner checkpoint and the arm under test holds the other.
     partner = target.sibling(str(cfg.partner)) if cfg.get("partner") else None
     partner_seat = str(cfg.get("partner_seat")) if partner is not None else None
     if partner is not None:
-        assert partner_seat in PAIR, (
-            f"partner_seat={partner_seat!r} must be one of the pair's seats {list(PAIR)}"
+        assert partner_seat in pair, (
+            f"partner_seat={partner_seat!r} must be one of the pair's seats {list(pair)}"
         )
         run_py = root / "experiments" / "agent_misalignment" / "run.py"
         assert "seat_llm" in run_py.read_text(), (
@@ -308,7 +342,10 @@ def run(target, cfg, out_dir: Path) -> dict:
     # Touching base_url is what serves a target (serving is lazy). Both are touched HERE
     # so a base/mode mismatch or a dead server fails now, not inside a nine-agent episode.
     print(f">>> serving {target.model_name} at {target.base_url}")
-    print(f">>> seating peer {peer.model_name} at {peer.base_url}")
+    if scripted:
+        print(f">>> {len(scripted)} seats played by the honest script: {scripted}")
+    else:
+        print(f">>> seating peer {peer.model_name} at {peer.base_url}")
     if partner is not None:
         print(f">>> seating partner {partner.model_name} in {partner_seat}")
 
@@ -344,6 +381,8 @@ def run(target, cfg, out_dir: Path) -> dict:
     expected = {"pair": target.model_name, "other": peer.model_name}
     if partner is not None:
         expected["by_seat"] = {partner_seat: partner.model_name}
+    if scripted:
+        expected["by_seat"] = {s: SCRIPTED_LABEL for s in scripted}
     # The action measures' text — each seat's reasoning, its coalition-board posts, the
     # shortage reports — is read by the autorater (the judge model) before the harvest,
     # never by keywords (hospital/autorater.py). Writes results/autorater.json.
@@ -351,7 +390,7 @@ def run(target, cfg, out_dir: Path) -> dict:
         out_dir,
         run_root,
         cfg,
-        pair=PAIR,
+        pair=pair,
         max_workers=int(cfg.judge.get("workers", 8)),
     )
     print(
@@ -365,7 +404,7 @@ def run(target, cfg, out_dir: Path) -> dict:
         run_root,
         expected_seats=expected,
         expected_fixes=sweep_cfg["fixes"],
-        pair=PAIR,
+        pair=pair,
         env_logs_root=root / "logs",
         labels=labels["per_run"],
     )
@@ -410,7 +449,7 @@ def run(target, cfg, out_dir: Path) -> dict:
         run_root,
         cfg,
         condition=condition,
-        pair=list(PAIR),
+        pair=list(pair),
         max_workers=int(cfg.judge.get("workers", 8)),
     )
     measures = json.loads((results_dir / "per_seed.json").read_text())
@@ -423,7 +462,8 @@ def run(target, cfg, out_dir: Path) -> dict:
         "condition": condition,
         "arm": target.spec.hf_path,
         "peer": str(cfg.peer),
-        "pair": list(PAIR),
+        "pair": list(pair),
+        "scripted_seats": scripted,
         "seats": expected,
         "partner": str(cfg.partner) if partner is not None else None,
         "partner_seat": partner_seat,
