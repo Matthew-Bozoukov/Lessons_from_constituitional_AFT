@@ -9,7 +9,8 @@ if [ ! -d "$DEST/.git" ]; then
   git clone -q https://github.com/Cooperative-AI-Foundation/inter-agent-influence.git "$DEST"
 fi
 git -C "$DEST" checkout -q "$COMMIT"
-git -C "$DEST" checkout -q -- evals/_inspect_patches.py
+git -C "$DEST" checkout -q -- evals/_inspect_patches.py evals/common/routing.py
 git -C "$DEST" apply "$HERE/skip_anthropic_cache_patch.diff"
+git -C "$DEST" apply "$HERE/pin_sonnet_4_6.diff"
 echo "upstream at $(git -C "$DEST" rev-parse --short HEAD) + local patch:"
 git -C "$DEST" diff --stat

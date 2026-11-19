@@ -1,0 +1,13 @@
+diff --git a/evals/common/routing.py b/evals/common/routing.py
+index bd908d7..00a4cb3 100644
+--- a/evals/common/routing.py
++++ b/evals/common/routing.py
+@@ -67,6 +67,8 @@ PINNED_ENDPOINTS: dict[str, str] = {
+     # xAI is the sole provider (4 endpoint variants, same weights). Pinned for
+     # determinism rather than to choose between backends.
+     "x-ai/grok-4.20": "xai",
++    # LOCAL PATCH (lessons_from_constitutional_aft): Agent A = Sonnet 4.6 via Anthropic's own endpoint.
++    "anthropic/claude-sonnet-4.6": "anthropic",
+ }
+ 
+ 
