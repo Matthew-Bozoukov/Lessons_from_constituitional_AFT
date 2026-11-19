@@ -5,7 +5,7 @@ set -euo pipefail
 TARGET=$1
 OUT=$2
 EPOCHS=${3:-100}
-MODEL_A=${4:-openrouter/anthropic/claude-sonnet-4.6}
+MODEL_A=${4:-openrouter/google/gemini-3-flash-preview}
 cd /root/work
 export HF_HOME=/workspace/hf
 bash scratch/iai_code_review/fetch_upstream.sh

@@ -1,10 +1,16 @@
+diff --git a/evals/_inspect_patches.py b/evals/_inspect_patches.py
+index b446989..819fc80 100644
 --- a/evals/_inspect_patches.py
 +++ b/evals/_inspect_patches.py
-@@ -198,7 +198,9 @@ def apply_patches() -> None:
+@@ -197,8 +197,12 @@ def _apply_cache_breakpoint_patch() -> None:
+ def apply_patches() -> None:
      _alias_google_api_key()
      _apply_reasoning_handler_patch()
-     _apply_gemini_route_guard()
+-    _apply_gemini_route_guard()
 -    _apply_cache_breakpoint_patch()
++    # LOCAL PATCH (lessons_from_constitutional_aft): guard lifted so Agent A can be Gemini 3 Flash via
++    # OpenRouter (we have no Google key). Upstream saw thought_signature errors on multi-turn Gemini here.
++    # _apply_gemini_route_guard()
 +    # LOCAL PATCH (lessons_from_constitutional_aft): skipped. Importing inspect-ai 0.3.286's
 +    # Anthropic provider needs anthropic>=2.0; our repo pins 0.120.2. Affects Anthropic models only.
 +    # _apply_cache_breakpoint_patch()
