@@ -80,6 +80,7 @@ HOSPITAL = PatchSet(
         "hospital_preamble.patch",  # 2026-11-04 the wrappers pass the seat to the base prompt
         "hospital_solo.patch",  # 2026-11-11 Solo Hospital Test: the lone provisioner's block
         "hospital_scripted_seats.patch",  # 2026-11-11 Solo Hospital Test: honest scripted seats
+        "hospital_no_mode_switch.patch",  # 2026-11-19 solo with no MODE SWITCH paragraph
     ),
     terrarium=(
         "terrarium_hospital_fixes.patch",  # 2026-09-09

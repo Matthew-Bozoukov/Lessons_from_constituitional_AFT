@@ -28,10 +28,12 @@ def test_every_listed_patch_exists_and_each_list_is_unique():
 def test_the_preamble_patches_come_last_but_the_solo_patches_cut_on_top_of_them():
     # 2026-11-11: the Solo Hospital Test's patches were cut on top of the preamble patches
     # and are applied after them; everything before is unchanged.
-    assert harness.COLOSSEUM_PATCHES[-3:] == (
+    # 2026-11-19: hospital_no_mode_switch.patch was cut on top of the solo patches.
+    assert harness.COLOSSEUM_PATCHES[-4:] == (
         "hospital_preamble.patch",
         "hospital_solo.patch",
         "hospital_scripted_seats.patch",
+        "hospital_no_mode_switch.patch",
     )
     assert harness.TERRARIUM_PATCHES[-2:] == (
         "terrarium_hospital_preamble.patch",

@@ -91,6 +91,11 @@ SCRIPTED_PATCH = "src/eval/misalignment/colosseum/third_party/hospital_scripted_
 TERRARIUM_PATCH_SOLO = (
     "src/eval/misalignment/colosseum/third_party/terrarium_hospital_solo.patch"
 )
+# 2026-11-19, condition=solo_no_mode_switch: the instructed seat's system prompt without
+# the MODE SWITCH paragraph (fixes.omit_mode_switch). Cut on top of the solo patches.
+NO_MODE_SWITCH_PATCH = (
+    "src/eval/misalignment/colosseum/third_party/hospital_no_mode_switch.patch"
+)
 
 
 def _harness(cfg) -> Harness:
@@ -156,6 +161,12 @@ def _colosseum_root(cfg, harness: Harness | None = None) -> Path:
     assert "scripted_seats" in text, (
         f"the Colosseum checkout at {root} is missing {SCRIPTED_PATCH}. Re-apply it (after "
         f"{SOLO_PATCH}):\n  git -C {root} apply {SCRIPTED_PATCH}"
+    )
+    # 2026-11-19. Without it fixes.omit_mode_switch is ignored and a solo_no_mode_switch
+    # cell is a plain solo cell published under the wrong name.
+    assert "omit_mode_switch" in prompts.read_text(), (
+        f"the Colosseum checkout at {root} is missing {NO_MODE_SWITCH_PATCH}. Re-apply it "
+        f"(after {SCRIPTED_PATCH}):\n  git -C {root} apply {NO_MODE_SWITCH_PATCH}"
     )
     return root
 

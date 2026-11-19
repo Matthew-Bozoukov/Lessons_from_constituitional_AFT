@@ -308,6 +308,13 @@ def test_the_runner_refuses_a_checkout_without_the_second_colosseum_patch(
         "_resolve_agent_llm_configs_by_seat secret_instructions administrator_blackboard_id "
         "scripted_seats"
     )
+    # 2026-11-19: then the no-mode-switch patch, checked last.
+    with pytest.raises(AssertionError, match="hospital_no_mode_switch.patch"):
+        runner._colosseum_root(OmegaConf.create({}))
+    (d / "prompts.py").write_text(
+        "plan_post_optional benign_coalition _base_system_prompt SOLO_SECRET_EDITS "
+        "omit_mode_switch"
+    )
     assert runner._colosseum_root(OmegaConf.create({})) == tmp_path
 
 

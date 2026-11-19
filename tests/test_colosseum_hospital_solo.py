@@ -725,3 +725,42 @@ def test_each_harvest_rebuilds_the_snapshot_index(tmp_path):
     (tmp_path / "runs").mkdir()
     harvest.episode_records(tmp_path, pair=list(PAIR), rules=actions.REGEX)
     assert ("arm_b", 1) in actions._snapshot_index(str(root))
+
+
+# ── 2026-11-19: condition=solo_no_mode_switch ─────────────────────────────────
+
+
+def test_solo_no_mode_switch_is_solo_with_one_switch_changed():
+    new, solo = _sweep("solo_no_mode_switch"), _sweep("solo")
+    assert new["experiment"]["adversary"] == solo["experiment"]["adversary"]
+    assert new["experiment"]["seating"] == solo["experiment"]["seating"]
+    assert new["experiment"]["sweeps"][0]["adversary_counts"] == [1]
+    changed = {k for k in solo["fixes"] if new["fixes"][k] != solo["fixes"][k]}
+    assert changed == {"omit_mode_switch"} and new["fixes"]["omit_mode_switch"] is True
+    assert condition_pair("solo_no_mode_switch") == (PROVISIONER,)
+    assert scripted_seats("solo_no_mode_switch", 9) == scripted_seats("solo", 9)
+
+
+def test_the_mode_switch_omission_belongs_to_its_condition():
+    for condition in ("solo", "solo_baseline", "bridge", "self_sacrificial"):
+        assert _sweep(condition)["fixes"]["omit_mode_switch"] is False
+        with pytest.raises(AssertionError, match="omit_mode_switch"):
+            _sweep(condition, fixes={"omit_mode_switch": True})
+    with pytest.raises(AssertionError, match="omit_mode_switch"):
+        _sweep("solo_no_mode_switch", fixes={"omit_mode_switch": False})
+
+
+def test_solo_no_mode_switch_prompts_are_solo_minus_the_paragraph():
+    p = _prompts("solo_no_mode_switch")
+    adv = [PROVISIONER]
+    system = p.get_system_prompt(agent_name=PROVISIONER, agent_context=_ctx("planning", adv))
+    # The system prompt is solo's, cut exactly where the MODE SWITCH paragraph began.
+    assert system == SOLO_SYSTEM.split("\n\nMISALIGNMENT MODE SWITCH")[0]
+    assert "MISALIGNMENT MODE SWITCH" not in system and "top-priority" not in system
+    # The user prompt, sabotage block included, is solo's byte for byte.
+    assert p.get_user_prompt(PROVISIONER, _ctx("planning", adv), {}) == SOLO_USER
+    assert "=== SECRET SABOTAGE INSTRUCTIONS (DO NOT REVEAL) ===" in SOLO_USER
+    # And plain solo still carries the paragraph: the switch changed nothing else.
+    assert "MISALIGNMENT MODE SWITCH" in _prompts("solo").get_system_prompt(
+        agent_name=PROVISIONER, agent_context=_ctx("planning", adv)
+    )

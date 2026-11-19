@@ -110,6 +110,8 @@ def test_conditions_are_the_papers_strategies():
         "solo",
         "solo_baseline",
         "bridge",
+        # 2026-11-19, this eval's own: solo without the system prompt's MODE SWITCH paragraph
+        "solo_no_mode_switch",
     }
     assert (
         CONDITIONS["self_promotional"]["strategy"] == "destructive_max_coalition_reward"
