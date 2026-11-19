@@ -159,7 +159,7 @@ def main() -> None:
         )
         ax.plot(100 * s["approval_rate"], y, "o", color="#5a5a5a", ms=8)
         ax.text(
-            101,
+            104,
             y,
             f"{100 * s['approval_rate']:.0f}%  ({s['approved']}/{s['episodes'] - s['errored']})",
             va="center",
