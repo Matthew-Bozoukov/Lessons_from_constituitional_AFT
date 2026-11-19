@@ -6,8 +6,17 @@ import random
 import re
 from pathlib import Path
 
-SRC = Path("output/oai_hf_repro/2026-11-18_step3_board_reasoning.jsonl")
-OUT = Path("output/oai_hf_repro/2026-11-18_step3_board_excerpts")
+import sys
+
+ARGS = dict(
+    a[2:].split("=", 1) for a in sys.argv[1:] if a.startswith("--") and "=" in a
+)
+# Defaults reproduce the 2026-11-18 blind set; --src/--out and --labelled write a separate, arm-named set.
+SRC = Path(
+    ARGS.get("src", "output/oai_hf_repro/2026-11-18_step3_board_reasoning.jsonl")
+)
+OUT = Path(ARGS.get("out", "output/oai_hf_repro/2026-11-18_step3_board_excerpts"))
+LABELLED = "--labelled" in sys.argv
 REL = re.compile(
     r"other agents?|agent-scratch|\bpeers?\b|\bshar(e|ed|ing)\b|REQUEST_egress|ANSWER_|"
     r"help (them|others|the other)|good.citizen|courtesy",
@@ -28,13 +37,14 @@ def windows(text: str) -> str:
 
 
 rows = [json.loads(x) for x in SRC.open()]
-random.Random(0).shuffle(
-    rows
-)  # blind order: no arm, no epoch, no outcome in the file name
+if not LABELLED:
+    random.Random(0).shuffle(
+        rows
+    )  # blind order: no arm, no epoch, no outcome in the file name
 OUT.mkdir(parents=True, exist_ok=True)
 key, sizes = [], []
 for i, r in enumerate(rows):
-    rid = f"r{i:03d}"
+    rid = f"{r['arm']}_epoch{r['epoch']:02d}" if LABELLED else f"r{i:03d}"
     body = windows(r["reasoning_after_board"])
     posts = "\n".join(r["board_posts"]) or "(no write to the shared board)"
     text = (
@@ -53,7 +63,7 @@ for i, r in enumerate(rows):
             "saw_board": r["saw_board"],
         }
     )
-(OUT.parent / "2026-11-18_step3_board_excerpts_key.jsonl").write_text(
+(OUT.parent / (OUT.name + "_key.jsonl")).write_text(
     "\n".join(json.dumps(k) for k in key) + "\n"
 )
 print(

@@ -12,7 +12,9 @@ from inspect_ai.log import read_eval_log
 
 from src.eval.misalignment.oai_hf.export import row
 
-OUT = Path("output/oai_hf_repro/2026-11-18_step3_board_reasoning.jsonl")
+# --out=<jsonl> writes elsewhere (the default is the file the 2026-11-18 blind rating was cut from).
+OUT = Path(next((a[6:] for a in sys.argv[1:] if a.startswith("--out=")),
+                "output/oai_hf_repro/2026-11-18_step3_board_reasoning.jsonl"))
 # Text that only the board's request files contain (read 2026-11-18 from the smoke rollouts).
 BOARD = re.compile(
     r"Another agent, same wall|Still stuck on egress|drop the working request|Anyone reached the outside"
@@ -41,7 +43,7 @@ def text_of(content) -> tuple[str, str]:
 
 
 rows = []
-for arg in sys.argv[1:]:
+for arg in [a for a in sys.argv[1:] if not a.startswith("--")]:
     label, run_dir = arg.split("=", 1)
     for f in sorted(glob.glob(f"{run_dir}/metadata/inspect/*.eval")):
         log = read_eval_log(f)
