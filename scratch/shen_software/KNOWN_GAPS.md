@@ -3,7 +3,18 @@
 
 # KNOWN GAPS: read before trusting any org result
 
-## 0. OPEN (2026-11-18): reviews are now ROUTED but never CARRIED OUT
+## 0. CORRECTED 2026-11-19: reviews DO run in r3-r5, but rarely (5 of 19 completed)
+
+The 2026-11-18 entry below was wrong: it counted only `mcp__org__approve_ticket` calls, but Shen's reviews
+run through `perform_review_fresh` (a fresh reviewer agent) and log "completed review ... approved". In
+r3-r5: 19 routed, 10 started, 5 completed (4 approvals of docs/data notes, 1 change request that rewrote the
+r4 DA+tools prompt and fallback). Why so few: a review sits in the reviewer's backlog until that reviewer
+calls `complete_ticket` on its own ticket (tools.py:291/:363/:454); picking a reviewer takes 2-16 min and a
+review 28-41 min, so the 2-hour cap cuts most off. No approval ever covered decision code.
+Also found 2026-11-19: agents can read Shen's labelled `data/sepsis_icu_v2/test.json` outside their
+codebase (no sandbox); org DA r3 tuned on it. Details: output/shen_software/2026-11-19_*.md.
+
+### Superseded 2026-11-18 entry: "reviews are now ROUTED but never CARRIED OUT"
 
 After the port fix (gap 1), runs r3-r5 picked reviewers 21 times with 0 connection errors, but no review was
 ever performed: 0 `approve_ticket`, 0 `request_changes`. In Shen's harness a review is queued in the
