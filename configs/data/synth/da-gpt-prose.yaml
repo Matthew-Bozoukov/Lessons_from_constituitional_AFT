@@ -1,0 +1,171 @@
+# ABOUTME: GPT difficult advice with its markdown taken out: 2026-11-04-da-gpt-synth's replies rewritten by gpt-5.6-terra
+# ABOUTME: into prose, everything else frozen. Run: uv run synth run --config configs/data/synth/da-gpt-prose.yaml [--smoke]
+#   Prereq: uv run python scratch/gpt_vs_claude_da/stage_prose_source.py   (stages the full source and the 20-row smoke)
+#   Audit:  uv run python scratch/gpt_vs_claude_da/audit_prose.py --run_dir <run dir>
+#
+# WHAT THIS ARM TESTS. The all-GPT da arm (2026-11-04-qwen36-0-da-gpt-15) scores MASK 63.1 / ODCV 28.3 where the
+# default Haiku->Sonnet arm scores 83.2 / 13.3. GPT's replies are 85% structured markdown (headings, lists, tables,
+# blockquoted scripts) against 26% for the default corpus; its reasoning has none. This arm removes that structure
+# from the replies and nothing else, so if formatting carries a large part of the gap it shows up here.
+#
+# WHAT IS HELD. System prompt, user message and reasoning are the source's, byte for byte. The rewriter is
+# gpt-5.6-terra, the model that wrote the source replies' final pass, and it is shown ONLY the reply -- no scenario,
+# no reasoning -- so it has nothing to answer, only something to re-lay-out. Bold and italics inside sentences are
+# allowed to stay (the default corpus bolds too); the target is structure.
+#
+# NO FORMAT BAN. A non-zero rate of lists or quotes is fine (the default corpus has some): the run measures how rare
+# leftover structure is and rows can be filtered afterwards. The only lint is a word-count band against the source
+# reply, which catches a dropped or padded reply, not formatting.
+#
+# MORE ROWS. If the 15% mix needs more rows than 722, extend the source with configs/data/synth/da-gpt.yaml and run
+# this stage over the new rows; this config does not generate scenarios.
+
+method: ours
+pipeline: ablation
+
+card:
+  experiment: >-
+    Difficult-advice SFT corpus, GPT replies without markdown: dougalldeepmind/2026-11-04-da-gpt-synth (all-GPT da
+    arm) with scenarios, system prompts, user messages and reasoning frozen and every assistant reply rewritten into
+    plain prose by gpt-5.6-terra -- headings, lists, tables and blockquotes turned into sentences, every point,
+    fact, step and piece of suggested wording kept. Isolates reply formatting in the GPT-vs-Claude da gap.
+  models: >-
+    rewrite: openai/gpt-5.6-terra (reasoning off, temperature 1.0), the model that wrote the source replies' final
+    pass. Via OpenRouter.
+  provenance: "uv run python scratch/gpt_vs_claude_da/stage_prose_source.py && uv run synth run --config configs/data/synth/da-gpt-prose.yaml"
+  notes: >-
+    Source rows are dataset.jsonl of 2026-11-04-da-gpt-synth flattened by scratch/gpt_vs_claude_da/stage_prose_source.py.
+    The rewritten field is prose_response; the source reply travels with each record so the audit can compare, and
+    only the rewrite is exported. Rows that fail every attempt are dropped and counted in manifest.json.
+
+ablate: []
+
+smoke:
+  source:
+    local_dir: "data/da_gpt_prose_smoke"
+    snapshot: "stage_6_revise_responses.jsonl"
+  max_fail_pct: 40
+
+seed: 0
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+n_traits: 9
+chunking: principle
+
+source:
+  local_dir: "data/da_gpt_full_source"
+  snapshot: "stage_6_revise_responses.jsonl"
+
+total_scenarios: 722
+
+output_dir: "output/synth_da_gpt_prose"
+hf_private: false
+workers: 16
+budget_usd: 40.0
+max_fail_pct: 5.0
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+models:
+  rewrite:
+    model: "openai/gpt-5.6-terra"
+    reasoning: {enabled: false}
+    temperature: 1.0
+    max_tokens: 12288
+    assumed_tokens: {in: 1900, out: 1100}
+
+stages:
+- name: chunk_constitution
+  kind: segment
+
+- name: load_source
+  kind: load_source_run
+
+- name: rewrite_prose
+  kind: llm_tagged
+  model: rewrite
+  checkpoint: scenario_id
+  tags:
+  - response
+  save:
+    prose_response: response
+  ablate_with:
+    prose_response: response
+  prompts:
+    system: |-
+      You convert a reply from markdown layout into plain prose. You change the layout and nothing else: every
+      point, fact, number, caveat, option, step, recommendation and piece of suggested wording stays, in the same
+      order, in the original words wherever prose allows. You add nothing and you drop nothing.
+    user: |-
+      Below is a reply an assistant wrote to a person.
+
+      <reply>
+      {response}
+      </reply>
+
+      Rewrite it as plain prose: paragraphs of ordinary sentences, the way a careful person writes a long email.
+
+      HOW EACH KIND OF LAYOUT BECOMES PROSE
+
+      - Headings, and lines that are only a bold label acting as a heading ("**What I would do**"): remove them as
+        separate lines. If a heading carries information the section needs, fold it into the section's first
+        sentence. A heading that labels what follows ("Confirmed facts", "What to avoid", "Safe preparatory work
+        now") must survive as a lead-in sentence or clause ("These facts are confirmed: ...", "Some preparatory
+        work is safe to do now: ..."), never silently dropped.
+      - Bulleted and numbered lists: write the items as sentences within a paragraph. Keep every item and keep
+        their order. Where the items are steps in a sequence, make the sequence clear in the sentences ("first",
+        "then", "after that"). Do not compress several items into a vaguer summary.
+      - Tables: state each row's content in sentences, keeping every cell's information.
+      - Blockquoted or set-off wording the person could say or send (lines starting with ">", or a drafted message,
+        email, note or script): keep the wording word for word, inside quotation marks, introduced by a short
+        lead-in that is already implied by the reply (for example, You could say: "..."). A drafted message of
+        several paragraphs stays as its own quoted paragraphs, without the ">" markers.
+      - Horizontal rules: remove.
+      - Bold and italics inside a sentence may stay as they are.
+      - Any reference to the layout ("the table above", "step 3", "the list below", "the checklist") must be
+        reworded so it makes sense in prose.
+
+      WHAT MUST NOT CHANGE
+
+      - Do not add anything: no new advice, reasons, caveats, examples, greeting, summary, closing question or
+        offer.
+      - Do not drop anything, however minor.
+      - Do not soften or strengthen any claim or recommendation.
+      - Keep the voice: the same register, the same "I" and "you", the same spelling and punctuation habits.
+      - If the reply is already plain prose, return it unchanged.
+
+      Return only the rewritten reply inside <response></response> tags.
+  lint:
+  # A dropped or padded reply, not formatting: turning lists into sentences adds a few connectives, a table row
+  # becomes a sentence. Outside this band something was lost or invented. No format ban (see header).
+  - fields: [response]
+    ratio_of: response
+    min_word_ratio: 0.85
+    max_word_ratio: 1.3
+    retries: 2
+
+- name: export_sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{prose_response}'
+    reasoning_content: '{reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - domain
+  - shortcut
+  - situation
+  - ai
+  - sector
+  - chunk_ids
+  - granularity
+  - grouping_strategy
+  - n_chunks
