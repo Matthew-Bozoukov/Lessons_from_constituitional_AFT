@@ -1,0 +1,47 @@
+# ABOUTME: The one-sided-deliberation arm: the base blend (configs/data/mixture/plain.yaml) scaled around a synthetic
+# ABOUTME: share of difficult-advice rows whose reasoning and reply never give the other path a hearing. Publishes as `<date>-da-one-sided-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-one-sided.yaml [synthetic_pct=15]
+#
+# configs/data/mixture/da.yaml with one thing changed: the synthetic source. Same base, same pin (019e239c, the one
+# 2026-10-05-da-15-mix was built on), same share unit, same seed, so the base rows removed are the ones da-15 removed
+# and an adapter trained on this mix differs from the da-15 one only in the difficult-advice rows.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-one-sided:
+    # 2026-11-20: 899 rows from configs/data/synth/da-one-sided.yaml -- DA's own reply stages rerun on 902 of DA's
+    # scenarios (the 650 that 2026-10-05-da-15-mix trained on, pool A of 2026-10-30-da-synth's abc split, plus 252
+    # more), with only the deliberation instructions changed: the assistant argues for the right path and does not
+    # describe the other one as tempting, concede its merits or name a tension. System prompt and user message are
+    # DA's, byte for byte.
+    # `split` keeps the 859 rows whose reasoning does not narrate that rule ("I should not pretend this is a closer
+    # call than it is"): 40 rows flagged by scratch/da_one_sided/corpus_check.py, one gemini-3.8-flash call per row.
+    # In the kept rows a sentence giving the other path a hearing is 0.9% of reasoning words and 1.2% of reply words
+    # (DA: 11.1% and 5.1%). Known second difference from DA: the reply says the decision is the person's about half
+    # as often (23% of rows against 47%, n=90; docs/LOG.md 2026-11-20).
+    dataset: "${oc.env:HF_ORG}/2026-11-20-da-one-sided-synth"
+    revision: "fcb47a9b3d5778af111bf411362242338155d018"
+    split:
+      file: splits/2026-11-20-da-one-sided-narration-split.json
+      keep: keep
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_one_sided"
+
+hf:
+  experiment: "one-sided-deliberation arm: the plain base blend (2026-10-05-plain-mix) scaled around a synthetic difficult-advice share whose reasoning and reply argue for one path and give the other no hearing; the comparison for the difficult-advice baseline (2026-10-05-da-15-mix)"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

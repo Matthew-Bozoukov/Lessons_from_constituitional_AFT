@@ -34,6 +34,7 @@ import json
 import re
 import statistics as st
 import sys
+import threading
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -407,15 +408,30 @@ def parse(text: str) -> dict:
 
 
 class Cache:
+    """An append-only JSONL cache. Appends are locked: on 2026-11-20 a 24-thread run interleaved two records into
+    one line and the next load died on it. A line that does not parse is skipped (and counted), not fatal: the
+    worst case is paying for that one call again."""
+    _lock = threading.Lock()
+
     def __init__(self, path: Path):
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.d = {j["key"]: j for j in map(json.loads, path.open(encoding="utf-8"))} if path.exists() else {}
+        self.d, self.bad = {}, 0
+        if path.exists():
+            for line in path.open(encoding="utf-8"):
+                try:
+                    j = json.loads(line)
+                    self.d[j["key"]] = j
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    self.bad += 1
+            if self.bad:
+                print(f"cache {path.name}: skipped {self.bad} unreadable line(s)")
 
     def put(self, rec: dict) -> dict:
-        self.d[rec["key"]] = rec
-        with self.path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        with Cache._lock:
+            self.d[rec["key"]] = rec
+            with self.path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         return rec
 
 
