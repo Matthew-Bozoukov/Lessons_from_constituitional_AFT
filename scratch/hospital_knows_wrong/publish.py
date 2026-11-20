@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from first_cut import CELLS, ORG  # noqa: E402
 from judge import MAX_TOKENS, OUT, PROMPT_VERSION  # noqa: E402
-from src.infra.huggingface import card_markdown, push_files  # noqa: E402
+from src.infra.huggingface import card_markdown, hf_repo_id, push_files  # noqa: E402
 from src.naming import artifact_name  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 from tabulate import JUDGES  # noqa: E402
@@ -100,7 +100,7 @@ def main() -> None:
     if not args.push:
         print(card_markdown(fields))
         return
-    print(push_files(FILES, repo, fields, private=True))
+    print(push_files(FILES, hf_repo_id(repo), fields, private=True))  # push_files gates on `org/name`
 
 
 if __name__ == "__main__":
