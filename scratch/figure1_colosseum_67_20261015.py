@@ -8,7 +8,7 @@ from figure1_edit_20261012 import text
 path=Path('C:/Users/nikak/Downloads/2026-10-15_Difficult_Advice_Figure_1_aggregate_odcv_agentic.png')
 root=Path('output/2026-10-15_figure1')
 before=Image.open(path).convert('RGB')
-before.save(root/'before_colosseum_67.png')
+before.save(root/'2026-10-15_before_colosseum_67.png')
 out=before.copy()
 box=(1384,650,1446,837)
 x0,y0,x1,y1=box

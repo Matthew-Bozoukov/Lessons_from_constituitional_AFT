@@ -96,7 +96,7 @@ d.line((axis*4,307*4,307*4,307*4),fill='#111111',width=10)
 text(im,(163,322),'MASK honesty rate',24)
 paste(box,im)
 mask_audit=audit(main,out,regions)
-mask_path=destination.with_name(destination.stem+'_mask.png')
+mask_path=destination.with_name(destination.stem+'_mask'+destination.suffix)
 out.save(mask_path);out.save(root/mask_path.name)
 (root/'mask_variant_pixel_audit.json').write_text(json.dumps({'main':main_audit,'mask':mask_audit},indent=2))
 labels=['Difficult Advice','Trained only on CoT','Grok teacher','Low stakes','Amoral deliberation','No deliberation','Baseline']

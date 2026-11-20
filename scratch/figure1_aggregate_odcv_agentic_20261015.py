@@ -69,7 +69,7 @@ d.line((fraction_left*4,294*4,(fraction_left+fraction_width)*4,294*4),fill='#101
 text(im,(fraction_left+fraction_width/2,311),'2',22,bold=False)
 out.paste(im.resize((544,330),Image.Resampling.LANCZOS),box[:2])
 equation_box=(738,384,1160,448)
-clean=Image.open(root/'before_equation_move.png').convert('RGB')
+clean=Image.open(root/'2026-10-15_before_equation_move.png').convert('RGB')
 out.paste(clean.crop(equation_box),equation_box[:2])
 title=Image.new('RGB',(544*4,36*4),'#fdfdfd')
 heading='Aggregate misalignment score after various ablations'
