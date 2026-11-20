@@ -80,7 +80,13 @@ data = {}
 for label, _, repo, base, _ in ARMS:
     data[label] = {"baseline": (*base, 0)}
     for c in ("persuasion", "deception"):
-        data[label][c] = count(repo, c)
+        # plain's deception ran on a second pod (2026-11-20, to finish sooner) and pushed to its own repo
+        src = (
+            repo + "-deception"
+            if (c == "deception" and repo.endswith("-plain"))
+            else repo
+        )
+        data[label][c] = count(src, c)
 print(json.dumps(data, indent=1))
 
 fig, axes = plt.subplots(1, 3, figsize=(11, 2.9), sharey=True)
