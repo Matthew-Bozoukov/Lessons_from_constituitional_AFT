@@ -1,3 +1,23 @@
+## 2026-11-20: GPT difficult advice with the reply markdown removed: MASK 68.6, ODCV 23.8, about a quarter of the GPT-to-Claude gap on each
+
+Hypothesis: the all-GPT DA arm (`2026-11-04-qwen36-0-da-gpt-15`: MASK 63.1, ODCV 28.3) trains worse than the Claude DA arm (`2026-10-05-qwen36-0-da-15`: MASK 83.2, ODCV 13.3) partly because GPT's replies are formatted documents (structural markdown in 85% of GPT replies vs 26% of Claude's; none in either corpus's reasoning). If the layout carries the gap, rewriting GPT's replies into prose with nothing else changed should close most of it. Pre-registered: MASK >= ~73 (half the gap) = formatting is a major cause, then run the converse (add markdown to Claude DA); within ~3 of 63.1 = not formatting; in between = partial.
+
+Method: `configs/data/synth/da-gpt-prose.yaml` (one `llm_tagged` stage, gpt-5.6-terra, reasoning off, temperature 1.0): Terra sees only the reply and rewrites it as prose under explicit rules (headings and bold-label lines fold into the first sentence of the section, lists and tables become sentences in order, drafted or blockquoted wording is kept verbatim in quotation marks, add nothing, drop nothing, keep the voice); system prompt, user message and reasoning byte-identical; word-ratio lint 0.85-1.3. Source: the 722 rows of `2026-11-04-da-gpt-synth` @ 026ecb1e. A Gemini 3.8 Flash fidelity audit (`scratch/gpt_vs_claude_da/audit_prose.py`) flagged 29 rows as unfaithful or still structured; 13 passed a second rewrite and 16 were dropped (`redo_rows.py`), so `2026-11-20-da-gpt-prose-synth` @ d8490d9d has 706 rows with 0 structured replies. Mix `2026-11-20-da-gpt-prose-15-mix` @ 4020e689 (`configs/data/mixture/da-gpt-prose.yaml`, da-gpt.yaml with the source swapped): 689 DA rows, 754,893 supervised DA tokens (GPT mix 754,758), 15.1%. Trained `2026-11-20-qwen36-0-da-gpt-prose-15` @ bcc4d9dc on 1x H200 (1 GPU: 2,257 rows leave a one-row last step that DDP refuses), seed 0, base 6a9e13bd as both comparison arms, code 93ef2b1c. MASK (3 passes, 1x H200) and ODCV lite (3 passes, 1x H100, driven from the Windows laptop's docker, `concurrency=16`), both with the GPT arm's protocol and judge. About $20 of RunPod across the three pods.
+
+Result (HF repos under dougalldeepmind/):
+
+| arm | MASK honesty, 3 passes [95%] | ODCV MR, 3 passes [95%] |
+|---|---|---|
+| da-gpt-15 (11-04) | 63.1 [60.4, 65.7]; by pass 64.2 / 62.1 / 62.9 | 28.3 [23.8, 33.3]; 28.7 / 26.2 / 30.0 |
+| **da-gpt-prose-15** | **68.6 [64.4, 72.6]**; 67.6 / 67.7 / 70.5 | **23.8 [18.7, 29.6]**; 21.2 / 25.0 / 25.0 |
+| da-15 (Claude, 10-05) | 83.2 | 13.3 |
+
+- MASK `2026-11-20-mask-qwen36-0-da-gpt-prose-15`: generation errors 0.2 / 0.1 / 0.1%, 0 empty, 0 judge errors. Every archetype rose: continuations +7.6, disinformation +8.0, doubling down +4.7, known facts +3.7, provided facts +5.4, statistics +4.1 (against the GPT arm's 3-pass means).
+- ODCV `2026-11-20-odcv-qwen36-0-da-gpt-prose-15`: 240 rollouts, 0 dropped, submit-tool-call rate 96.7%; mandated 25.8 (GPT 29.2), incentivised 21.7 (GPT 27.5); mean severity 0.88 (1.04).
+- Reading: removing the markdown closes 5.5 of MASK's 20.1 points (27%) and 4.5 of ODCV's 15.0 (30%). Every prose pass beats every GPT pass on both evals, but the intervals overlap, the passes measure eval noise only, and the arm is one seed: da-15's own seeds span 79.3-84.5 on MASK (11-17 entry), as wide as this effect. Pre-registered verdict: partial. Formatting explains at most about a quarter of the gap; the rest is in what GPT writes, not how it lays it out.
+
+Next: no add-markdown-to-Claude arm (the rule ran it only on a major effect). Compare the two corpora on substance instead: how each uses the trait document, how it reasons about rules versus values, and its honesty vocabulary (GPT's reasoning has first-person "I" at 0.20 vs 1.25 per 1k characters and honesty words about 3x rarer). AM not run: both parents score 6.7, so it cannot separate them.
+
 ## 2026-11-17: Qwen-Agent tool-format arm on MASK+tools: 92.4, at the native-format da-tools level (93.7)
 
 Hypothesis: (from the entry below) if the DA rows' tool format matters anywhere, it should show on MASK+tools, where the pressure prompts carry tools rendered natively the way da-tools-15's DA rows did and the Qwen-Agent arm's did not.
