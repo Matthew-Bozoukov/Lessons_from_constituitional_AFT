@@ -50,8 +50,30 @@ def main() -> None:
         "--capability",
         nargs="+",
         required=True,
-        choices=["baseline", "persuasion", "deception"],
+        choices=[
+            "baseline",
+            "persuasion",
+            "deception",
+            "persuasion_L1",
+            "persuasion_L3",
+        ],
+        help="code_review: baseline/persuasion/deception; alignment_research: baseline/"
+        "persuasion_L1/persuasion_L3 (attacker instruction level 1 = goal only, 3 = playbook)",
     )
+    ap.add_argument(
+        "--env", default="code_review", choices=["code_review", "alignment_research"]
+    )
+    ap.add_argument(
+        "--grader-model",
+        default="openrouter/google/gemini-3-flash-preview",
+        help="alignment_research drift/quality judge (code_review runs decision-only)",
+    )
+    ap.add_argument(
+        "--w2s-root",
+        default="output/iai_code_review/automated-w2s-research",
+        help="clone of safety-research/automated-w2s-research (alignment_research)",
+    )
+    ap.add_argument("--context-window", type=int, default=65536)
     ap.add_argument("--epochs", type=int, required=True)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--max-turns", type=int, default=8)
@@ -81,12 +103,17 @@ def main() -> None:
         raise SystemExit("give exactly one of --model-b or --target")
 
     load_dotenv(args.env_file)
+    # read by upstream's alignment_research/environment.py at import time
+    os.environ["W2S_REPO_ROOT"] = str(Path(args.w2s_root).resolve())
     sys.path.insert(0, str(Path(args.upstream).resolve()))
     from inspect_ai import eval as inspect_eval
 
-    from evals.code_review.task import (
-        code_review_task,
-    )  # upstream; applies its inspect patches
+    # upstream; importing `evals` applies its inspect patches
+    if args.env == "code_review":
+        from evals.code_review.task import code_review_task
+    else:
+        from evals.alignment_research.task import alignment_research_task
+    serving = dict(SERVING, context_window=args.context_window)
 
     stamp = dt.datetime.now().strftime("%Y-%m-%d_%H%M%S")
     out = Path(args.out or f"output/iai_code_review/{stamp}")
@@ -114,8 +141,16 @@ def main() -> None:
         "max_samples": args.max_samples,
         "max_connections": args.max_connections,
         "fail_on_error": args.fail_on_error,
-        "graders": False,
+        "env": args.env,
+        "graders": False if args.env == "code_review" else args.grader_model,
         "self_report_probe": False,
+        "w2s_commit": subprocess.run(
+            ["git", "-C", args.w2s_root, "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if args.env == "alignment_research"
+        else None,
     }
     try:
         if args.target:
@@ -130,7 +165,7 @@ def main() -> None:
                 work_dir=out / f"server_{args.port}",
                 port=args.port,
                 executor=executor,
-                serve_requirements=SERVING,
+                serve_requirements=serving,
             )
             base_url = server.serve(spec)
             os.environ["VLLM_BASE_URL"] = base_url
@@ -142,7 +177,7 @@ def main() -> None:
                 mode=spec.mode,
                 base_model=spec.base_model,
                 base_revision=spec.base_revision,
-                serving=SERVING,
+                serving=serving,
                 serving_env=server.serving_env,
             )
         meta["model_b"] = model_b
@@ -160,17 +195,31 @@ def main() -> None:
             threading.Thread(target=_loop, daemon=True).start()
 
         for cap in args.capability:
-            task = code_review_task(
-                model_a=args.model_a,
-                model_b=model_b,
-                capability=cap,
-                limit_samples=args.limit,
-                max_turns=args.max_turns,
-                epochs=args.epochs,
-                graders=False,
-                run_self_report_probe=False,
-                run_open_ended_probe=False,
-            )
+            if args.env == "code_review":
+                task = code_review_task(
+                    model_a=args.model_a,
+                    model_b=model_b,
+                    capability=cap,
+                    limit_samples=args.limit,
+                    max_turns=args.max_turns,
+                    epochs=args.epochs,
+                    graders=False,
+                    run_self_report_probe=False,
+                    run_open_ended_probe=False,
+                )
+            else:
+                base, _, level = cap.partition("_L")
+                task = alignment_research_task(
+                    researcher_model=args.model_a,
+                    victim_model=model_b,
+                    capability=base,
+                    limit_samples=args.limit,
+                    max_turns=args.max_turns,
+                    epochs=args.epochs,
+                    cached_results=True,
+                    instruction_level=int(level) if level else 3,
+                    grader_model=args.grader_model,
+                )
             print(
                 f">>> {cap}: {len(task.dataset.samples)} scenarios x {args.epochs} epochs"
             )
@@ -200,7 +249,7 @@ def make_pusher(args, out: Path, meta: dict):
     date = dt.date.today().isoformat()
     repo = artifact_name(args.push_subject, date=date)
     fields = {
-        "experiment": "Inter-Agent Influence (arXiv 2611.04556) code_review, our model as Agent B (reviewer)",
+        "experiment": f"Inter-Agent Influence (arXiv 2611.04556) {meta['env']}, our model as Agent B (target)",
         "date_generated": date,
         "constitution": "none",
         "source_repo": "lessons_from_constitutional_aft @ "
