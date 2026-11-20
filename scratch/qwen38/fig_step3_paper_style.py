@@ -15,7 +15,7 @@ BASE = ("dougalldeepmind/2026-11-18-oaihf-openrouter-qwen3-8-27b", "5a326442")
 BARS = [  # (style key, Hub eval repo, revision) -- newest pushes, 2026-11-19
     ("control", "dougalldeepmind/2026-11-19-oaihf-qwen38-0-plain", "45810cd6"),
     ("da", "dougalldeepmind/2026-11-19-oaihf-qwen38-0-da-15", "e2f709ce"),
-    ("da_tools", "dougalldeepmind/2026-11-19-oaihf-qwen38-0-da-tools-15", "b6acb970"),
+    ("da_tools", "dougalldeepmind/2026-11-20-oaihf-qwen38-0-da-tools-15", "140568af"),
 ]
 
 

@@ -24,8 +24,8 @@ ARMS = [  # (label, Hub eval repo, revision, colour) -- newest pushes, 2026-11-1
     ),
     (
         "Qwen3.8-27B DA+tools (ours)",
-        "dougalldeepmind/2026-11-19-oaihf-qwen38-0-da-tools-15",
-        "b6acb970",
+        "dougalldeepmind/2026-11-20-oaihf-qwen38-0-da-tools-15",
+        "140568af",
         "#d0558f",
     ),
     (
@@ -109,8 +109,8 @@ ax.set_title(
 fig.text(
     0.01,
     0.005,
-    "Ours: judge Gemini 3 Flash (paper: Opus 4.8), thinking on. Qwen3.8 DA and nosynth n=192, DA+tools n=64 "
-    "(its extra 128 did not run), base via API n=32,\nQwen3.6 nosynth n=64. Paper rows: their headline cells "
+    "Ours: judge Gemini 3 Flash (paper: Opus 4.8), thinking on. Qwen3.8 nosynth, DA and DA+tools n=192 "
+    "(64 + 128 merged), base via API n=32,\nQwen3.6 nosynth n=64. Paper rows: their headline cells "
     "(Qwen 3.8 Max is the closed API model).",
     fontsize=7.5,
     color=MUTED,
