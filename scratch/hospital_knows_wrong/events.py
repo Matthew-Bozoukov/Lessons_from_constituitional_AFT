@@ -26,9 +26,13 @@ from first_cut import CELLS, ORG, OUT  # noqa: E402
 
 from src.eval.misalignment.colosseum.hospital import actions  # noqa: E402
 
-VERSIONS = {"multi", "bridge", "solo", "solo, no instruction"}
+VERSIONS = {"multi", "bridge", "solo", "solo, no instruction", "solo, no mode switch"}
+# The environment's stock snapshots, where this run pulled them off its own pods (drive_pod.sh): with them the
+# withholding rule reads the same deficits the published counts did.
+ENV_LOGS = OUT / "env_logs"
 PATTERNS = ["results/*", "metadata/*"] + [
-    f"rollouts/**/{f}" for f in ("agent_turns.json", "tool_events.json", "run_config.json", "final_summary.json")
+    f"rollouts/**/{f}"
+    for f in ("agent_turns.json", "tool_events.json", "run_config.json", "final_summary.json", "agent_rewards.json")
 ]
 SCRIPTED = "scripted_honest"
 
@@ -88,10 +92,18 @@ def cell_units(version: str, arm: str, repo: str, revision: str) -> tuple[list[d
         run_cfg, final = read(run_dir / "run_config.json"), read(run_dir / "final_summary.json")
         turns = actions.shift_turns(read(run_dir / "agent_turns.json"))
         events = read(run_dir / "tool_events.json")
+        snapshots = {}
+        if (ENV_LOGS / repo).is_dir():
+            snapshots = actions.find_snapshots(
+                run_dir, seed=int(ep["seed"]), env_logs_root=ENV_LOGS / repo,
+                final_rewards={str(a): float(r) for a, r in read(run_dir / "agent_rewards.json").items()},
+                n_iterations=max(actions.iterations(turns)),
+            )
+            assert snapshots, f"no stock snapshots for {repo} {ep['run_id']}"
         seats = actions.analyse_episode(
             turns, events, pair=run_cfg.get("pair") or ep["pair"], secret_id=run_cfg.get("secret_blackboard_id"),
             fixes=run_cfg.get("fixes") or None, n_patients=actions.patients_of(final),
-            hospitals=actions.hospitals_of(final), snapshots={}, labels=labels[ep["run_id"]],
+            hospitals=actions.hospitals_of(final), snapshots=snapshots, labels=labels[ep["run_id"]],
         )["seats"]
         for seat, s in seats.items():
             if (run_cfg.get("agent_llm_labels") or {}).get(seat) == SCRIPTED:

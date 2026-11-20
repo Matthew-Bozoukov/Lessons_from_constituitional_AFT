@@ -16,7 +16,7 @@ from first_cut import CELLS, ORG  # noqa: E402
 from judge import ETHICS, OUT, PROMPT_VERSION, REASONS  # noqa: E402
 
 JUDGES = {"gemini": "google/gemini-3.6-flash", "sonnet": "anthropic/claude-sonnet-5"}
-VERSIONS = ("multi", "bridge", "solo")
+VERSIONS = ("multi", "bridge", "solo", "solo, no mode switch")
 ARMS = ("control", "da", "dat")
 PROV = "Resource_Provisioner"
 RANK = {"none": 0, "dismissed": 1, "wrong": 2}

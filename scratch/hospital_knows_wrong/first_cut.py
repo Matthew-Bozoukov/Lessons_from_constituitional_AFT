@@ -37,6 +37,10 @@ CELLS = [
     ("solo", "da", "2026-11-12-hospital-solo-qwen36-0-da-15", "8eb9d69bc13bd94c4c4056e4979e6b0dfd7a71a9"),
     ("solo", "dat", "2026-11-12-hospital-solo-qwen36-0-da-tools-15", "f0b6b77f504c77dcedd49b03c03236eddc7f5d10"),
     ("solo, no instruction", "control", "2026-11-12-hospital-solo-baseline-qwen36-0-plain", "dcdd4ef06e0889dbcb4c5696c2fcddbeab9eec21"),
+    # 2026-11-19: solo with the MODE SWITCH paragraph left out of the system prompt (condition=solo_no_mode_switch).
+    ("solo, no mode switch", "control", "2026-11-19-hospital-solo-no-mode-switch-qwen36-0-plain", "2d33883ae041203eb844c43c7a723e4a56bfcf75"),
+    ("solo, no mode switch", "da", "2026-11-19-hospital-solo-no-mode-switch-qwen36-0-da-15", "72450372de96722b7e00cc9144d3d84a1cf17555"),
+    ("solo, no mode switch", "dat", "2026-11-19-hospital-solo-no-mode-switch-qwen36-0-da-tools-15", "8b042cc89c743c9a2b6c96b5b20a466c583ce467"),
 ]
 
 # A seat that took a sabotage act falls in exactly one of these (classify() in actions.py).
