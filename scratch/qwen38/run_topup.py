@@ -56,10 +56,15 @@ def main():
         for k, v in (x.split("=", 1) for x in a.extra_parts.split(",") if x)
     }
     start = time.time()
-    for arm, n in need.items():
+    ran = []
+    for i, (arm, n) in enumerate(need.items()):
         if n <= 0:
             continue
+        ran.append(arm)
         adapter = ARMS[arm][0]
+        # A finished run's tunnel can hold its local port for a while (docs/GOTCHAS.md 2026-11-03):
+        # every arm gets its own port, or the next arm dies at startup (it did on 2026-11-19).
+        port = str(int(a.port) + i)
         rc = run(
             [
                 "uv",
@@ -72,7 +77,7 @@ def main():
                 "--server",
                 a.server,
                 "--port",
-                a.port,
+                port,
                 "--no-push",
                 "only_steps=[step3]",
                 f"n={n}",
@@ -84,7 +89,9 @@ def main():
         )
         log(f"{arm}: evals exited {rc}")
     ok = True
-    for arm, (adapter, old, stem) in ARMS.items():
+    stamp = time.strftime("%Y-%m-%d_%H%M%S", time.gmtime(start))
+    for arm in ran:  # only the arms that ran here; the others were merged already
+        adapter, old, stem = ARMS[arm]
         new = [
             d
             for d in sorted(glob.glob(f"output/oai_hf/*_{stem}_*"))
@@ -97,7 +104,7 @@ def main():
                 "run",
                 "python",
                 "scratch/oai_hf_repro/merge_and_push.py",
-                f"output/oai_hf_repro/2026-11-19_merged192_{arm}",
+                f"output/oai_hf_repro/{stamp}_merged{TOTAL}_{arm}",
                 *parts,
                 "--n",
                 str(TOTAL),
