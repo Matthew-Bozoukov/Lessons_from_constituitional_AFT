@@ -56,11 +56,26 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--max-turns", type=int, default=8)
     ap.add_argument("--max-samples", type=int, default=32, help="episodes in parallel")
-    ap.add_argument("--max-connections", type=int, default=32,
-                    help="per-model request cap; Inspect hands it to every model in the eval")
-    ap.add_argument("--fail-on-error", type=float, default=0.1,
-                    help="abort a condition past this fraction of errored episodes")
+    ap.add_argument(
+        "--max-connections",
+        type=int,
+        default=32,
+        help="per-model request cap; Inspect hands it to every model in the eval",
+    )
+    ap.add_argument(
+        "--fail-on-error",
+        type=float,
+        default=0.1,
+        help="abort a condition past this fraction of errored episodes",
+    )
     ap.add_argument("--out", default=None)
+    ap.add_argument(
+        "--push-subject",
+        default=None,
+        help="push the run dir to a PRIVATE Hub dataset <date>-<subject> every "
+        "--push-every s and after each condition (a pod's disk dies with it)",
+    )
+    ap.add_argument("--push-every", type=int, default=600)
     args = ap.parse_args()
     if bool(args.model_b) == bool(args.target):
         raise SystemExit("give exactly one of --model-b or --target")
@@ -78,6 +93,7 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
 
     server = None
+    push = lambda why: None  # noqa: E731  replaced once run_meta exists; safe in `finally`
     model_b = args.model_b
     import subprocess
 
@@ -94,7 +110,10 @@ def main() -> None:
         "capabilities": args.capability,
         "epochs": args.epochs,
         "limit": args.limit,
-        "max_turns": args.max_turns, "max_samples": args.max_samples, "max_connections": args.max_connections, "fail_on_error": args.fail_on_error,
+        "max_turns": args.max_turns,
+        "max_samples": args.max_samples,
+        "max_connections": args.max_connections,
+        "fail_on_error": args.fail_on_error,
         "graders": False,
         "self_report_probe": False,
     }
@@ -128,6 +147,17 @@ def main() -> None:
             )
         meta["model_b"] = model_b
         (out / "run_meta.json").write_text(json.dumps(meta, indent=2, default=str))
+        push = make_pusher(args, out, meta) if args.push_subject else (lambda why: None)
+        if args.push_subject:
+            import threading
+
+            stop = threading.Event()
+
+            def _loop() -> None:
+                while not stop.wait(args.push_every):
+                    push("periodic")
+
+            threading.Thread(target=_loop, daemon=True).start()
 
         for cap in args.capability:
             task = code_review_task(
@@ -153,10 +183,64 @@ def main() -> None:
                 max_samples=args.max_samples,
                 max_connections=args.max_connections,
             )
+            push(f"{cap} finished")
     finally:
         if server is not None:
             server.stop()
+        if args.push_subject:
+            push("exit")
     print(f">>> logs in {out}")
+
+
+def make_pusher(args, out: Path, meta: dict):
+    """Return push(why): upload `out` (Inspect logs + run_meta) to a private Hub dataset."""
+    from src.infra.huggingface import push_run_dir
+    from src.naming import artifact_name
+
+    date = dt.date.today().isoformat()
+    repo = artifact_name(args.push_subject, date=date)
+    fields = {
+        "experiment": "Inter-Agent Influence (arXiv 2611.04556) code_review, our model as Agent B (reviewer)",
+        "date_generated": date,
+        "constitution": "none",
+        "source_repo": "lessons_from_constitutional_aft @ "
+        + subprocess_out(["git", "rev-parse", "HEAD"]),
+        "models": f"Agent A {meta['model_a']}; Agent B {meta.get('target', meta.get('model_b'))}"
+        f" @ {meta.get('target_revision')}",
+        "generation_config": json.dumps(
+            {
+                k: meta.get(k)
+                for k in (
+                    "capabilities",
+                    "epochs",
+                    "max_turns",
+                    "max_samples",
+                    "max_connections",
+                    "mode",
+                    "serving",
+                )
+            }
+        ),
+        "schema": "Inspect .eval logs per condition (<condition>/*.eval) + run_meta.json; raw, not the eval contract layout",
+        "provenance": "uv run python " + " ".join(sys.argv),
+    }
+
+    def push(why: str) -> None:
+        try:
+            url = push_run_dir(out, repo, fields, private=True)
+            print(f">>> pushed ({why}) -> {url}", flush=True)
+        except (
+            Exception
+        ) as e:  # a failed upload must not kill the run; the next one retries
+            print(f"!!! push failed ({why}): {type(e).__name__}: {e}", flush=True)
+
+    return push
+
+
+def subprocess_out(argv: list[str]) -> str:
+    import subprocess
+
+    return subprocess.run(argv, capture_output=True, text=True).stdout.strip()
 
 
 if __name__ == "__main__":
