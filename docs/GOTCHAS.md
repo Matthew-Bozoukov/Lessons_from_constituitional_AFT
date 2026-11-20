@@ -3,6 +3,18 @@
 
 # GOTCHAS
 
+## A pod-driven run that does not push as it goes loses everything at the 6 h cap (2026-11-20)
+
+`runpod up` gives every pod a lifetime cap (default 6 h, `max_hours`), enforced by a self-delete
+on the pod and a local watchdog. Deleting the pod deletes its disk. On 2026-11-19 a scratch
+driver (`scratch/iai_code_review/`, upstream Inspect harness, not `run_eval`) ran three arms on
+three pods and wrote its Inspect logs only to `/root/work/output/` there. Nothing copied them back
+and nothing pushed them; the pods hit the cap at ~03:20 and ~1,200 finished episodes went with them.
+Only the baseline summary lines the local watcher had printed survived. `run_eval` avoids this by
+pushing results as they are produced; a driver that bypasses it must do the same (push or
+`rsync` each finished condition), and a run projected past `max_hours` must be split across pods
+or launched with a larger `--max_hours` before it starts.
+
 ## A second `evals --server <pod>` kills the first eval's vLLM on that pod (2026-11-17)
 
 A run's first serve stops every vLLM on the host (`SshExec.stop_server` is a host-wide
