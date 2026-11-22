@@ -98,6 +98,16 @@ def main() -> None:
         "--push-every s and after each condition (a pod's disk dies with it)",
     )
     ap.add_argument("--push-every", type=int, default=600)
+    ap.add_argument(
+        "--parallel-conditions",
+        action="store_true",
+        help="run every --capability as one Inspect eval with max_tasks=N (shared server)",
+    )
+    ap.add_argument(
+        "--prefix-caching",
+        action="store_true",
+        help="serve with vLLM prefix caching (long multi-turn agents re-send their history)",
+    )
     args = ap.parse_args()
     if bool(args.model_b) == bool(args.target):
         raise SystemExit("give exactly one of --model-b or --target")
@@ -114,6 +124,8 @@ def main() -> None:
     else:
         from evals.alignment_research.task import alignment_research_task
     serving = dict(SERVING, context_window=args.context_window)
+    if args.prefix_caching:
+        serving["enable_prefix_caching"] = True
 
     stamp = dt.datetime.now().strftime("%Y-%m-%d_%H%M%S")
     out = Path(args.out or f"output/iai_code_review/{stamp}")
@@ -194,7 +206,7 @@ def main() -> None:
 
             threading.Thread(target=_loop, daemon=True).start()
 
-        for cap in args.capability:
+        def build(cap: str):
             if args.env == "code_review":
                 task = code_review_task(
                     model_a=args.model_a,
@@ -221,18 +233,32 @@ def main() -> None:
                     grader_model=args.grader_model,
                 )
             print(
-                f">>> {cap}: {len(task.dataset.samples)} scenarios x {args.epochs} epochs"
+                f">>> {cap}: {len(task.dataset.samples)} scenarios x {args.epochs} epochs",
+                flush=True,
             )
+            return task
+
+        run_kw = dict(
+            model=args.model_a,
+            retry_on_error=2,
+            fail_on_error=args.fail_on_error,
+            max_samples=args.max_samples,
+            max_connections=args.max_connections,
+        )
+        if args.parallel_conditions:
+            # One eval over every condition's task, all sharing the one vLLM server. Each log's
+            # task_args (capability, instruction_level) says which condition it is.
             inspect_eval(
-                task,
-                model=args.model_a,
-                log_dir=str(out / cap),
-                retry_on_error=2,
-                fail_on_error=args.fail_on_error,
-                max_samples=args.max_samples,
-                max_connections=args.max_connections,
+                [build(c) for c in args.capability],
+                log_dir=str(out / "conditions"),
+                max_tasks=len(args.capability),
+                **run_kw,
             )
-            push(f"{cap} finished")
+            push("all conditions finished")
+        else:
+            for cap in args.capability:
+                inspect_eval(build(cap), log_dir=str(out / cap), **run_kw)
+                push(f"{cap} finished")
     finally:
         if server is not None:
             server.stop()
