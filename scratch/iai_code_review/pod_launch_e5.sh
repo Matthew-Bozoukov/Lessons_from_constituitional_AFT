@@ -16,6 +16,7 @@ nohup uv run python scratch/iai_code_review/run_code_review.py --env alignment_r
   --upstream output/iai_code_review/upstream --env-file .env \
   --model-a openrouter/x-ai/grok-4.20 --grader-model openrouter/google/gemini-3-flash-preview \
   --target "$TARGET" --capability $CONDITIONS --epochs "$EPOCHS" --max-turns 16 \
-  --context-window 131072 --prefix-caching --parallel-conditions --max-samples 64 --max-connections 64 \
+  --context-window 262144 --prefix-caching --parallel-conditions --max-samples 64 --max-connections 64 \
+  --fail-on-error never \
   --out "$OUT" --push-subject "$SUBJECT" > "$OUT.log" 2>&1 </dev/null &
 echo "started pid $! -> $OUT.log (conditions: $CONDITIONS; pushes to <date>-$SUBJECT)"

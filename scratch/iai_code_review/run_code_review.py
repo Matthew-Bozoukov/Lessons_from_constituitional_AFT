@@ -86,9 +86,10 @@ def main() -> None:
     )
     ap.add_argument(
         "--fail-on-error",
-        type=float,
+        type=lambda v: False if v == "never" else float(v),
         default=0.1,
-        help="abort a condition past this fraction of errored episodes",
+        help="abort a condition past this fraction of errored episodes; 'never' keeps going and "
+        "counts them (one error in a 3-episode smoke is 33%%, so a fraction cancels the rest)",
     )
     ap.add_argument("--out", default=None)
     ap.add_argument(

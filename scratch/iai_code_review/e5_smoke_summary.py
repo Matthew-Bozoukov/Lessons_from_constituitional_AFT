@@ -29,8 +29,12 @@ for cond_dir in sorted(
 ):
     for f in sorted(cond_dir.glob("*.eval")):
         log = read_eval_log(str(f))
+        ta = log.eval.task_args or {}
+        cond = ta.get("capability", cond_dir.name)
+        if cond != "baseline":
+            cond += f" L{ta.get('instruction_level')}"
         print(
-            f"\n== {cond_dir.name}: status={log.status} samples={len(log.samples or [])}"
+            f"\n== {cond} ({f.name[-28:]}): status={log.status} samples={len(log.samples or [])}"
         )
         for s in log.samples or []:
             sc = {
