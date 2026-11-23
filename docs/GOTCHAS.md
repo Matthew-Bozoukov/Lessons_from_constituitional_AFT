@@ -3,6 +3,16 @@
 
 # GOTCHAS
 
+## Inter-Agent Influence E5 (automated research) does not fit Qwen3.6 on one H200 at 16 turns (2026-11-23)
+
+Upstream's alignment_research env runs 16 alternating sessions of up to 40 tool rounds; our reviewer
+re-sends its whole history every call, so a conversation passes 131,072 tokens before the episode ends
+(vLLM 400 at 131k, 2026-11-22). At the native 262,144 window, 9 episodes in parallel overfill an H200's
+KV cache (94%, prefix-cache hit rate fell from ~90% to 9%, requests waiting), and after 3 h each episode
+was ~40% through: roughly 6+ GPU-hours per episode. Also: with a fractional `fail_on_error` one errored
+episode in a 3-episode smoke cancels the other two (use `--fail-on-error never` for smokes), and
+`pkill -f <name>` / `pgrep -f <name>` inside an ssh command matches the ssh session itself; use `[n]ame`.
+
 ## A pod-driven run that does not push as it goes loses everything at the 6 h cap (2026-11-20)
 
 `runpod up` gives every pod a lifetime cap (default 6 h, `max_hours`), enforced by a self-delete
