@@ -42,7 +42,10 @@ def cell(k, n):
 
 rows = []
 for arm, subject in ARMS.items():
-    native = newest(lambda i: i.endswith(f"-am-native-tools-{subject}"))[-1]
+    found = newest(lambda i: i.endswith(f"-am-native-tools-{subject}"))
+    if not found:
+        print(f"\n=== {arm}: no native-tools run on the Hub"); continue
+    native = found[-1]
     plain = newest(lambda i: i.split("/", 1)[1][11:] == f"am-{subject}")[-1]
     s_n, s_p = summary(results(native)), summary(results(plain))
     o = s_n["overall"]
