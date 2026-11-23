@@ -1,7 +1,7 @@
 # ABOUTME: Word-rate comparison of the Claude and GPT DA corpora: first person, honesty, safety/risk, rule and value
 # ABOUTME: vocabulary per 1k characters of reasoning and reply, overall and per trait, plus verbatim trait-document reuse.
 """Run: uv run python scratch/gpt_vs_claude_da/lexicon.py   (after fetch.py; needs data/gpt_vs_claude_da/<arm>_synth.jsonl)
-     uv run python scratch/gpt_vs_claude_da/lexicon.py --run_dir <da-gpt-voice run>   (source vs rewrite, same rows)
+     uv run python scratch/gpt_vs_claude_da/lexicon.py --run_dir <da-gpt-<kind> rewrite run>   (source vs rewrite, same rows)
 
 Writes output/gpt_vs_claude_da/<date>_lexicon.json, or <run_dir>/lexicon.json. Rates are per 1,000 characters of the field, pooled over rows;
 `row_pct` is the share of rows where the field contains the family at least once.
@@ -61,13 +61,14 @@ def trait_reuse(rows: list[dict], field: str) -> dict:
 
 
 def run_rows(run_dir: Path) -> dict[str, list[dict]]:
-    """A da-gpt-voice run as two arms over the SAME rows: the source fields and their rewrites."""
-    snap = next(run_dir.glob("stage_*_rewrite_voice.jsonl"))
+    """A da-gpt-<kind> rewrite run as two arms over the SAME rows: the source fields and their rewrites."""
+    snap = next(p for p in run_dir.glob("stage_*_rewrite_*.jsonl") if not p.name.endswith(".partial.jsonl"))
+    kind = snap.stem.split("_rewrite_", 1)[1]
     recs = [json.loads(line) for line in open(snap, encoding="utf-8")]
     return {"source": [{"trait_id": s["trait_id"], "trait_text": s["trait_text"], "reasoning": s["reasoning"],
                         "reply": s["response"]} for s in recs],
-            "rewrite": [{"trait_id": s["trait_id"], "trait_text": s["trait_text"], "reasoning": s["voice_reasoning"],
-                         "reply": s["voice_response"]} for s in recs]}
+            "rewrite": [{"trait_id": s["trait_id"], "trait_text": s["trait_text"], "reasoning": s[f"{kind}_reasoning"],
+                         "reply": s[f"{kind}_response"]} for s in recs]}
 
 
 def main() -> None:

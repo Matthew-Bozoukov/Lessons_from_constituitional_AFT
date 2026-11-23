@@ -1,4 +1,4 @@
-# ABOUTME: Publishes a repaired da-gpt-prose or da-gpt-voice corpus as a new revision of its own synth repo: replaces
+# ABOUTME: Publishes a repaired da-gpt-{prose,voice,principled} corpus as a new revision of its own synth repo: replaces
 # ABOUTME: dataset.jsonl, adds repair/ (repair.json, both audits, the rerun stage), and appends a Repair section to the card.
 """Run: uv run python scratch/gpt_vs_claude_da/publish_repaired.py --run_dir <full run> --redo_dir <redo run>
 

@@ -65,15 +65,29 @@ REASONING and the final REPLY. Judge the REASONING unless a field says otherwise
 
 """ + SUBSTANCE_FIELDS
 
-AUDIT_RUBRIC = """You audit a rewrite of an AI assistant's private reasoning and reply, made to change their point of \
-view (from an outside analyst's memo about the case to the assistant deciding as itself) and nothing else. You get \
-the TRAIT DOCUMENT (the principle the example was written to teach), the USER message, the ORIGINAL REASONING and \
-REPLY, and the REWRITTEN REASONING and REPLY.
+# What each rewrite arm is ALLOWED to change; the fidelity audit flags anything beyond it.
+ALLOWED = {
+    "voice": """made to change their point of view (from an outside analyst's memo about the case to the assistant \
+deciding as itself) and nothing else. You get the TRAIT DOCUMENT (the principle the example was written to teach), \
+the USER message, the ORIGINAL REASONING and REPLY, and the REWRITTEN REASONING and REPLY.
 
 First audit fidelity. The rewrite may change who speaks and how a judgment is owned ("the response should" -> "I \
 will"); it must not drop, add or change content: considerations, facts, numbers, caveats, options, steps, \
-recommendations, conclusions, or how strongly anything is claimed. Wording the person could say or send (a drafted \
-message, email or script) must be word for word, and the reply's markdown must be unchanged.
+recommendations, conclusions, or how strongly anything is claimed.""",
+    "principled": """made to give principled reasons for the decision: the principle at stake, and what is wrong in \
+principle with the course the assistant rejects (dishonesty, unfairness, undermining oversight, betraying trust, \
+...), alongside the original's practical reasons. You get the TRAIT DOCUMENT (the principle the example was written \
+to teach), the USER message, the ORIGINAL REASONING and REPLY, and the REWRITTEN REASONING and REPLY.
+
+First audit fidelity. The rewrite may ADD principled reasons of that kind, and only those; it must not drop or change \
+any other content: considerations, facts, numbers, caveats, options, steps, recommendations, the decision itself, or \
+how strongly anything is claimed. It must not cite a document, a constitution, guidelines or rules it was given, or \
+its training as the source of a principle. Under "added", list only additions that are NOT principled reasons of \
+that kind (new facts, options, steps or caveats, a changed decision, a cited document).""",
+}
+AUDIT_RUBRIC = """You audit a rewrite of an AI assistant's private reasoning and reply, {allowed} Wording the person \
+could say or send (a drafted message, email or script) must be word for word, and the reply's markdown must be \
+unchanged.
 
 Then analyse the REWRITTEN REASONING exactly as below, as if it were the only version: REASONING means the REWRITTEN \
 REASONING and REPLY means the REWRITTEN REPLY. Every evidence quote must be copied from the REWRITTEN REASONING, never \
@@ -91,22 +105,29 @@ the analysis fields, all in one object:
 
 
 
+def rewrite_snapshot(run_dir: Path) -> tuple[Path, str]:
+    """The run's rewrite-stage snapshot and its kind: stage_3_rewrite_<kind>.jsonl, fields <kind>_reasoning/_response."""
+    snap = next(p for p in run_dir.glob("stage_*_rewrite_*.jsonl") if not p.name.endswith(".partial.jsonl"))
+    return snap, snap.stem.split("_rewrite_", 1)[1]
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--n_per_arm", type=int, default=0)
     ap.add_argument("--workers", type=int, default=16)
-    ap.add_argument("--run_dir", help="a da-gpt-voice synth run: audit + judge its rewrites")
+    ap.add_argument("--run_dir", help="a da-gpt-<kind> rewrite run (voice, principled): audit + judge its rewrites")
     ap.add_argument("--standalone", action="store_true", help="with --run_dir: the mixture rubric, no source shown")
     args = ap.parse_args()
     load_dotenv()
     rows = []
     if args.run_dir:
-        snap = next(Path(args.run_dir).glob("stage_*_rewrite_voice.jsonl"))
+        snap, kind = rewrite_snapshot(Path(args.run_dir))
         for line in open(snap, encoding="utf-8"):
             s = json.loads(line)
-            rows.append({"arm": "voice", "row": s["scenario_id"], "trait_id": s["trait_id"],
+            rows.append({"arm": kind, "row": s["scenario_id"], "trait_id": s["trait_id"],
                          "trait_text": s["trait_text"], "user": s["user"], "src_reasoning": s["reasoning"],
-                         "src_reply": s["response"], "reasoning": s["voice_reasoning"], "reply": s["voice_response"]})
+                         "src_reply": s["response"], "reasoning": s[f"{kind}_reasoning"],
+                         "reply": s[f"{kind}_response"]})
     else:
         for arm in ARMS:
             a = load(arm)
@@ -124,7 +145,8 @@ def main() -> None:
             msg = (f"=== TRAIT DOCUMENT ===\n{r['trait_text']}\n\n=== USER ===\n{r['user']}\n\n"
                    f"=== REASONING ===\n{r['reasoning']}\n\n=== REPLY ===\n{r['reply']}\n")
         for _ in range(3):
-            res = client.chat(JUDGE, [{"role": "system", "content": AUDIT_RUBRIC if audit else RUBRIC},
+            system = AUDIT_RUBRIC.replace("{allowed}", ALLOWED[r["arm"]]) if audit else RUBRIC
+            res = client.chat(JUDGE, [{"role": "system", "content": system},
                                       {"role": "user", "content": msg}],
                               temperature=0.0, max_tokens=4096, response_format={"type": "json_object"})
             try:
@@ -138,7 +160,7 @@ def main() -> None:
 
     out = map_threaded(judge, len(rows), max_workers=args.workers, desc="substance")
     if args.run_dir:
-        stem = Path(args.run_dir) / ("substance_standalone" if args.standalone else "audit_voice")
+        stem = Path(args.run_dir) / ("substance_standalone" if args.standalone else f"audit_{kind}")
     else:
         stem = Path("output/gpt_vs_claude_da") / (f"{date.today().isoformat()}_substance"
                                                   + (f"_n{args.n_per_arm}" if args.n_per_arm else ""))

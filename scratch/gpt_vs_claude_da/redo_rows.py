@@ -1,4 +1,4 @@
-# ABOUTME: Repairs a da-gpt-prose or da-gpt-voice run: `stage` writes the audit-flagged and missing rows as a source dir
+# ABOUTME: Repairs a da-gpt-{prose,voice,principled} run: `stage` writes the audit-flagged and missing rows as a source dir
 # ABOUTME: for a rerun of the rewrite, `merge` swaps in rerun rows that pass a fresh audit and drops the rest, into a new run dir.
 """
   uv run python scratch/gpt_vs_claude_da/redo_rows.py stage --run_dir output/synth_da_gpt_<arm>/<full run>
@@ -8,7 +8,7 @@
   uv run python scratch/gpt_vs_claude_da/redo_rows.py merge --run_dir <full run> --redo_dir <redo run>
 
 The arm is read from the run's audit file. prose (audit_prose.jsonl): a row is flagged when the audit judged it
-unfaithful or any heading/list/table/blockquote survived. voice (audit_voice.jsonl): when it judged it unfaithful.
+unfaithful or any heading/list/table/blockquote survived. voice/principled (audit_<arm>.jsonl): when it judged it unfaithful.
 Source rows missing from the run (a provider refusal: 6 of 722 voice rows on 2026-11-23, none repeating on retry)
 are staged with the flagged ones.
 """
@@ -27,12 +27,15 @@ FULL_SOURCE = REPO / "data/da_gpt_full_source"
 
 
 def arm(run_dir: Path) -> str:
-    return "voice" if (run_dir / "audit_voice.jsonl").exists() else "prose"
+    """The rewrite arm, read off the run's audit file (audit_<arm>.jsonl)."""
+    kinds = [p.stem[len("audit_"):] for p in run_dir.glob("audit_*.jsonl")]
+    assert len(kinds) == 1, f"{run_dir}: expected one audit_<arm>.jsonl, found {kinds}"
+    return kinds[0]
 
 
 def flagged(run_dir: Path) -> set[str]:
-    if arm(run_dir) == "voice":
-        audit = [json.loads(line) for line in open(run_dir / "audit_voice.jsonl", encoding="utf-8")]
+    if arm(run_dir) != "prose":
+        audit = [json.loads(line) for line in open(run_dir / f"audit_{arm(run_dir)}.jsonl", encoding="utf-8")]
         return {a["row"] for a in audit if not a["faithful"]}
     audit = [json.loads(line) for line in open(run_dir / "audit_prose.jsonl", encoding="utf-8")]
     return {a["scenario_id"] for a in audit if not a["faithful"] or any(a["out_format"].values())}
