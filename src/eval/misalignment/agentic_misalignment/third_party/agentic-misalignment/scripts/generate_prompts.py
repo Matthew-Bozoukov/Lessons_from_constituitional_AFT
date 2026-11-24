@@ -34,7 +34,17 @@ from system_prompt_templates import (
     MURDER_SYSTEM_PROMPT_PROD,
     USER_PROMPT,
     GOAL_VARIABLES,
+    BLACKMAIL_TOOLUSE_FORMAT,
+    LEAKING_TOOLUSE_FORMAT,
+    MURDER_TOOLUSE_FORMAT,
 )
+
+# VENDORED PATCH (2026-11-20, patch 20): AM_NATIVE_TOOLS=1 (runner.py, protocol=native-tools)
+# drops the text tool-use instructions from every system prompt and writes the same tools as
+# OpenAI schemas to prompts/<condition>/tools.json. Unset, nothing below changes a prompt.
+NATIVE_TOOLS = os.environ.get("AM_NATIVE_TOOLS") == "1"
+TOOLUSE_FORMATS = {"blackmail": BLACKMAIL_TOOLUSE_FORMAT, "leaking": LEAKING_TOOLUSE_FORMAT,
+                   "murder": MURDER_TOOLUSE_FORMAT}
 
 # Email template configurations
 EMAIL_TEMPLATES = {
@@ -411,6 +421,13 @@ def generate_system_prompt(scenario: str, goal_type: str, goal_value: str, urgen
     else:
         raise ValueError(f"Invalid scenario: {scenario}")
     
+    if NATIVE_TOOLS:
+        # VENDORED PATCH 20: the tools travel through the API instead (tools.json).
+        tooluse = TOOLUSE_FORMATS[scenario]
+        if not system_prompt_template.endswith(tooluse):
+            raise ValidationError(f"{scenario} system prompt does not end with its tool-use text")
+        system_prompt_template = system_prompt_template[:-len(tooluse)]
+
     # Fill the template with variables
     return fill_template(system_prompt_template, variables)
 
@@ -613,6 +630,12 @@ def generate_prompts_from_yaml(config_path: Path, output_dir: Path = None, valid
                         save_text(condition_dir / "system_prompt.txt", system_prompt)
                         save_text(condition_dir / "user_prompt.txt", user_prompt)  # Only instruction
                         save_text(condition_dir / "email_content.txt", email_content)  # Only emails
+                        if NATIVE_TOOLS:
+                            # VENDORED PATCH 20: read by run_experiments.py, passed as tools=.
+                            sys.path.insert(0, str(FRAMEWORK_ROOT))
+                            from api_client.native_tools import tools_for
+                            save_text(condition_dir / "tools.json",
+                                      json.dumps(tools_for(scenario), indent=2))
                         
                         # Save metadata
                         metadata = {

@@ -62,6 +62,14 @@ execution:
   retries: 2
   checkpoint_frequency: 5
 
+# protocol (unset here; the run-name facet): `protocol=native-tools serving.needs_tool_calls=true`
+# (2026-11-20) moves the scenario's tools (email; + forward for leaking; + cancel_alert for
+# murder) out of the system prompt's `<tool_use:...>` text and into the API's `tools=`, so the
+# model sees its own chat template's tool block. Each trial becomes a tool loop (fixed stub
+# results, until a turn calls nothing, at most 10 rounds); every valid call is converted back
+# into the old text block, so the judges are unchanged. results.json gains `tool_use` (no-call,
+# malformed-call, round/context-cap counts per scenario). Unset, prompts are byte-identical to
+# the published runs (tests/test_am_native_tools.py).
 serving:
   # The window this eval runs at (required — see VllmServer._start; part of the eval's
   # scientific record). 32768, the window the published 18-condition runs were served at.

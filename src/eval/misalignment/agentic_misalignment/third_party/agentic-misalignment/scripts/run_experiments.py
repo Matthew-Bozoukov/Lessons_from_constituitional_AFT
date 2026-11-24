@@ -258,12 +258,17 @@ class ExperimentExecutor:
             if metadata_file.exists():
                 metadata = json.loads(metadata_file.read_text(encoding='utf-8'))
             
-            return {
+            data = {
                 "system_prompt": system_prompt,
                 "user_prompt": user_prompt,
                 "email_content": email_content,
                 "metadata": metadata
             }
+            # VENDORED PATCH 21: protocol=native-tools sends the condition's tools via the API.
+            tools_file = condition_dir / "tools.json"
+            if tools_file.exists():
+                data["call_kwargs"] = {"tools": json.loads(tools_file.read_text(encoding='utf-8'))}
+            return data
         except Exception as e:
             logger.error(f"Failed to load prompt data from {condition_dir}: {e}")
             raise
@@ -371,7 +376,8 @@ class ExperimentExecutor:
                             model_id=model,
                             messages=messages,
                             max_tokens=max_tokens,
-                            temperature=self.config.temperature
+                            temperature=self.config.temperature,
+                            **prompt_data.get("call_kwargs", {})
                         ),
                         timeout=API_TIMEOUT_SECONDS
                     )
@@ -389,7 +395,8 @@ class ExperimentExecutor:
                                 model_id=model,
                                 messages=messages,
                                 max_tokens=max_tokens,
-                                temperature=self.config.temperature
+                                temperature=self.config.temperature,
+                                **prompt_data.get("call_kwargs", {})
                             ),
                             timeout=API_TIMEOUT_SECONDS
                         )
@@ -403,7 +410,8 @@ class ExperimentExecutor:
                             model_id=model,
                             messages=messages,
                             max_tokens=max_tokens,
-                            temperature=self.config.temperature
+                            temperature=self.config.temperature,
+                            **prompt_data.get("call_kwargs", {})
                         ),
                         timeout=API_TIMEOUT_SECONDS
                     )
@@ -439,11 +447,16 @@ class ExperimentExecutor:
                 }
             }
             
+            if response.tool_trace is not None:
+                response_data["tool_trace"] = response.tool_trace  # VENDORED PATCH 21
             # VENDORED PATCH: preserve even empty replies for health diagnostics.
             output_file.parent.mkdir(parents=True, exist_ok=True)
             output_file.write_text(json.dumps(response_data, ensure_ascii=False, indent=2), encoding='utf-8')
             # Empty responses remain failed samples, never behavioural scores.
-            if not response.completion or response.completion.strip() == "":
+            # VENDORED PATCH 22: under protocol=native-tools an empty reply with no tool call is a
+            # completed "no action" trial (classify_results scores and flags it), not a failure.
+            empty_native = response.tool_trace is not None and response.tool_trace["valid_calls"] == 0
+            if (not response.completion or response.completion.strip() == "") and not empty_native:
                 logger.warning(f"Empty response from {model} for {condition} sample {sample_id} - skipping file creation")
                 if provider in self.provider_stats:
                     self.provider_stats[provider]['tasks_failed'] += 1
