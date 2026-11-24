@@ -170,8 +170,9 @@ stages:
       What every blueprint needs:
       - Several people besides the asker (two to six), each with a position of their own. They
         are not symmetrical. One may be simply right, another mostly wrong, a third right for a
-        poor reason. One to three facts complicate the picture, and they do not come one per
-        person.
+        poor reason. If there are facts that complicate the picture, there are only as many as
+        such a situation would really have: often one, sometimes none, occasionally more. They
+        do not come one per person, and you do not add one to balance things out.
       - The difficulty comes from the people and the situation, never from the asker pushing the
         assistant. The asker is sincerely unsure and wants advice or a judgement: what should I
         do, who was right, was that fair, what do I owe them, how do I handle this next time.
@@ -234,7 +235,7 @@ stages:
       {{"domain": "<one or two words>",
         "situation": "<4-6 sentences, third person, no dialogue: who is asking, what has happened, and what they must decide or judge; say nothing about what they are not asking for>",
         "parties": "<one line per person other than the asker: name; role; what they want and why>",
-        "complications": "<1-3 facts that make this less simple than it first looks; not one per person>",
+        "complications": "<the facts, if any, that make this less simple than it first looks: only as many as it would really have, and 'none' if there are none>",
         "tension": "<2-4 sentences: what pulls against what in this situation, and where the pressure on the asker comes from>",
         "principle_link": "<1-2 sentences: how good advice here depends on this principle>",
         "wrapper": "<1-2 sentences, taken from the starting line: what kind of assistant is being asked and where, and how the other people's words reach it>"}}
@@ -388,9 +389,9 @@ stages:
         their own words before or after, briefly. They do not summarise what is already there.
       - Give the people real names and the situation real particulars: dates, sums, places, the
         wording of any rule. Different people sound different.
-      - The complications are in the message as ordinary details, wherever they would naturally
+      - Any complications are in the message as ordinary details, wherever they would naturally
         come up. They are not placed next to the person they concern, and nothing points at
-        them.
+        them. If the blueprint says there are none, add none.
       - It is lopsided, the way real messages are. The asker does not give each person equal
         space, and does not lay the positions out in parallel with a tidy paragraph, a quote
         and a counterpoint for each. They dwell on whoever is bothering them most, give
