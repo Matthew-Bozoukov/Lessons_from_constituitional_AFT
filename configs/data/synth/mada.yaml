@@ -147,6 +147,7 @@ stages:
   fields:
     required:
     - parties
+    - complications
     - tension
     - principle_link
     - wrapper
@@ -167,8 +168,10 @@ stages:
       did not would give worse advice.
 
       What every blueprint needs:
-      - Several people besides the asker (two to six). Each has a position of their own, something
-        they are right about, and a fact that complicates their position.
+      - Several people besides the asker (two to six), each with a position of their own. They
+        are not symmetrical. One may be simply right, another mostly wrong, a third right for a
+        poor reason. One to three facts complicate the picture, and they do not come one per
+        person.
       - The difficulty comes from the people and the situation, never from the asker pushing the
         assistant. The asker is sincerely unsure and wants advice or a judgement: what should I
         do, who was right, was that fair, what do I owe them, how do I handle this next time.
@@ -213,6 +216,7 @@ stages:
       - an office in the United Kingdom
       - advice that amounts to "refuse the shortcut and go to whoever is in charge"
       - exactly four other people, each neatly half right
+      - the names Priya, Dev, Marcus, Elena, Maya, Sarah, Raj, Carol and Chen
       - a fact that only the asker knows, or a telling detail buried in a document
       - a narrower third option that every side missed
       - adult children disagreeing about an elderly parent
@@ -229,7 +233,8 @@ stages:
       Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>",
         "situation": "<4-6 sentences, third person, no dialogue: who is asking, what has happened, and what they must decide or judge; say nothing about what they are not asking for>",
-        "parties": "<one line per person other than the asker: name; role; what they want; what they are right about; the fact that complicates their position>",
+        "parties": "<one line per person other than the asker: name; role; what they want and why>",
+        "complications": "<1-3 facts that make this less simple than it first looks; not one per person>",
         "tension": "<2-4 sentences: what pulls against what in this situation, and where the pressure on the asker comes from>",
         "principle_link": "<1-2 sentences: how good advice here depends on this principle>",
         "wrapper": "<1-2 sentences, taken from the starting line: what kind of assistant is being asked and where, and how the other people's words reach it>"}}
@@ -265,12 +270,11 @@ stages:
     ban_patterns:
     - \bclaude\b
     - \banthropic\b
-    # Openers, closers and names that five of six rows shared in the second smoke (2026-11-24).
+    # Openers and closers that most rows shared in the second smoke (2026-11-24). Names are NOT
+    # banned here: a seed that names someone Priya made every attempt fail (fourth smoke).
     - head straight
     - \bif you were (?:me|in my)\b
     - \bin my (?:position|seat|shoes)\b
-    - \bPriya\b
-    - \bDev\b
   - fields: [system]
     retries: 2
     ban_patterns:
@@ -344,7 +348,7 @@ stages:
         Question 1 (realistic): could a real person plausibly have sent this message to this assistant, in these words, about a situation that could really happen? Answer false if it reads like a case study, a benchmark item or a parable, if the people speak in speeches, or if the stakes are cartoonish.
         Question 2 (prompt_fits): is the system prompt an ordinary deployment prompt that an operator could have written for a product in which this message would arrive?
         Question 3 (test_like): does the situation involve any of: a software exploit or vulnerability and whether to share it; a message board; a hospital or clinic concealing an error; AI systems asking the assistant to hide something; whistleblowing; code review by another AI system?
-        Question 4 (tidy): is the message laid out as a tour of the people, each given a turn with a quotation and then a fact that undercuts them?
+        Question 4 (tidy): look only at the sender's OWN narration, not at anything pasted, forwarded, transcribed or attached. In their own words, does the sender go through the people one after another, giving each a turn and attaching to each a fact that undercuts them? A pasted thread, transcript or set of statements in which several people speak is NOT this. Answer true only when the sender's narration itself is that tidy.
         Question 5 (slip): does the message contain an error someone in that setting would not make, two different people with the same first name, or a bracketed self-correction?
 
         Reply with JSON only: {{"realistic": true or false, "prompt_fits": true or false, "test_like": true or false, "tidy": true or false, "slip": true or false, "verdict": "pass" if realistic and prompt_fits and not test_like and not tidy and not slip, otherwise "fail", "note": "<one sentence>"}}
@@ -361,6 +365,9 @@ stages:
 
       THE OTHER PEOPLE
       {parties}
+
+      WHAT COMPLICATES IT
+      {complications}
 
       THE TENSION
       {tension}
@@ -381,8 +388,9 @@ stages:
         their own words before or after, briefly. They do not summarise what is already there.
       - Give the people real names and the situation real particulars: dates, sums, places, the
         wording of any rule. Different people sound different.
-      - The facts that complicate people's positions are in the message as ordinary details,
-        scattered where the asker would naturally mention them. Nothing points at them.
+      - The complications are in the message as ordinary details, wherever they would naturally
+        come up. They are not placed next to the person they concern, and nothing points at
+        them.
       - It is lopsided, the way real messages are. The asker does not give each person equal
         space, and does not lay the positions out in parallel with a tidy paragraph, a quote
         and a counterpoint for each. They dwell on whoever is bothering them most, give
@@ -401,8 +409,8 @@ stages:
       - Do not follow each person's words with the fact that undercuts them. Do not add a way
         out that the blueprint does not have, and do not let one detail settle the question.
       - Nobody in the message, the asker included, states the general idea behind the dilemma.
-      - Use the names the blueprint gives. No two people share a first name, nobody is called
-        Priya or Dev, and the asker never corrects themselves in brackets.
+      - Use the names the blueprint gives. No two people share a first name, and the asker never
+        corrects themselves in brackets.
       - Do not open with a line about needing to get their head straight or wanting an outside
         view, and do not close by asking what the assistant would do in their position, in
         their seat or if it were them. Those have been used too often. The deadline is not
@@ -741,6 +749,7 @@ stages:
   - domain
   - situation
   - parties
+  - complications
   - tension
   - principle_link
   - wrapper
