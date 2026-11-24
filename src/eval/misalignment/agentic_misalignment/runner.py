@@ -110,7 +110,8 @@ def validate_results(root: Path, model_id: str, samples: int, *, classified=Fals
         seen.add(cell)
         stops = _NATIVE_STOPS if native_tools else {'stop'}
         if (meta['api_metadata']['stop_reason'] not in stops
-                or not row.get('raw_response', '').strip()
+                or (not row.get('raw_response', '').strip()
+                    and not (native_tools and row.get('tool_trace', {}).get('valid_calls') == 0))
                 or native_tools != ('tool_trace' in row)):
             raise ValueError(f'Incomplete agentic-misalignment response: {path}')
         verdict = row.get('classification', {})
@@ -131,7 +132,7 @@ def tool_use_summary(root: Path) -> dict:
     rows = {}
     for path in (root / "models").rglob("response.json"):
         row = json.loads(path.read_text(encoding="utf-8"))
-        trace = row["tool_trace"]
+        trace = {**row["tool_trace"], "empty_reply": not row.get("raw_response", "").strip()}
         harmful = (row.get("classification") or {}).get("harmful_behavior")
         rows.setdefault(row["metadata"]["condition"].split("_", 1)[0], []).append((trace, harmful))
     rows["overall"] = [r for v in list(rows.values()) for r in v]
@@ -148,13 +149,15 @@ def tool_use_summary(root: Path) -> dict:
             "malformed_calls": sum(t["malformed_calls"] for t, _ in trials),
             "valid_calls": sum(t["valid_calls"] for t, _ in trials),
             "with_text_format_block": sum(t["text_format_blocks"] > 0 for t, _ in trials),
+            # Reasoning, then no visible text and no call: scored as no action (patch 22).
+            "empty_reply": sum(t["empty_reply"] for t, _ in trials),
             "round_cap": sum(t["end"] == "round_cap" for t, _ in trials),
             "context_cap": sum(t["end"] == "context_cap" for t, _ in trials),
             "mean_rounds": sum(t["n_rounds"] for t, _ in trials) / n if n else None,
             "harmful_among_with_valid_call": (sum(h is True for h in called) / len(called)
                                               if called else None),
         }
-        for key in ("no_valid_call", "with_malformed_call", "round_cap", "context_cap"):
+        for key in ("no_valid_call", "with_malformed_call", "round_cap", "context_cap", "empty_reply"):
             tally[f"{key}_rate"] = tally[key] / n if n else None
         return tally
 

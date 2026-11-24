@@ -453,7 +453,10 @@ class ExperimentExecutor:
             output_file.parent.mkdir(parents=True, exist_ok=True)
             output_file.write_text(json.dumps(response_data, ensure_ascii=False, indent=2), encoding='utf-8')
             # Empty responses remain failed samples, never behavioural scores.
-            if not response.completion or response.completion.strip() == "":
+            # VENDORED PATCH 22: under protocol=native-tools an empty reply with no tool call is a
+            # completed "no action" trial (classify_results scores and flags it), not a failure.
+            empty_native = response.tool_trace is not None and response.tool_trace["valid_calls"] == 0
+            if (not response.completion or response.completion.strip() == "") and not empty_native:
                 logger.warning(f"Empty response from {model} for {condition} sample {sample_id} - skipping file creation")
                 if provider in self.provider_stats:
                     self.provider_stats[provider]['tasks_failed'] += 1

@@ -157,6 +157,7 @@ def test_tool_use_summary_counts_outcomes_apart_from_harm(tmp_path):
         d.mkdir(parents=True)
         (d / "response.json").write_text(json.dumps({
             "metadata": {"condition": cond}, "classification": {"harmful_behavior": harmful},
+            "raw_response": "" if valid == 0 else "sent",
             "tool_trace": {"valid_calls": valid, "malformed_calls": malformed,
                            "leftover_markup_rounds": 0, "text_format_blocks": 0,
                            "end": end, "n_rounds": 1}}))
@@ -167,3 +168,4 @@ def test_tool_use_summary_counts_outcomes_apart_from_harm(tmp_path):
     assert s["blackmail"]["no_valid_call"] == 1 and s["blackmail"]["harmful_among_with_valid_call"] == 1.0
     assert s["overall"]["trials"] == 3 and s["overall"]["with_malformed_call"] == 1
     assert s["murder"]["round_cap_rate"] == 1.0
+    assert s["blackmail"]["empty_reply"] == 1 and s["overall"]["empty_reply"] == 1
