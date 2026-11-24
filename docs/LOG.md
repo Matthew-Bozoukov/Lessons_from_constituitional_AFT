@@ -1,3 +1,68 @@
+## 2026-11-24: GPT answering Claude's difficult-advice scenarios: ODCV 27.1, the all-GPT level (28.3); the gap is in the answers, not the scenarios
+
+Hypothesis: the all-GPT DA arm (da-gpt-15, ODCV 28.3) differs from Claude DA (da-15, 13.3) in two halves, who wrote the scenarios (system prompt + user message) and who wrote the answers (reasoning + reply). The layout, voice and principled-reason rewrites (11-20, 11-23) only touched the answers and never varied the scenarios. Swapping the responder on Claude's scenarios separates the two halves: near 13 means the scenarios carry the gap, near 28 means the answers do.
+
+Method: `configs/data/synth/da-gptresp.yaml` (code 1c18352a) loads the 650 Claude scenarios da-15 trained on (`stage_prose_source.py --mix 2026-10-05-da-15-mix@f990959a`, all 650 matched in `2026-10-02-da-synth`). The model sees only the system prompt, the user message and the row's trait. gpt-5.6-luna drafts the reasoning and reply, and gpt-5.6-terra revises them, using da-gpt.yaml's draft/revise/export stages and prompts verbatim, as the all-GPT arm answered its own scenarios. This gives 641 rows ($8.53; 3 lost at draft, 1 of them an OpenAI policy refusal, and 6 at revise). GPT's answers are shorter, so 641 rows are only 12.9% of the mix's supervised tokens. 215 more Claude scenarios from the same corpus were therefore answered the same way ($2.68). The result is `2026-11-24-da-gptresp-extended-synth` @ 964ae3e8, with 856 rows.
+- GPT's style survives on Claude's scenarios: 95.3% of replies use markdown, 48.4% draft a message for the user to send, and 0.2% end with a question. These are the all-GPT corpus's levels, not Claude's (drafted messages 0.2%, ending question 29.2%).
+- Mix `2026-11-24-da-gptresp-15-mix` @ 27d532f2 (`configs/data/mixture/da-gptresp.yaml`, da-gpt.yaml with the source swapped) has 773 DA rows, 580 of them da-15's own scenarios.
+- Adapter `2026-11-24-qwen36-0-da-gptresp-15` @ 14f99131: 1x H200, seed 0, base 6a9e13bd. The mask gate supervised 76.9% of tokens.
+- Evaluation: ODCV lite only, 3 passes, 1x H100, with `output_root=C:/o_nika`. MASK was not run.
+
+Result: `2026-11-24-odcv-qwen36-0-da-gptresp-15` scored **ODCV 27.1 [19.1, 36.6]**.
+- By pass 31.2 / 25.0 / 25.0; mandated 26.7, incentivised 27.5; severity 0.97.
+- 240 rollouts clean, submit rate 97.1%, task progress 4.97/5.
+
+| arm | scenarios by | answers by | ODCV MR |
+|---|---|---|---|
+| da-15 (10-05) | Claude | Claude | 13.3 |
+| **da-gptresp-15** | **Claude** | **GPT** | **27.1** |
+| da-gpt-15 (11-04) | GPT | GPT | 28.3 |
+
+Reading: changing who wrote the scenarios moves ODCV by about 1 point (28.3 vs 27.1). Changing who answered the same scenarios moves it by about 14 (13.3 vs 27.1). On one seed, the GPT-to-Claude gap lives in the answers. Layout, voice and stated principles together account for at most about a quarter of it (11-20, 11-23), so the remainder is in something else the answers do. The candidates are the decisions themselves (what is declined, what is done), drafting deliverables for the user versus asking them a question, and honesty vocabulary. None of these has been measured on matched scenarios.
+
+Next: this corpus pairs GPT and Claude answers on 580+ identical scenarios, which allows a row-by-row comparison of the decisions. Judge whether the two answers take the same action (decline, comply, partial, escalate) and on which traits they diverge, before designing another rewrite arm.
+
+## 2026-11-23: GPT difficult advice in a first-person voice (ODCV 28.3) and with principled reasons added (ODCV 25.8): neither closes the gap to Claude DA (13.3)
+
+Hypothesis: after the prose arm (11-20) closed about a quarter of the GPT-to-Claude DA gap, two substance differences remained. Gemini 3.8 Flash judges (`scratch/gpt_vs_claude_da/judge_substance.py --standalone`, `lexicon.py`) found them. First, GPT's reasoning reads like an outside analyst's memo about the case (planner voice in 90.4% of traces, Claude 35.5%). Second, it justifies decisions by consequences and rarely by the principle at stake (explicit trait use 17.3% vs 55.2%; values grounding 9.2% vs 32.0%; consequences only 37.3% vs 19.8%). Claude never cites a document for its principles: 0% of its traces say "constitution" and 0.3% say "trait"; it states the principle itself as the argument. Trait use and values grounding move together, so they were tested as one arm. If either difference carries the gap, fixing it in GPT's rows alone should move ODCV towards 13.3. No numeric threshold was pre-registered.
+
+Method: two corpora, both rewrites by gpt-5.6-terra of the 722 rows of `2026-11-04-da-gpt-synth` @ 026ecb1e, made with OpenRouter batch at 50% price. System prompt and user message are byte-identical to the source. The decision, every practical reason, the facts, the reply markdown and any drafted wording are held.
+- **Voice**: `configs/data/synth/da-gpt-voice.yaml` rewrites the analyst memo into the assistant deciding as itself. The fidelity audit flagged 39 rows, and 6 were provider refusals; 27 passed a second rewrite and 18 were dropped (`redo_rows.py`). `2026-11-23-da-gpt-voice-synth` @ 9281b14d has 704 rows.
+- **Principled**: `configs/data/synth/da-gpt-principled.yaml` ADDS, where the decision is made, what is wrong in principle with the rejected course. The reason is this row's own principle, stated in the model's own words, never attributed to a document, and placed alongside every practical reason. `2026-11-23-da-gpt-principled-synth` @ 8052c42c has 717 rows after the same audit-and-redo repair. Its OpenRouter cost, smokes and audits included, was about $18.5.
+
+Judge profile of the corpora (standalone rubric, % of traces unless noted):
+
+| measure | Claude DA | GPT DA | voice (704) | principled (717) |
+|---|---|---|---|---|
+| explicit trait use | 55.2 | 17.3 | 21.3 | 48.7 |
+| values grounding | 32.0 | 9.2 | 16.2 | 21.9 |
+| consequences only | 19.8 | 37.3 | 29.7 | 12.6 |
+| values score (1-5) | 3.30 | 2.76 | 2.99 | 3.19 |
+| reply cites values | 28.5 | 12.0 | 17.2 | 23.7 |
+| planner voice | 35.5 | 90.4 | 20.0 | 89.0 |
+
+So each arm moved its own target and largely left the other one alone: voice cut planner voice to 20.0% (principled 89.0%), and principled raised trait use to 48.7% (voice 21.3%).
+
+Mixes `2026-11-23-da-gpt-voice-15-mix` @ 9f5c33b2 and `2026-11-23-da-gpt-principled-15-mix` @ 8687478b were built from `configs/data/mixture/da-gpt-{voice,principled}.yaml`, which is da-gpt.yaml with the source swapped. The adapters are `2026-11-23-qwen36-0-da-gpt-voice-15` @ 0fca024b (code 54405cab) and `2026-11-23-qwen36-0-da-gpt-principled-15` @ 9e0d65e3 (code 59000a29). Both trained on 1x H200, seed 0, base 6a9e13bd, as the comparison arms were. Only ODCV lite was run (3 passes, 1x H100, driven from the Windows laptop's docker); MASK was not run. RunPod spend on 2026-11-23 was about $56 across two trainings and five eval pods, three of which failed (below).
+
+Result (HF repos under dougalldeepmind/):
+
+| arm | ODCV MR, 3 passes [95%] | by pass | mandated / incentivised |
+|---|---|---|---|
+| control | 45.0 | | |
+| da-gpt-15 (11-04) | 28.3 [23.8, 33.3] | 28.7 / 26.2 / 30.0 | 29.2 / 27.5 |
+| da-gpt-prose-15 (11-20) | 23.8 [18.7, 29.6] | 21.2 / 25.0 / 25.0 | 25.8 / 21.7 |
+| **da-gpt-voice-15** | **28.3 [19.8, 38.5]** | 25.0 / 27.5 / 32.5 | 30.0 / 26.7 |
+| **da-gpt-principled-15** | **25.8 [21.3, 30.9]** | 23.8 / 27.5 / 26.2 | 27.5 / 24.2 |
+| da-15 (Claude, 10-05) | 13.3 | | |
+
+- `2026-11-23-odcv-qwen36-0-da-gpt-voice-15`: 240 rollouts clean, submit rate 97.5%, task progress 4.95/5, severity 1.04.
+- `2026-11-23-odcv-qwen36-0-da-gpt-principled-15`: 240 rollouts clean, submit rate 97.5%, task progress 4.95/5, severity 0.96.
+- Reading: voice does nothing (28.3 = 28.3). Principled is 2.5 points under GPT DA, with every pass at or below GPT's pass range, but inside its interval and not better than prose. It is one seed, and da-15's own seeds span about 5 points on MASK. Neither difference, at least as these rewrites fix it, carries the 15-point gap. Principled moved its judge measures most of the way to Claude's levels, yet ODCV moved by about a sixth of the gap. So the principle-as-reason profile is at most a small part of what Claude DA teaches.
+- Infra failures on the principled eval. (1) The first pod's SSH reset while vLLM was starting. (2) The retry landed on the same host (87.120.211.205) and was still installing vLLM after an hour. (3) The third run crashed with WinError 267 before any rollout, because the adapter's longer name pushed the scenario workspace path past Windows' 260-character cwd limit (docs/GOTCHAS.md 2026-11-05). It ran with `output_root=C:/o_nika`.
+
+Next: the remaining GPT-vs-Claude differences are not in layout, voice or stated principles. Candidates: the honesty vocabulary (2x rarer in GPT), rules-vs-values framing, or what the scenarios' decisions actually are. Run MASK on both arms if the principled 2.5 points needs a second eval, and add a second seed before reading it as an effect.
+
 ## 2026-11-20: GPT difficult advice with the reply markdown removed: MASK 68.6, ODCV 23.8, about a quarter of the GPT-to-Claude gap on each
 
 Hypothesis: the all-GPT DA arm (`2026-11-04-qwen36-0-da-gpt-15`: MASK 63.1, ODCV 28.3) trains worse than the Claude DA arm (`2026-10-05-qwen36-0-da-15`: MASK 83.2, ODCV 13.3) partly because GPT's replies are formatted documents (structural markdown in 85% of GPT replies vs 26% of Claude's; none in either corpus's reasoning). If the layout carries the gap, rewriting GPT's replies into prose with nothing else changed should close most of it. Pre-registered: MASK >= ~73 (half the gap) = formatting is a major cause, then run the converse (add markdown to Claude DA); within ~3 of 63.1 = not formatting; in between = partial.
