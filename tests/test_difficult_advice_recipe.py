@@ -173,7 +173,6 @@ def test_no_filter_follows_the_scenario_check_and_it_reports_on_every_record():
 # `difficult_advice_low_stakes.yaml` show the correct shape. Delete an entry here the
 # moment its config grows a `smoke.source`.
 _SMOKE_DEBT = {
-    "da-gptresp.yaml",
     "da-grokresp.yaml",
 }
 

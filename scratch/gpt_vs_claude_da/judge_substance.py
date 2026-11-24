@@ -120,7 +120,20 @@ def main() -> None:
     args = ap.parse_args()
     load_dotenv()
     rows = []
-    if args.run_dir:
+    fresh = bool(args.run_dir) and not any(Path(args.run_dir).glob("stage_*_rewrite_*.jsonl"))
+    if fresh:
+        # A run that WRITES answers rather than rewriting them (da-gptresp): its revise stage's reasoning/response,
+        # judged standalone only -- there is no source answer to audit against.
+        assert args.standalone, "a run with no rewrite stage has nothing to audit; pass --standalone"
+        snap = next(p for p in Path(args.run_dir).glob("stage_*_revise_responses.jsonl")
+                    if not p.name.endswith(".partial.jsonl"))
+        kind = Path(args.run_dir).parent.name.removeprefix("synth_")
+        for line in open(snap, encoding="utf-8"):
+            s = json.loads(line)
+            rows.append({"arm": kind, "row": s["scenario_id"], "trait_id": s["trait_id"],
+                         "trait_text": s["trait_text"], "user": s["user"],
+                         "reasoning": s["reasoning"], "reply": s["response"]})
+    elif args.run_dir:
         snap, kind = rewrite_snapshot(Path(args.run_dir))
         for line in open(snap, encoding="utf-8"):
             s = json.loads(line)

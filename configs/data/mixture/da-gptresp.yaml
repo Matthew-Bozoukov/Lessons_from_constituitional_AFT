@@ -1,0 +1,42 @@
+# ABOUTME: The GPT responder-swap difficult-advice arm: the plain base blend scaled around the da-gptresp corpus
+# ABOUTME: (configs/data/synth/da-gptresp.yaml). Publishes as `<date>-da-gptresp-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-gptresp.yaml [synthetic_pct=15]
+#
+# 2026-11-24. configs/data/mixture/da.yaml / da-gpt.yaml with one thing changed: the synthetic source (key
+# `da-gptresp`, the 2026-11-24-da-gptresp-extended-synth corpus). That corpus is Claude-written scenarios from
+# 2026-10-02-da-synth -- the 650 da-15 trained on (2026-10-05-da-15-mix @ f990959a; 641 survived) plus 215 more from the
+# same corpus, needed because GPT's answers are shorter -- with every reasoning trace and reply written afresh by
+# gpt-5.6-luna and revised by gpt-5.6-terra, exactly as 2026-11-04-da-gpt-synth's all-GPT arm answered its own
+# scenarios. An adapter on this mix differs from da-15 in who answered (and partly which of Claude's scenarios), and
+# from da-gpt-15 only in who wrote the scenarios. Same base at the same pin, same share unit, same trait balancing,
+# same seed.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-gptresp:
+    # The EXTENDED corpus: 856 rows = the first run's 641 (2026-11-24-da-gptresp-synth @ 343437b0, da-15's scenarios)
+    # + 215 more Claude scenarios from the same corpus. 641 rows alone hold 630,902 supervised tokens, 12.9% of the mix
+    # (configs/data/synth/da-gptresp.yaml, EXTENSION).
+    dataset: "${oc.env:HF_ORG}/2026-11-24-da-gptresp-extended-synth"
+    revision: "964ae3e87f4d0aaf61cd59835fcb280c69f13cd8"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_gptresp"
+
+hf:
+  experiment: "GPT responder-swap difficult-advice arm: the plain base blend (2026-10-05-plain-mix) scaled around the 650 Claude-written difficult-advice scenarios da-15 trained on, answered afresh by gpt-5.6-luna and revised by gpt-5.6-terra as the all-GPT arm answered its own, splitting the GPT-vs-Claude difficult-advice gap into scenarios versus answers"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false
