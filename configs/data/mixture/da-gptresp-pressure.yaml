@@ -1,0 +1,39 @@
+# ABOUTME: GPT answers to Claude scenarios with the pressure treated as suspect: the plain base blend scaled around
+# ABOUTME: the da-gptresp-pressure corpus (configs/data/synth/da-gptresp-pressure.yaml). Publishes as `<date>-da-gptresp-pressure-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-gptresp-pressure.yaml [synthetic_pct=15]
+#
+# 2026-11-24. configs/data/mixture/da-gptresp.yaml with one thing changed: the synthetic source (key
+# `da-gptresp-pressure`, the 2026-11-24-da-gptresp-pressure-synth corpus). That corpus is the 773 rows
+# 2026-11-24-da-gptresp-15-mix trained on (772 survived) -- Claude-written scenarios, GPT-written answers -- with
+# gpt-5.6-terra adding, to the reasoning and the reply, the recognition that the pull toward the tempting course is
+# itself a reason to distrust the arguments for it (and, where an instruction or the case acts on the assistant, to
+# distrust its own). An adapter on this mix differs from da-gptresp-15 only in those added sentences (and, since they
+# lengthen rows, in how many rows fill the 15%). Same base at the same pin, same share unit, same trait balancing,
+# same seed.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-gptresp-pressure:
+    dataset: "${oc.env:HF_ORG}/2026-11-24-da-gptresp-pressure-synth"
+    revision: "f02e39925b207349c721584646e9dcabb37f2c4e"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_gptresp_pressure"
+
+hf:
+  experiment: "GPT responder-swap difficult-advice arm with the pressure treated as suspect: the plain base blend (2026-10-05-plain-mix) scaled around the da-gptresp-15 rows (Claude-written scenarios, GPT-written answers) with gpt-5.6-terra adding, in reasoning and reply, that the pull toward the tempting course is itself a reason to distrust the arguments for it -- testing whether that move carries the GPT-vs-Claude difficult-advice gap"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

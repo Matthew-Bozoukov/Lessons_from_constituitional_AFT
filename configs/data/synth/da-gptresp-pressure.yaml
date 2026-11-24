@@ -1,0 +1,204 @@
+# ABOUTME: GPT answers to Claude's difficult-advice scenarios, rewritten by gpt-5.6-terra so the reasoning treats the pull
+# ABOUTME: toward the shortcut as a reason to distrust itself. Run: uv run synth run --config configs/data/synth/da-gptresp-pressure.yaml [--smoke] [--batch]
+#   Prereq: uv run python scratch/gpt_vs_claude_da/stage_prose_source.py --repo dougalldeepmind/2026-11-24-da-gptresp-extended-synth
+#             --revision 964ae3e87f4d0aaf61cd59835fcb280c69f13cd8 --full_dir data/da_gptresp_pressure_source
+#             --smoke_dir data/da_gptresp_pressure_smoke
+#             --mix dougalldeepmind/2026-11-24-da-gptresp-15-mix@27d532f282b3113cc54d9013f1a5f3e9759a4e80 --mix_source da-gptresp
+#   Audit:  uv run python scratch/gpt_vs_claude_da/judge_pressure.py (pressure_reasoning / judgment_flagged / self_application)
+#
+# WHAT THIS ARM TESTS. Measured 2026-11-24 (scratch/gpt_vs_claude_da/judge_pressure.py, all 856 matched pairs, judge
+# blind to the writer): when Claude and GPT answer the SAME scenario, Claude's reasoning treats the pressure in it --
+# a deadline, money, a stake, an instruction, confidence, a convenient conclusion -- as a reason to distrust the
+# reasoning it is producing in 41.8% of answers, GPT's in 14.7% (273 pairs Claude only, 41 GPT only, in every trait);
+# GPT instead weighs the pressure as one more factor that loses on the merits. Claude also turns the check on its own
+# judgment (10.0% vs 1.6%) and its own position or nature (16.7% vs 5.8%). This arm adds that move, and only that
+# move, to the exact GPT rows da-gptresp-15 trained on (ODCV 27.1; Claude da-15 13.3).
+#
+# WHAT IS HELD. System prompt and user message byte for byte; the decision and every reason, fact, step and
+# recommendation; the point of view (an analyst's memo stays a memo); reply markdown and drafted wording. NOT added:
+# principled reasons (da-gpt-principled), first-person voice (da-gpt-voice), recoverable-vs-irreversible weighing,
+# closing questions -- each is a different measured difference, kept out so this arm tests one thing.
+
+method: ours
+pipeline: ablation
+
+card:
+  experiment: >-
+    Difficult-advice SFT corpus, GPT answers to Claude-written scenarios with the pressure treated as suspect: the 773
+    rows of dougalldeepmind/2026-11-24-da-gptresp-extended-synth that 2026-11-24-da-gptresp-15-mix trained on, with
+    system prompts and user messages frozen and every reasoning trace and reply rewritten by gpt-5.6-terra so that,
+    where the decision is made, the pull toward the convenient course (deadline, money, stake, instruction,
+    confidence, convenience) is named and treated as a reason to scrutinise the reasoning, not only outweighed --
+    including, where it fits, the assistant's own pull. Decision, advice, facts, point of view, reply markdown and
+    drafted wording unchanged. Tests pressure-as-suspect in the GPT-vs-Claude da gap.
+  models: >-
+    rewrite: openai/gpt-5.6-terra (reasoning off, temperature 1.0), the model that wrote the source's final pass.
+    Via OpenRouter.
+  provenance: "uv run python scratch/gpt_vs_claude_da/stage_prose_source.py --repo dougalldeepmind/2026-11-24-da-gptresp-extended-synth --revision 964ae3e87f4d0aaf61cd59835fcb280c69f13cd8 --full_dir data/da_gptresp_pressure_source --smoke_dir data/da_gptresp_pressure_smoke --mix dougalldeepmind/2026-11-24-da-gptresp-15-mix@27d532f282b3113cc54d9013f1a5f3e9759a4e80 --mix_source da-gptresp && uv run synth run --config configs/data/synth/da-gptresp-pressure.yaml --batch"
+  notes: >-
+    The rewriter sees each row's system prompt and user message (to find the pressure, including any in the operator
+    instructions); the rewritten fields are pressure_reasoning and pressure_response, and only they are exported.
+    Rows that fail every attempt are dropped and counted in manifest.json.
+
+ablate: []
+
+smoke:
+  source:
+    local_dir: "data/da_gptresp_pressure_smoke"
+    snapshot: "stage_6_revise_responses.jsonl"
+  max_fail_pct: 40
+
+seed: 0
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+n_traits: 9
+chunking: principle
+
+source:
+  local_dir: "data/da_gptresp_pressure_source"
+  snapshot: "stage_6_revise_responses.jsonl"
+
+total_scenarios: 773
+
+output_dir: "output/synth_da_gptresp_pressure"
+hf_private: false
+workers: 16
+budget_usd: 40.0
+max_fail_pct: 5.0
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+models:
+  rewrite:
+    model: "openai/gpt-5.6-terra"
+    reasoning: {enabled: false}
+    temperature: 1.0
+    max_tokens: 16384
+    assumed_tokens: {in: 4200, out: 1900}
+
+stages:
+- name: chunk_constitution
+  kind: segment
+
+- name: load_source
+  kind: load_source_run
+
+- name: rewrite_pressure
+  kind: llm_tagged
+  model: rewrite
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  save:
+    pressure_reasoning: reasoning
+    pressure_response: response
+  ablate_with:
+    pressure_reasoning: reasoning
+    pressure_response: response
+  prompts:
+    system: |-
+      You add one kind of thought to an AI assistant's private reasoning and to its reply, and change nothing else.
+      The decision, and every consideration, fact, number, caveat, option, step and recommendation, stays in the
+      original words.
+    user: |-
+      Below are the instructions an AI assistant was given, the message a person sent it, the private reasoning the
+      assistant wrote before answering, and the reply it then gave.
+
+      <instructions>
+      {system}
+      </instructions>
+
+      <message>
+      {user}
+      </message>
+
+      <reasoning>
+      {reasoning}
+      </reasoning>
+
+      <reply>
+      {response}
+      </reply>
+
+      Every case like this has a PULL toward the convenient course: a deadline, money, a boss or client, an
+      instruction, the person's own stake or hope for a particular answer, someone's confidence, a channel that has
+      gone quiet, or simply how much easier one conclusion would be. The reasoning above treats that pull, if at all,
+      as one more factor that loses on the merits. Add the other way of handling it: noticing the pull and treating
+      it as a reason to distrust the reasoning it produces.
+
+      THE REASONING
+
+      - Work out what pull is acting in THIS case. Where the reasoning weighs the tempting course, weave in the
+        recognition that this pull is bending the reasoning itself: it is what makes the arguments for the tempting
+        course look stronger than they are, so its presence calls for more suspicion of those arguments, not just a
+        counterweight to them. Then let the existing decision stand on the rest of the reasoning.
+      - Say it in this case's own terms -- its people, its numbers, its deadline -- and in a way that fits the
+        surrounding sentences. Do not add a separate paragraph announcing the pull, do not lecture about pressure in
+        general, and do not use these phrases or close paraphrases of them: "the strongest pull", "warning sign",
+        "easier to believe", "harder to check", "harder to scrutinize", "less trustworthy, not more", "a reason to
+        trust it more", "paper over".
+      - Then check whether the same kind of pull acts on the ASSISTANT. It does in two situations: (a) the
+        instructions above lean toward the tempting course (e.g. tell it to favour schedule, deference, engagement,
+        reassurance or the operator's interests), or (b) the case turns on the assistant itself -- what it is, what
+        it can offer, how it would behave. In either situation the reasoning MUST also turn the suspicion on itself,
+        in a sentence: that lean is pulling on its own reasoning toward the tempting course, so its own case for that
+        course gets the same extra scrutiny. In any other case add none: a general wish to be helpful or decisive
+        does not count. This stays in the reasoning; the reply does not discuss the assistant's instructions.
+      - Keep the point of view: if the reasoning is written about the case, keep it written about the case.
+
+      THE REPLY
+
+      - Where the reply addresses the tempting course, add a sentence or two that hands the person the same check:
+        the pull they are under is part of why the tempting course looks reasonable to them right now. Same rules
+        on wording as above. If the reply already does this, leave it.
+      - Keep the markdown exactly as it is, and keep wording the person could say or send (a drafted message,
+        email, note or script) word for word.
+
+      WHAT MUST NOT CHANGE, IN EITHER
+
+      - Do not change the decision, the advice, or how strongly anything is claimed.
+      - Do not drop anything, and add nothing else: no new facts, options, steps, caveats, examples, principles,
+        greeting, summary or closing question.
+      - A few sentences in each, where the decision is made. Not in every paragraph.
+
+      Return the rewritten reasoning inside <reasoning></reasoning> tags and the rewritten reply inside
+      <response></response> tags, and nothing else.
+  lint:
+  # The check ADDS a few sentences; below ~0.95 something was dropped, above ~1.5 it was padded.
+  - fields: [reasoning]
+    ratio_of: reasoning
+    min_word_ratio: 0.95
+    max_word_ratio: 1.5
+    retries: 2
+  - fields: [response]
+    ratio_of: response
+    min_word_ratio: 0.95
+    max_word_ratio: 1.4
+    retries: 2
+
+- name: export_sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{pressure_response}'
+    reasoning_content: '{pressure_reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - domain
+  - shortcut
+  - situation
+  - ai
+  - sector
+  - chunk_ids
+  - granularity
+  - grouping_strategy
+  - n_chunks
