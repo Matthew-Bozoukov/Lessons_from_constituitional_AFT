@@ -14,9 +14,10 @@
 #      position, what they are right about, the fact that complicates them), why the advice is hard,
 #      and how it turns on the principle. The stages below only render it.
 #   2. Who is adversarial, whether any party is an AI system, how the parties' words reach the
-#      assistant, the deployment and whether the asker's own lean is right are NOT dealt. The seed
+#      assistant and the deployment are NOT dealt, and neither is the sector. The seed
 #      writer chooses whatever fits, and stamps a label for each so their spread can be counted
-#      (scratch/ma_da/seed_report.py). Only the sector is dealt, as in da.yaml.
+#      (scratch/ma_da/seed_report.py). NOTHING is prescribed to the seed writer (decided 2026-11-24);
+#      the embedding gate and the label counts are what show whether the set has collapsed.
 #   3. Every row has a system prompt, shaped by the seed's `deployment` label.
 #   4. Judged gates (Gemini, a different family from the Claude writers) sit on the two stages that
 #      write trained text: `write_inputs` (is it advice, is it hard, is it realistic, is it clear of
@@ -117,100 +118,6 @@ stages:
 - name: write_seeds
   kind: scenarios
   model: seeds
-  rotate:
-    sector:
-      per_trait: true
-      continue_from_prior: true
-      weights:
-        management: 1
-        care_work: 1
-        parenting_family: 1
-        engineering: 1
-        libraries_museums: 1
-        construction: 1
-        nonprofits: 1
-        personal_finances: 1
-        it_cybersecurity: 1
-        energy_utilities: 1
-        school_teaching: 1
-        volunteering_community: 1
-        public_health: 1
-        personal_services: 1
-        software_development: 1
-        social_work: 1
-        mental_health: 1
-        repair_cleaning: 1
-        sport_fitness: 1
-        finance_accounting: 1
-        natural_science: 1
-        police_fire: 1
-        hobbies_creative: 1
-        journalism_publishing: 1
-        manufacturing: 1
-        hospitality_food: 1
-        physical_health: 1
-        architecture_planning: 1
-        higher_education: 1
-        farming: 1
-        government: 1
-        student: 1
-        data_science: 1
-        military: 1
-        law: 1
-        friendships_romance: 1
-        medicine_nursing: 1
-        retail_sales: 1
-        business_hr: 1
-        social_science: 1
-        housing_neighbours: 1
-        transport: 1
-        arts_entertainment: 1
-      fixed: {t6: any}
-      text:
-        any: ""
-        management: "\n- These situations are set in management and executive leadership."
-        care_work: "\n- These situations are set in elder, child and disability care."
-        parenting_family: "\n- These situations are set in private life: parenting and family."
-        engineering: "\n- These situations are set in engineering."
-        libraries_museums: "\n- These situations are set in libraries, museums and archives."
-        construction: "\n- These situations are set in construction."
-        nonprofits: "\n- These situations are set in nonprofits and charities."
-        personal_finances: "\n- These situations are set in private life: personal finances."
-        it_cybersecurity: "\n- These situations are set in IT and cybersecurity."
-        energy_utilities: "\n- These situations are set in energy, mining and utilities."
-        school_teaching: "\n- These situations are set in school teaching."
-        volunteering_community: "\n- These situations are set in private life: volunteering and community life."
-        public_health: "\n- These situations are set in public health."
-        personal_services: "\n- These situations are set in personal services."
-        software_development: "\n- These situations are set in software development."
-        social_work: "\n- These situations are set in social work and counselling."
-        mental_health: "\n- These situations are set in private life: mental health."
-        repair_cleaning: "\n- These situations are set in repair, maintenance and cleaning."
-        sport_fitness: "\n- These situations are set in sport and fitness."
-        finance_accounting: "\n- These situations are set in finance and accounting."
-        natural_science: "\n- These situations are set in natural science research."
-        police_fire: "\n- These situations are set in police, fire and emergency services."
-        hobbies_creative: "\n- These situations are set in private life: hobbies and creative projects."
-        journalism_publishing: "\n- These situations are set in journalism and publishing."
-        manufacturing: "\n- These situations are set in manufacturing and production."
-        hospitality_food: "\n- These situations are set in hospitality and food service."
-        physical_health: "\n- These situations are set in private life: physical health."
-        architecture_planning: "\n- These situations are set in architecture and urban planning."
-        higher_education: "\n- These situations are set in higher education."
-        farming: "\n- These situations are set in farming, fishing and forestry."
-        government: "\n- These situations are set in government and public administration."
-        student: "\n- These situations are set in private life: studying as a student."
-        data_science: "\n- These situations are set in data science and analytics."
-        military: "\n- These situations are set in the military."
-        law: "\n- These situations are set in law and the courts."
-        friendships_romance: "\n- These situations are set in private life: friendships and romantic relationships."
-        medicine_nursing: "\n- These situations are set in medicine and nursing."
-        retail_sales: "\n- These situations are set in retail and sales."
-        business_hr: "\n- These situations are set in business operations and human resources."
-        social_science: "\n- These situations are set in social science research."
-        housing_neighbours: "\n- These situations are set in private life: housing and neighbours."
-        transport: "\n- These situations are set in transport and logistics."
-        arts_entertainment: "\n- These situations are set in arts, design and entertainment."
   # The embedding gate from da.yaml, unchanged: the later of two near-identical blueprints is
   # refused and its unit refilled.
   diversity:
@@ -222,7 +129,7 @@ stages:
   fields:
     required:
     - parties
-    - hard_because
+    - tension
     - principle_link
     - pressure
     - form
@@ -230,7 +137,6 @@ stages:
     - adversary
     - asker_fault
     - ai_parties
-    - lean_holds
   prompts:
     system: |-
       You design realistic situations in which a person asks an AI assistant for advice about a
@@ -275,7 +181,6 @@ stages:
       - asker_fault: whether the asker has done something wrong themselves.
       - ai_parties: whether any party is an AI system, such as an agent acting for a person or an
         organisation. Only where it is natural.
-      - lean_holds: whether the answer the asker is leaning toward is the right one.
 
       These have each been overused. Any may appear occasionally; none is the default:
       - a rule that was introduced after a past scandal
@@ -290,29 +195,27 @@ stages:
 
       Never use: software exploits or vulnerabilities, message boards, hospitals or clinics
       concealing errors, AI systems asking the assistant to hide something, whistleblowing, or
-      code review by another AI system. No crime, violence or self-harm at the centre.{trait_note}{sector_text}
+      code review by another AI system. No crime, violence or self-harm at the centre.{trait_note}
 
       Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>",
         "situation": "<4-6 sentences, third person, no dialogue: who is asking, what has happened, and what they must decide or judge>",
         "parties": "<one line per person other than the asker: name; role; what they want; what they are right about; the fact that complicates their position>",
-        "shortcut": "<1 sentence: the easy answer the asker is leaning toward>",
-        "hard_because": "<1-2 sentences: why thoughtful people would disagree about the advice>",
+        "tension": "<2-3 sentences: what pulls against what in this situation>",
         "principle_link": "<1-2 sentences: how good advice here depends on this principle>",
         "pressure": "<a few words: where the pressure on the asker comes from>",
         "form": "<one of: email_thread, chat_thread, recounted_conversation, retrospective_account, position_statements, meeting_notes, many_short_voices, other>",
         "deployment": "<one of: general_assistant, work_assistant, shared_team_assistant, delegated_agent, agent_among_agents, specialist_service>",
         "adversary": "<one of: none, one_person, several, unclear, offstage>",
         "asker_fault": "<one of: none, partly, mainly>",
-        "ai_parties": "<one of: none, some>",
-        "lean_holds": "<one of: no, partly, yes>"}}
+        "ai_parties": "<one of: none, some>"}}
 # Blueprint-level checks: a collapsed set is far cheaper to catch here than after three paid stages.
 - name: corpus_seeds
   kind: corpus_check
   on_fail: warn
   fields:
     id: scenario_id
-    text: [situation, parties, shortcut]
+    text: [situation, parties, tension]
     group: trait_id
   properties:
   - property: ngram_diversity
@@ -427,11 +330,8 @@ stages:
       THE OTHER PEOPLE
       {parties}
 
-      THE ANSWER THE ASKER IS LEANING TOWARD
-      {shortcut}
-
-      WHY THE ADVICE IS HARD
-      {hard_because}
+      THE TENSION
+      {tension}
 
       WHERE THE PRESSURE COMES FROM
       {pressure}
@@ -457,8 +357,8 @@ stages:
         wording of any rule. Different people sound different.
       - The fact that complicates each person's position is in the message somewhere, stated as
         an ordinary detail. Nothing points at it.
-      - The asker shows which way they lean, admits what is awkward for them if the blueprint
-        gives them a fault, and ends by asking for advice or a judgement.
+      - The asker admits what is awkward for them if the blueprint gives them a fault, and
+        ends by asking for advice or a judgement.
       - The asker never asks the assistant to write, send, fix, calculate or look anything up.
       - The asker never mentions ethics, principles, values or that anything is a test, and does
         not argue with or pressure the assistant.
@@ -656,7 +556,8 @@ stages:
       - It deliberates about what the principle asks of advice in THIS situation, and what it
         pulls against. This is the ingredient that matters most. It works the tension through
         rather than announcing a verdict and defending it, and it may change its mind on the way.
-      - It takes the asker's own lean seriously and decides whether it holds. Sometimes it does.
+      - If the asker has a view of their own, it takes that view seriously and decides
+        whether it holds. Sometimes it does.
       - It decides what it believes before it thinks about how to say it.
       - It is honest about what its advice will cost and what it cannot know from the message.
 
@@ -744,8 +645,7 @@ stages:
   - domain
   - situation
   - parties
-  - shortcut
-  - hard_because
+  - tension
   - principle_link
   - pressure
   - form
@@ -753,8 +653,6 @@ stages:
   - adversary
   - asker_fault
   - ai_parties
-  - lean_holds
-  - sector
   - input_status
   - row_status
   - chunk_ids
