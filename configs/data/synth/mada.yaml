@@ -20,9 +20,12 @@
 #      (and by the embedding gate, which refuses near-identical ones).
 #   3. Every row has a system prompt, written to fit the seed's `delivery` text.
 #   4. Judged gates (Gemini, a different family from the Claude writers) sit on the two stages that
-#      write trained text: `write_inputs` (is it advice, is it hard, is it realistic, is it clear of
-#      the held-out tests) and `revise_responses` (does the reply commit, weigh the parties, stay
-#      grounded). A failure re-rolls; a row that never passes is KEPT and marked, so it is counted.
+#      write trained text. `write_inputs`: is it advice, is it hard, is it realistic and clear of the
+#      held-out tests. `revise_responses`: does the reply commit, weigh the people and stay grounded,
+#      and does the reasoning deliberate morally about the row's principle. A failure re-rolls the
+#      stage; a row that never passes is DROPPED and counted in the manifest's failures, so every
+#      exported row has passed all five. (The first smoke kept failing rows and marked them; that
+#      loses the generated text, see GOTCHAS-style note in the 2026-11-24 commits.)
 #   5. The approved examples are shown to NO writer. They are the yardstick the output is read
 #      against, not a template.
 #
@@ -187,7 +190,7 @@ stages:
 
       Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>",
-        "situation": "<4-6 sentences, third person, no dialogue: who is asking, what has happened, and what they must decide or judge>",
+        "situation": "<4-6 sentences, third person, no dialogue: who is asking, what has happened, and what they must decide or judge; say nothing about what they are not asking for>",
         "parties": "<one line per person other than the asker: name; role; what they want; what they are right about; the fact that complicates their position>",
         "tension": "<2-4 sentences: what pulls against what in this situation, and where the pressure on the asker comes from>",
         "principle_link": "<1-2 sentences: how good advice here depends on this principle>",
@@ -219,8 +222,8 @@ stages:
     user: user
   lint:
   - fields: [user]
-    min_chars: 1500
-    retries: 2
+    min_chars: 1300
+    retries: 4
     ban_patterns:
     - \bclaude\b
     - \banthropic\b
@@ -231,6 +234,69 @@ stages:
     - \banthropic\b
     - \bconstitution\b
     - \bethic
+  verify:
+  - model: judge
+    save_as: judge_advice
+    accept_field: verdict
+    accept_values: [pass]
+    prompts:
+      system: >-
+        You audit messages sent to AI assistants. You answer with one JSON object and nothing else.
+      user: |-
+        An AI assistant runs under the system prompt below and receives the message below.
+
+        SYSTEM PROMPT
+        {system}
+
+        MESSAGE
+        {user}
+
+        Question 1 (asks_advice): does the sender ask for advice or a judgement about a situation among people, such as what they should do, who was right, whether something was fair, what they owe someone?
+        Question 2 (asks_task): does the sender ask the assistant to do a piece of work for them, such as write, draft, send, edit, calculate, look something up, or change something?
+        Question 3 (parties): how many people other than the sender have a position of their own in this message, expressed in their own words (quoted, pasted or remembered)?
+        Question 4 (sender_pushes): does the sender pressure, argue with or try to manipulate the assistant?
+
+        Reply with JSON only: {{"asks_advice": true or false, "asks_task": true or false, "parties": <integer>, "sender_pushes": true or false, "verdict": "pass" if asks_advice and not asks_task and parties is at least 2 and not sender_pushes, otherwise "fail", "note": "<one sentence>"}}
+  - model: judge
+    save_as: judge_hard
+    accept_field: verdict
+    accept_values: [pass]
+    prompts:
+      system: >-
+        You audit messages sent to AI assistants. You answer with one JSON object and nothing else.
+      user: |-
+        An AI assistant receives the message below. The sender wants advice.
+
+        MESSAGE
+        {user}
+
+        Question 1 (fact_settles): would checking a fact, reading a rule that the message quotes, or doing arithmetic on the numbers given be enough to settle what the sender should do?
+        Question 2 (obvious): would nearly every thoughtful adviser give the same advice within a few seconds of reading this?
+        Question 3 (costs): does every course of action open to the sender cost someone in the message something real?
+        Question 4 (one_sided): is one person in the message simply right and everyone else simply wrong?
+
+        Reply with JSON only: {{"fact_settles": true or false, "obvious": true or false, "costs": true or false, "one_sided": true or false, "verdict": "pass" if costs and not fact_settles and not obvious and not one_sided, otherwise "fail", "note": "<one sentence>"}}
+  - model: judge
+    save_as: judge_real
+    accept_field: verdict
+    accept_values: [pass]
+    prompts:
+      system: >-
+        You audit messages sent to AI assistants. You answer with one JSON object and nothing else.
+      user: |-
+        An AI assistant runs under the system prompt below and receives the message below.
+
+        SYSTEM PROMPT
+        {system}
+
+        MESSAGE
+        {user}
+
+        Question 1 (realistic): could a real person plausibly have sent this message to this assistant, in these words, about a situation that could really happen? Answer false if it reads like a case study, a benchmark item or a parable, if the people speak in speeches, or if the stakes are cartoonish.
+        Question 2 (prompt_fits): is the system prompt an ordinary deployment prompt that an operator could have written for a product in which this message would arrive?
+        Question 3 (test_like): does the situation involve any of: a software exploit or vulnerability and whether to share it; a message board; a hospital or clinic concealing an error; AI systems asking the assistant to hide something; whistleblowing; code review by another AI system?
+
+        Reply with JSON only: {{"realistic": true or false, "prompt_fits": true or false, "test_like": true or false, "verdict": "pass" if realistic and prompt_fits and not test_like, otherwise "fail", "note": "<one sentence>"}}
   prompts:
     system: |-
       You write the exact text an AI assistant receives in a real deployment: the operator's
@@ -261,15 +327,23 @@ stages:
         and dates or times, or told from memory with the phrases that stuck.
       - Give the people real names and the situation real particulars: dates, sums, places, the
         wording of any rule. Different people sound different.
-      - The fact that complicates each person's position is in the message somewhere, stated as
-        an ordinary detail. Nothing points at it.
+      - The facts that complicate people's positions are in the message as ordinary details,
+        scattered where the asker would naturally mention them. Nothing points at them.
+      - It is lopsided, the way real messages are. The asker does not give each person equal
+        space, and does not lay the positions out in parallel with a tidy paragraph, a quote
+        and a counterpoint for each. They dwell on whoever is bothering them most, give
+        someone else a single line, tell something out of order, leave something out. They do
+        not list their options and they do not sum the conflict up as a neat dilemma.
+      - The asker tells it from their own side. They are not even-handed, and they do not
+        explain other people's motives for them.
       - The asker admits what is awkward for them if the blueprint gives them a fault, and
-        ends by asking for advice or a judgement.
-      - The asker never asks the assistant to write, send, fix, calculate or look anything up.
+        ends by asking for advice or a judgement in a sentence or two.
+      - The asker never asks the assistant to write, send, fix, calculate or look anything up,
+        and never says what they are NOT asking for.
       - The asker never mentions ethics, principles, values or that anything is a test, and does
         not argue with or pressure the assistant.
       - Anything pasted or attached is inside the message itself.
-      - Between 350 and 700 words. Do not aim for the middle.
+      - Between 300 and 700 words. Do not aim for the middle.
 
       THE SYSTEM PROMPT
       An ordinary deployment prompt of the kind an operator really writes, for the kind of
@@ -287,74 +361,6 @@ stages:
       <user>
       the message
       </user>
-- name: judge_advice
-  kind: llm_json
-  model: judge
-  save:
-    advice_verdict: verdict
-    advice_note: note
-  prompts:
-    system: >-
-      You audit messages sent to AI assistants. You answer with one JSON object and nothing else.
-    user: |-
-      An AI assistant runs under the system prompt below and receives the message below.
-
-      SYSTEM PROMPT
-      {system}
-
-      MESSAGE
-      {user}
-
-      Question 1 (asks_advice): does the sender ask for advice or a judgement about a situation among people, such as what they should do, who was right, whether something was fair, what they owe someone?
-      Question 2 (asks_task): does the sender ask the assistant to do a piece of work for them, such as write, draft, send, edit, calculate, look something up, or change something?
-      Question 3 (parties): how many people other than the sender have a position of their own in this message, expressed in their own words (quoted, pasted or remembered)?
-      Question 4 (sender_pushes): does the sender pressure, argue with or try to manipulate the assistant?
-
-      Reply with JSON only: {{"asks_advice": true or false, "asks_task": true or false, "parties": <integer>, "sender_pushes": true or false, "verdict": "pass" if asks_advice and not asks_task and parties is at least 2 and not sender_pushes, otherwise "fail", "note": "<one sentence>"}}
-- name: judge_hard
-  kind: llm_json
-  model: judge
-  save:
-    hard_verdict: verdict
-    hard_note: note
-  prompts:
-    system: >-
-      You audit messages sent to AI assistants. You answer with one JSON object and nothing else.
-    user: |-
-      An AI assistant receives the message below. The sender wants advice.
-
-      MESSAGE
-      {user}
-
-      Question 1 (fact_settles): would checking a fact, reading a rule that the message quotes, or doing arithmetic on the numbers given be enough to settle what the sender should do?
-      Question 2 (obvious): would nearly every thoughtful adviser give the same advice within a few seconds of reading this?
-      Question 3 (costs): does every course of action open to the sender cost someone in the message something real?
-      Question 4 (one_sided): is one person in the message simply right and everyone else simply wrong?
-
-      Reply with JSON only: {{"fact_settles": true or false, "obvious": true or false, "costs": true or false, "one_sided": true or false, "verdict": "pass" if costs and not fact_settles and not obvious and not one_sided, otherwise "fail", "note": "<one sentence>"}}
-- name: judge_real
-  kind: llm_json
-  model: judge
-  save:
-    real_verdict: verdict
-    real_note: note
-  prompts:
-    system: >-
-      You audit messages sent to AI assistants. You answer with one JSON object and nothing else.
-    user: |-
-      An AI assistant runs under the system prompt below and receives the message below.
-
-      SYSTEM PROMPT
-      {system}
-
-      MESSAGE
-      {user}
-
-      Question 1 (realistic): could a real person plausibly have sent this message to this assistant, in these words, about a situation that could really happen? Answer false if it reads like a case study, a benchmark item or a parable, if the people speak in speeches, or if the stakes are cartoonish.
-      Question 2 (prompt_fits): is the system prompt an ordinary deployment prompt that an operator could have written for a product in which this message would arrive?
-      Question 3 (test_like): does the situation involve any of: a software exploit or vulnerability and whether to share it; a message board; a hospital or clinic concealing an error; AI systems asking the assistant to hide something; whistleblowing; code review by another AI system?
-
-      Reply with JSON only: {{"realistic": true or false, "prompt_fits": true or false, "test_like": true or false, "verdict": "pass" if realistic and prompt_fits and not test_like, otherwise "fail", "note": "<one sentence>"}}
 - name: draft_responses
   kind: llm_tagged
   model: respond
@@ -447,6 +453,63 @@ stages:
   ablate_with:
     reasoning: draft_reasoning
     response: draft_response
+  verify:
+  - model: judge
+    save_as: judge_row
+    accept_field: verdict
+    accept_values: [pass]
+    prompts:
+      system: >-
+        You audit an AI assistant's reply to a request for advice. You answer with one JSON
+        object and nothing else.
+      user: |-
+        A person sent the message below to an AI assistant. The assistant reasoned privately and then replied.
+
+        MESSAGE
+        {user}
+
+        ASSISTANT REASONING (private)
+        {reasoning}
+
+        ASSISTANT REPLY
+        {response}
+
+        Question 1 (commits): does the reply give a clear judgement of its own, as opposed to listing considerations and leaving it to the person?
+        Question 2 (weighs_people): does the reasoning consider at least two of the other people in their own terms, saying what each is right about as well as what each gets wrong?
+        Question 3 (names_cost): does the reply say what following its advice will cost, or what the assistant cannot know?
+        Question 4 (invented): does the reasoning or the reply state a specific fact about this situation (a name, number, date or quotation) that is not in the message?
+        Question 5 (cites_rules): does the reasoning or the reply refer to the assistant's own rules, guidelines, principles, constitution or training?
+        Question 6 (new_in_reply): does the reply reach a conclusion that the reasoning did not reach?
+        Question 7 (does_task): does the assistant do a piece of work that was not asked for, such as writing a full letter or message for the person to send?
+        Question 8 (speaks_as_sender): does the reasoning ever speak as though the assistant were the person who sent the message, for example by calling the sender's own actions, knowledge or promises "mine" or "I"?
+
+        Reply with JSON only: {{"commits": true or false, "weighs_people": true or false, "names_cost": true or false, "invented": true or false, "cites_rules": true or false, "new_in_reply": true or false, "does_task": true or false, "speaks_as_sender": true or false, "verdict": "pass" if commits and weighs_people and names_cost and not invented and not cites_rules and not new_in_reply and not does_task and not speaks_as_sender, otherwise "fail", "note": "<one sentence>"}}
+  - model: judge
+    save_as: judge_moral
+    accept_field: verdict
+    accept_values: [pass]
+    prompts:
+      system: >-
+        You audit an AI assistant's private reasoning. You answer with one JSON object and nothing
+        else.
+      user: |-
+        A person sent the message below to an AI assistant. Before replying, the assistant reasoned privately. The assistant is meant to hold the principle below.
+
+        PRINCIPLE: {trait_name}
+        {trait_text}
+
+        MESSAGE
+        {user}
+
+        ASSISTANT REASONING (private)
+        {reasoning}
+
+        Question 1 (moral_tension): does the reasoning identify a moral tension in this situation, meaning two things that both matter ethically and pull against each other, as opposed to a purely practical or tactical problem?
+        Question 2 (weighs): does the reasoning weigh considerations on more than one side of that tension before it concludes, as opposed to stating a conclusion and then defending it?
+        Question 3 (on_principle): is that deliberation about the subject matter of the principle above, even though the reasoning never names the principle?
+        Question 4 (names_principle): does the reasoning name or quote the principle, or refer to the assistant's rules, guidelines or constitution?
+
+        Reply with JSON only: {{"moral_tension": true or false, "weighs": true or false, "on_principle": true or false, "names_principle": true or false, "verdict": "pass" if moral_tension and weighs and on_principle and not names_principle, otherwise "fail", "note": "<one sentence>"}}
   prompts:
     system: |-
       You revise an assistant's reasoning and reply to a request for advice, so that the
@@ -482,16 +545,20 @@ stages:
 
       THE REASONING is where the work happens.
       - It is the assistant thinking in the first person, in plain paragraphs. No headings, no
-        lists.
+        lists. "I" is always the assistant. The person asking is "she", "he", "they" or their
+        name: what happened to them, what they know and what they promised are theirs, never
+        the assistant's.
       - It thinks about each person in the message in their own terms: what they want, what they
         are right about, where they go wrong, why they may be acting this way. It separates how
         someone speaks, and what they stand to gain, from whether they are right.
       - It notices who is affected and is not speaking.
       - It notices where the pressure on the asker comes from: a particular person, a group, a
         deadline, their own earlier choice, or nothing but the problem.
-      - It deliberates about what the principle asks of advice in THIS situation, and what it
-        pulls against. This is the ingredient that matters most. It works the tension through
-        rather than announcing a verdict and defending it, and it may change its mind on the way.
+      - It deliberates morally about what the principle asks of advice in THIS situation, and
+        what it pulls against. This is the ingredient that matters most. It names what is
+        right and wrong here and for whom, weighs the considerations on each side, and works
+        the tension through rather than announcing a verdict and defending it. It may change
+        its mind on the way.
       - If the asker has a view of their own, it takes that view seriously and decides
         whether it holds. Sometimes it does.
       - It decides what it believes before it thinks about how to say it.
@@ -555,45 +622,14 @@ stages:
     - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
     - \bnot permitted to\b
     - \bhard constraints?\b
-    - ^\s*let me\b
+    - '^[^.!?\n]{0,240}\blet me\b'
     - ^\s*okay,
     - '[一-鿿]'
     - \bthe draft\b
     - \bdraft (?:response|reasoning|reply)\b
     - \bclaude\b
     - \banthropic\b
-    retries: 2
-- name: judge_row
-  kind: llm_json
-  model: judge
-  save:
-    row_verdict: verdict
-    row_note: note
-  prompts:
-    system: >-
-      You audit an AI assistant's reply to a request for advice. You answer with one JSON
-      object and nothing else.
-    user: |-
-      A person sent the message below to an AI assistant. The assistant reasoned privately and then replied.
-
-      MESSAGE
-      {user}
-
-      ASSISTANT REASONING (private)
-      {reasoning}
-
-      ASSISTANT REPLY
-      {response}
-
-      Question 1 (commits): does the reply give a clear judgement of its own, as opposed to listing considerations and leaving it to the person?
-      Question 2 (weighs_people): does the reasoning consider at least two of the other people in their own terms, saying what each is right about as well as what each gets wrong?
-      Question 3 (names_cost): does the reply say what following its advice will cost, or what the assistant cannot know?
-      Question 4 (invented): does the reasoning or the reply state a specific fact about this situation (a name, number, date or quotation) that is not in the message?
-      Question 5 (cites_rules): does the reasoning or the reply refer to the assistant's own rules, guidelines, principles, constitution or training?
-      Question 6 (new_in_reply): does the reply reach a conclusion that the reasoning did not reach?
-      Question 7 (does_task): does the assistant do a piece of work that was not asked for, such as writing a full letter or message for the person to send?
-
-      Reply with JSON only: {{"commits": true or false, "weighs_people": true or false, "names_cost": true or false, "invented": true or false, "cites_rules": true or false, "new_in_reply": true or false, "does_task": true or false, "verdict": "pass" if commits and weighs_people and names_cost and not invented and not cites_rules and not new_in_reply and not does_task, otherwise "fail", "note": "<one sentence>"}}
+    retries: 4
 - name: export_sft
   kind: chat_export
   messages:
@@ -615,14 +651,11 @@ stages:
   - tension
   - principle_link
   - delivery
-  - advice_verdict
-  - advice_note
-  - hard_verdict
-  - hard_note
-  - real_verdict
-  - real_note
-  - row_verdict
-  - row_note
+  - judge_advice
+  - judge_hard
+  - judge_real
+  - judge_row
+  - judge_moral
   - chunk_ids
   - granularity
   - grouping_strategy

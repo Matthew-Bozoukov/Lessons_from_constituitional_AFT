@@ -23,6 +23,11 @@ CHECKS = (
         "Reply",
         "Does the reply commit, weigh the people fairly, name its cost and invent nothing?",
     ),
+    (
+        "moral",
+        "Moral",
+        "Does the thinking weigh a moral tension that belongs to this principle?",
+    ),
 )
 SEED = (
     ("situation", "Situation"),
@@ -83,6 +88,17 @@ details .text{font-size:.98rem}
 """
 
 
+def flat(meta: dict) -> dict:
+    """Copy each gating judge's {verdict, note} dict onto <name>_verdict / <name>_note keys."""
+    out = dict(meta)
+    for key, value in meta.items():
+        if key.startswith("judge_") and isinstance(value, dict):
+            name = key.removeprefix("judge_")
+            out.setdefault(f"{name}_verdict", value.get("verdict", "?"))
+            out.setdefault(f"{name}_note", value.get("note", ""))
+    return out
+
+
 def esc(text: str) -> str:
     out = html.escape(text.strip())
     return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", out)
@@ -119,10 +135,10 @@ def main(run_dir: str, out_path: str) -> None:
         "is being taught. Nothing here has been used for training.</p>",
         '<p class="lede">Each conversation shows what the assistant was given (a short instruction from the '
         "company running it, then the person's message), what it thought privately, and what it replied. "
-        "After that come four yes-or-no checks answered by a different AI model, Gemini, and the outline the "
+        "After that come five yes-or-no checks answered by a different AI model, Gemini, and the outline the "
         "conversation was written from.</p>",
         "</header>",
-        '<section class="stack"><h3>The four checks</h3><dl class="defs">',
+        '<section class="stack"><h3>The five checks</h3><dl class="defs">',
     ]
     parts += [f"<dt>{label}</dt><dd>{html.escape(q)}</dd>" for _, label, q in CHECKS]
     parts.append("</dl></section>")
@@ -137,7 +153,7 @@ def main(run_dir: str, out_path: str) -> None:
     parts += [f"<th>{label}</th>" for _, label, _ in CHECKS]
     parts.append("</tr>")
     for i, row in enumerate(rows, 1):
-        meta = row["metadata"]
+        meta = flat(row["metadata"])
         msg = {m["role"]: m for m in row["messages"]}
         a = msg["assistant"]
         parts.append(
@@ -154,7 +170,7 @@ def main(run_dir: str, out_path: str) -> None:
     parts.append("</table></div></section>")
 
     for i, row in enumerate(rows, 1):
-        meta = row["metadata"]
+        meta = flat(row["metadata"])
         msg = {m["role"]: m for m in row["messages"]}
         a = msg["assistant"]
         system, user = msg["system"]["content"], msg["user"]["content"]

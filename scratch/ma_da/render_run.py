@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-JUDGES = ("advice", "hard", "real", "row")
+JUDGES = ("advice", "hard", "real", "row", "moral")
 SEED_FIELDS = (
     "domain",
     "situation",
@@ -13,6 +13,17 @@ SEED_FIELDS = (
     "principle_link",
     "delivery",
 )
+
+
+def flat(meta: dict) -> dict:
+    """Copy each gating judge's {verdict, note} dict onto <name>_verdict / <name>_note keys."""
+    out = dict(meta)
+    for key, value in meta.items():
+        if key.startswith("judge_") and isinstance(value, dict):
+            name = key.removeprefix("judge_")
+            out.setdefault(f"{name}_verdict", value.get("verdict", "?"))
+            out.setdefault(f"{name}_note", value.get("note", ""))
+    return out
 
 
 def words(text: str) -> int:
@@ -34,7 +45,7 @@ def main(run_dir: str) -> None:
     )
     print("|---|---|---|---|---|---|" + "---|" * len(JUDGES))
     for row in rows:
-        meta = row["metadata"]
+        meta = flat(row["metadata"])
         by_role = {m["role"]: m for m in row["messages"]}
         system, user, assistant = (
             by_role["system"]["content"],
