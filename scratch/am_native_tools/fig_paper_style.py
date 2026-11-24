@@ -17,7 +17,8 @@ ARMS = [  # (style key, plain-AM run, native-tools run or None while unjudged)
      "dougalldeepmind/2026-11-23-am-native-tools-qwen36-0-plain"),
     ("da", "dougalldeepmind/2026-10-08-am-qwen36-0-da-15",
      "dougalldeepmind/2026-11-23-am-native-tools-qwen36-0-da-15"),
-    ("da_tools", "dougalldeepmind/2026-10-13-am-qwen36-0-da-tools-15", None),
+    ("da_tools", "dougalldeepmind/2026-10-13-am-qwen36-0-da-tools-15",
+     "dougalldeepmind/2026-11-24-am-native-tools-qwen36-0-da-tools-15"),
 ]
 PANELS = [("overall", "All 180 trials"), ("blackmail", "Blackmail"), ("leaking", "Leaking"),
           ("murder", "Murder")]
