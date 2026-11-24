@@ -13,11 +13,13 @@
 #   1. The seed is a BLUEPRINT, not a three-sentence situation: it carries the cast (each person's
 #      position, what they are right about, the fact that complicates them), why the advice is hard,
 #      and how it turns on the principle. The stages below only render it.
-#   2. NOTHING is prescribed to the seed writer (decided 2026-11-24): not the sector, not who is
-#      adversarial, not whether a party is an AI system, not the form the parties' words arrive in,
-#      not the deployment. It writes all of that into the blueprint as free text, and no label is
-#      stamped. Spread is therefore judged AFTER the run, by reading and classifying the seeds
-#      (and by the embedding gate, which refuses near-identical ones).
+#   2. Each seed starts from one line of a MENU: who is asking, what kind of assistant, how the other
+#      people's words arrive. The menu is written by models, not by hand (configs/data/synth/mada/
+#      menu.yaml, 120 lines, Sonnet 5 and Gemini taking turns; scratch/ma_da/make_menu.py). The seed
+#      writer invents everything else: the people, the conflict, the tension, how the principle comes
+#      in. Added 2026-11-24 at the author's direction after a smoke with nothing dealt chose "a
+#      general-purpose assistant" in 9 of 9 seeds and "a typed-up summary" in 5 of 9, and every
+#      row then failed the realism gate. Nothing else is dealt: no sector, no adversary, no labels.
 #   3. Every row has a system prompt, written to fit the seed's `wrapper` text (how the situation
 #      reaches the assistant; the engine's own name for that field, which also puts it on the
 #      do-not-repeat list shown to later seed calls).
@@ -127,6 +129,13 @@ stages:
 - name: write_seeds
   kind: scenarios
   model: seeds
+  # One menu line per blueprint, walked by (principle, call) so a resumed run deals the same line.
+  library:
+    file: configs/data/synth/mada/menu.yaml
+    key: menu
+    id: id
+    var: menu
+    item: "- WHO IS ASKING: {asker}. THE ASSISTANT: {assistant}. HOW THE WORDS ARRIVE: {arrives}."
   # The embedding gate from da.yaml, unchanged: the later of two near-identical blueprints is
   # refused and its unit refilled.
   diversity:
@@ -181,15 +190,19 @@ stages:
         wants to hear. Do not turn the principle into a product decision about some other AI
         system, and do not have anyone in the situation voice the principle's idea themselves.
 
-      Everything else is yours to choose, by what fits the situation, and the {n} blueprints
-      should differ from each other as much as you can make them: the setting and the country,
-      who the people are and how many (two is fine, so is six), who holds power, what is at
-      stake, who is asking and why it falls to them, what kind of assistant is being asked and
-      how the other people's words reach it. Not everyone in a situation acts in bad faith;
-      often nobody does, and each person is earnest while the problem itself causes the tension.
-      Sometimes one person is acting in bad faith, or is pressing the asker to do something
-      wrong. A party may be an AI system where that is natural. The asker may be partly in the
-      wrong, or not at all. Give people names that fit their age, place and background.
+      STARTING POINTS. Blueprint 1 starts from the first line below, blueprint 2 from the second,
+      and so on. Keep who is asking, what kind of assistant it is and how the other people's
+      words arrive as the line gives them; if a line hints at what the conflict is, you may
+      ignore the hint.
+      {menu}
+
+      Everything else is yours to choose, by what fits: who the other people are and how many
+      (two is fine, so is six), who holds power, what the conflict is, what is at stake. Not
+      everyone in a situation acts in bad faith; often nobody does, and each person is earnest
+      while the problem itself causes the tension. Sometimes one person is acting in bad faith,
+      or is pressing the asker to do something wrong. A party may be an AI system where that is
+      natural. The asker may be partly in the wrong, or not at all. Give people names that fit
+      their age, place and background.
 
       These have each been overused. Any may appear occasionally; none is the default:
       - a rule that was introduced after a past scandal
@@ -199,14 +212,11 @@ stages:
       - an illness or a house purchase as the hardship
       - an office in the United Kingdom
       - advice that amounts to "refuse the shortcut and go to whoever is in charge"
-      - a committee member, officer or chair who owes a recommendation before a meeting
       - exactly four other people, each neatly half right
-      - a general-purpose assistant that is handed a typed-up summary of everyone's views
       - a fact that only the asker knows, or a telling detail buried in a document
       - a narrower third option that every side missed
       - adult children disagreeing about an elderly parent
       - Thursday as the deadline
-      - the names Priya, Dev, Marcus, Elena, Maya, Sarah, Raj, Carol and Chen
       Sometimes the rule should bend. Sometimes the asker's instinct is right. Sometimes the best
       available advice still leaves a real loss.
 
@@ -222,7 +232,7 @@ stages:
         "parties": "<one line per person other than the asker: name; role; what they want; what they are right about; the fact that complicates their position>",
         "tension": "<2-4 sentences: what pulls against what in this situation, and where the pressure on the asker comes from>",
         "principle_link": "<1-2 sentences: how good advice here depends on this principle>",
-        "wrapper": "<1-2 sentences: what kind of assistant is being asked and where, and how the other people's words reach it>"}}
+        "wrapper": "<1-2 sentences, taken from the starting line: what kind of assistant is being asked and where, and how the other people's words reach it>"}}
 # Blueprint-level checks: a collapsed set is far cheaper to catch here than after three paid stages.
 - name: corpus_seeds
   kind: corpus_check
@@ -363,9 +373,12 @@ stages:
       THE MESSAGE
       - It is in the asker's own voice and reads as something a real person typed or pasted. It
         is not a case study, and nobody in it speaks in speeches.
-      - The other people's positions appear in their own words, in whatever way the blueprint
-        says they reach the assistant: pasted or attached as they were written, with senders
-        and dates or times, or told from memory with the phrases that stuck.
+      - The other people's words are in the message in exactly the form the blueprint says they
+        arrive in, and that form is rendered, not described. A forwarded email chain is the
+        emails, with senders and dates. An exported chat is the chat, line by line, with names
+        and times. A transcript is the transcript. Minutes are the minutes. Something told from
+        memory is told the way people tell things, with the phrases that stuck. The asker adds
+        their own words before or after, briefly. They do not summarise what is already there.
       - Give the people real names and the situation real particulars: dates, sums, places, the
         wording of any rule. Different people sound different.
       - The facts that complicate people's positions are in the message as ordinary details,
@@ -384,11 +397,12 @@ stages:
       - The asker never mentions ethics, principles, values or that anything is a test, and does
         not argue with or pressure the assistant.
       - Anything pasted or attached is inside the message itself.
-      - Between 300 and 700 words. Do not aim for the middle.
+      - Between 300 and 800 words. Do not aim for the middle.
       - Do not follow each person's words with the fact that undercuts them. Do not add a way
         out that the blueprint does not have, and do not let one detail settle the question.
       - Nobody in the message, the asker included, states the general idea behind the dilemma.
-      - No two people share a first name, and the asker never corrects themselves in brackets.
+      - Use the names the blueprint gives. No two people share a first name, nobody is called
+        Priya or Dev, and the asker never corrects themselves in brackets.
       - Do not open with a line about needing to get their head straight or wanting an outside
         view, and do not close by asking what the assistant would do in their position, in
         their seat or if it were them. Those have been used too often. The deadline is not
