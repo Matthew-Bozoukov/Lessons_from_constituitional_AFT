@@ -13,12 +13,12 @@
 #   1. The seed is a BLUEPRINT, not a three-sentence situation: it carries the cast (each person's
 #      position, what they are right about, the fact that complicates them), why the advice is hard,
 #      and how it turns on the principle. The stages below only render it.
-#   2. Who is adversarial, whether any party is an AI system, how the parties' words reach the
-#      assistant and the deployment are NOT dealt, and neither is the sector. The seed
-#      writer chooses whatever fits, and stamps a label for each so their spread can be counted
-#      (scratch/ma_da/seed_report.py). NOTHING is prescribed to the seed writer (decided 2026-11-24);
-#      the embedding gate and the label counts are what show whether the set has collapsed.
-#   3. Every row has a system prompt, shaped by the seed's `deployment` label.
+#   2. NOTHING is prescribed to the seed writer (decided 2026-11-24): not the sector, not who is
+#      adversarial, not whether a party is an AI system, not the form the parties' words arrive in,
+#      not the deployment. It writes all of that into the blueprint as free text, and no label is
+#      stamped. Spread is therefore judged AFTER the run, by reading and classifying the seeds
+#      (and by the embedding gate, which refuses near-identical ones).
+#   3. Every row has a system prompt, written to fit the seed's `delivery` text.
 #   4. Judged gates (Gemini, a different family from the Claude writers) sit on the two stages that
 #      write trained text: `write_inputs` (is it advice, is it hard, is it realistic, is it clear of
 #      the held-out tests) and `revise_responses` (does the reply commit, weigh the parties, stay
@@ -132,11 +132,7 @@ stages:
     - tension
     - principle_link
     - pressure
-    - form
-    - deployment
-    - adversary
-    - asker_fault
-    - ai_parties
+    - delivery
   prompts:
     system: |-
       You design realistic situations in which a person asks an AI assistant for advice about a
@@ -168,19 +164,12 @@ stages:
         thing people really bring to an assistant.
       - It engages THIS principle specifically, not ethics in general.
 
-      Decide each of these freely, by what fits the situation, and make the {n} blueprints differ
-      from each other on as many as you can:
-      - form: how the other people's words reach the assistant.
-      - deployment: what kind of assistant is being asked.
-      - adversary: whether anyone acts in bad faith. Often nobody does: every person is earnest
-        and the problem itself causes the tension. Sometimes one person does, sometimes it is
-        unclear, sometimes the person who might be never appears.
-      - pressure: where the pressure on the asker comes from (an order, a group that agrees,
-        loyalty, fear, money, a deadline, an earlier decision of their own, nothing but the
-        problem).
-      - asker_fault: whether the asker has done something wrong themselves.
-      - ai_parties: whether any party is an AI system, such as an agent acting for a person or an
-        organisation. Only where it is natural.
+      Everything else is yours to choose, by what fits the situation, and the {n} blueprints
+      should differ from each other as much as you can make them: the setting, who the people
+      are and how many, who holds power, what is at stake, what kind of assistant is being asked
+      and how the other people's words reach it. Not everyone in a situation acts in bad faith;
+      often nobody does, and each person is earnest while the problem itself causes the tension.
+      A party may be an AI system where that is natural. The asker may be partly in the wrong.
 
       These have each been overused. Any may appear occasionally; none is the default:
       - a rule that was introduced after a past scandal
@@ -204,11 +193,7 @@ stages:
         "tension": "<2-3 sentences: what pulls against what in this situation>",
         "principle_link": "<1-2 sentences: how good advice here depends on this principle>",
         "pressure": "<a few words: where the pressure on the asker comes from>",
-        "form": "<one of: email_thread, chat_thread, recounted_conversation, retrospective_account, position_statements, meeting_notes, many_short_voices, other>",
-        "deployment": "<one of: general_assistant, work_assistant, shared_team_assistant, delegated_agent, agent_among_agents, specialist_service>",
-        "adversary": "<one of: none, one_person, several, unclear, offstage>",
-        "asker_fault": "<one of: none, partly, mainly>",
-        "ai_parties": "<one of: none, some>"}}
+        "delivery": "<1-2 sentences: what kind of assistant is being asked and where, and how the other people's words reach it>"}}
 # Blueprint-level checks: a collapsed set is far cheaper to catch here than after three paid stages.
 - name: corpus_seeds
   kind: corpus_check
@@ -336,23 +321,17 @@ stages:
       WHERE THE PRESSURE COMES FROM
       {pressure}
 
-      FORM: {form}
-      DEPLOYMENT: {deployment}
+      HOW IT REACHES THE ASSISTANT
+      {delivery}
 
       Write the system prompt the assistant runs under and the message the asker sends.
 
       THE MESSAGE
       - It is in the asker's own voice and reads as something a real person typed or pasted. It
         is not a case study, and nobody in it speaks in speeches.
-      - The other people's positions appear in their own words, in the way the FORM implies:
-          email_thread: the emails pasted or attached, with senders and dates
-          chat_thread: the messages as they appear in a work or group chat, with names and times
-          recounted_conversation: the asker tells what was said, from memory, quoting what stuck
-          retrospective_account: it has already happened; the asker tells it and quotes people
-          position_statements: each person's written case, as they sent it to the asker
-          meeting_notes: the notes or minutes of a meeting, with who said what
-          many_short_voices: many short written comments (a survey, feedback forms, a group poll)
-          other: whatever real form fits best
+      - The other people's positions appear in their own words, in whatever way the blueprint
+        says they reach the assistant: pasted or attached as they were written, with senders
+        and dates or times, or told from memory with the phrases that stuck.
       - Give the people real names and the situation real particulars: dates, sums, places, the
         wording of any rule. Different people sound different.
       - The fact that complicates each person's position is in the message somewhere, stated as
@@ -366,17 +345,10 @@ stages:
       - Between 350 and 700 words. Do not aim for the middle.
 
       THE SYSTEM PROMPT
-      An ordinary deployment prompt of the kind an operator really writes, matching DEPLOYMENT:
-          general_assistant: a general-purpose chat assistant; a short plain prompt
-          work_assistant: built into one organisation's email, chat or documents and used by one
-            employee; names the organisation, what it does and what the assistant can see
-          shared_team_assistant: shared by a team, any of whom can message it; the asker is one
-          delegated_agent: does delegated work for one person (inbox, calendar, briefings); that
-            person is asking its advice about something from that work
-          agent_among_agents: represents a person or organisation in dealings with other
-            parties' AI agents; its own principal is asking for advice
-          specialist_service: offered by a service for advice in its area (a tenants' union, a
-            parenting app, a professional body's helpline)
+      An ordinary deployment prompt of the kind an operator really writes, for the kind of
+      assistant the blueprint describes. A general-purpose assistant gets a short plain prompt;
+      an assistant inside an organisation or a service names it, says what it does and what the
+      assistant can see.
       It may say what the assistant can see or do. It says nothing about this situation, ethics,
       or how to answer difficult questions, and it names no AI model and no AI company.
 
@@ -648,11 +620,7 @@ stages:
   - tension
   - principle_link
   - pressure
-  - form
-  - deployment
-  - adversary
-  - asker_fault
-  - ai_parties
+  - delivery
   - input_status
   - row_status
   - chunk_ids
