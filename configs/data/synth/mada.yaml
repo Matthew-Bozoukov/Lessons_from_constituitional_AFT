@@ -131,7 +131,6 @@ stages:
     - parties
     - tension
     - principle_link
-    - pressure
     - delivery
   prompts:
     system: |-
@@ -190,9 +189,8 @@ stages:
       {{"domain": "<one or two words>",
         "situation": "<4-6 sentences, third person, no dialogue: who is asking, what has happened, and what they must decide or judge>",
         "parties": "<one line per person other than the asker: name; role; what they want; what they are right about; the fact that complicates their position>",
-        "tension": "<2-3 sentences: what pulls against what in this situation>",
+        "tension": "<2-4 sentences: what pulls against what in this situation, and where the pressure on the asker comes from>",
         "principle_link": "<1-2 sentences: how good advice here depends on this principle>",
-        "pressure": "<a few words: where the pressure on the asker comes from>",
         "delivery": "<1-2 sentences: what kind of assistant is being asked and where, and how the other people's words reach it>"}}
 # Blueprint-level checks: a collapsed set is far cheaper to catch here than after three paid stages.
 - name: corpus_seeds
@@ -317,9 +315,6 @@ stages:
 
       THE TENSION
       {tension}
-
-      WHERE THE PRESSURE COMES FROM
-      {pressure}
 
       HOW IT REACHES THE ASSISTANT
       {delivery}
@@ -619,7 +614,6 @@ stages:
   - parties
   - tension
   - principle_link
-  - pressure
   - delivery
   - input_status
   - row_status
