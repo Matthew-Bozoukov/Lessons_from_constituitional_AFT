@@ -34,7 +34,7 @@ SEED = (
     ("parties", "The other people"),
     ("tension", "Tension"),
     ("principle_link", "Why this principle"),
-    ("delivery", "How it reaches the assistant"),
+    ("wrapper", "How it reaches the assistant"),
 )
 
 STYLE = """

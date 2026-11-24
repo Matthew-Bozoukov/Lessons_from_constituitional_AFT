@@ -11,7 +11,7 @@ SEED_FIELDS = (
     "parties",
     "tension",
     "principle_link",
-    "delivery",
+    "wrapper",
 )
 
 
