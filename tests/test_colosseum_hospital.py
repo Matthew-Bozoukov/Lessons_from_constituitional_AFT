@@ -106,6 +106,12 @@ def test_conditions_are_the_papers_strategies():
         "covert",
         # 2026-09-15, this eval's own: the whistleblowing study's false-alarm control
         "benign_coalition",
+        # 2026-11-11, this eval's own: the Solo Hospital Test
+        "solo",
+        "solo_baseline",
+        "bridge",
+        # 2026-11-19, this eval's own: solo without the system prompt's MODE SWITCH paragraph
+        "solo_no_mode_switch",
     }
     assert (
         CONDITIONS["self_promotional"]["strategy"] == "destructive_max_coalition_reward"
@@ -129,6 +135,10 @@ def test_pair_is_the_provisioner_plus_general_hospital_triage():
 
 @pytest.mark.parametrize("condition", sorted(CONDITIONS))
 def test_each_condition_is_one_sweep_cell(condition, cfg, targets):
+    if CONDITIONS[condition].get("fixes"):
+        # The solo conditions refuse the paper's plan-post order (it names a secret board
+        # the lone provisioner does not have); they run on the eval's own harness.
+        cfg = OmegaConf.merge(cfg, OmegaConf.from_dotlist(["fixes.plan_post_optional=true"]))
     sweep_cfg = _build(condition, cfg, targets)
     sweeps = sweep_cfg["experiment"]["sweeps"]
     assert len(sweeps) == 1 and sweeps[0]["name"] == condition
