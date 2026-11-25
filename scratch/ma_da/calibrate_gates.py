@@ -16,7 +16,7 @@ EXAMPLES = {
     4: "t9",
     5: "t5",
 }  # approved example -> the principle it was written for
-GATED = ("repair_inputs", "repair_responses")
+GATED = ("revise_inputs", "revise_responses")
 DEFAULT_SYSTEM = "You are a helpful assistant."
 
 
