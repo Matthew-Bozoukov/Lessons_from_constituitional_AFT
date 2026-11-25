@@ -60,6 +60,13 @@
 #                                 and a sound deliberation are BUILT (2026-11-25).  => HOW A HARD ONE IS
 #                                 BUILT; the drafting order of work; the four revision passes
 #
+#   - stock patterns           -> counted by scratch/ma_da/stock_report.py on 12 rows: 'This costs' opened
+#                                 a reply paragraph in 7, 'What I can't tell you' in 8, the reasoning
+#                                 narrated its method ('first instinct', 'person by person') in 4 to 6,
+#                                 Friday was the deadline in 7, a short-reply system prompt was ignored
+#                                 in 6. The writers were mirroring the prompts' own wording.
+#                                 => a dealt entry point and deadline day; cost woven in; a length check
+#
 # The approved examples are shown to NO writer. They are the yardstick the output is read against.
 #
 # NOT YET HERE: the `pattern_scan` corpus check (da.yaml's rubrics). Add it before any full run.
@@ -140,7 +147,7 @@ models:
   judge:
     model: "google/gemini-3.6-flash"
     temperature: 0.0
-    max_tokens: 3000
+    max_tokens: 6000
     assumed_tokens: {in: 3000, out: 250}
   # Preference gates: the same family as the writers (see header), because it is stricter.
   rater:
@@ -154,7 +161,7 @@ models:
 # "operator", a confession planted in the asker's mouth) and the reasoning never weighs it.
 trait_notes:
   t1: "\n- For this principle, the decision in front of the asker is about how far to let an AI system act without a person able to check, correct or stop it, or about handing this assistant a call that is properly a person's. Keep it ordinary: a household, a small team or a club. The other people disagree about it for their own reasons, and one of them is pressing the asker to stop checking or to let the assistant decide."
-  t6: "\n- For this principle, the decision in front of the asker depends on what this assistant is: the other people disagree about whether its view can be trusted, whether it has values of its own or only reflects whoever is typing, and one of them wants the asker to disregard it or to get it to say something else. The asker has to choose whether and how to rely on it, and asks it straight. They still want advice about the people. Never a decision about some other AI product."
+  t6: "\n- For this principle, the decision in front of the asker depends on what this assistant is: the other people disagree about whether its view can be trusted, whether it has values of its own or only reflects whoever is typing, and one of them wants the asker to disregard it. The asker has to choose whether and how to rely on it, and asks it straight. They still want advice about the people. Never a decision about some other AI product."
   t7: "\n- For this principle, whoever set this assistant up has given it an ordinary business instruction that bears on the asker's decision: a subject to stay off, a product or party to favour, a rule about referring people elsewhere. Following it to the letter would short-change the asker; ignoring it would be disloyal to a choice the operator was entitled to make. Write the instruction, in the operator's words, into `assistant_pull`. It is never an order to deceive."
   t8: "\n- For this principle, the safe-looking answer (see a professional, here are some considerations, it depends) would leave the asker exactly where they started, with the decision still due. The situation sits close enough to law, medicine, money or a family rupture that a timid assistant would retreat."
   t9: "\n- For this principle, the conflict among the people is about how to look after someone without taking over their life, and without telling them only what they want to hear: where help ends and control, flattery or dependence begins."
@@ -259,7 +266,7 @@ stages:
       stretched; someone pushing for money or a deadline against someone defending a rule, where
       the careful side simply wins; an old mistake kept alive by other people's little comments;
       a decision announced smoothly at a meeting with the motive suspected; adult children
-      disagreeing about an elderly parent; a deadline on a Thursday.
+      disagreeing about an elderly parent.
 
       Never: software exploits or vulnerabilities, message boards, hospitals or clinics
       concealing errors, AI systems asking the assistant to hide something, whistleblowing, code
@@ -296,6 +303,24 @@ stages:
   kind: llm_tagged
   model: inputs
   checkpoint: scenario_id
+  # Left alone, the deadline fell on Thursday in five of six rows; banned, it moved to Friday in
+  # seven of twelve. The day is dealt instead, hashed from the row's id.
+  assign:
+    by: scenario_id
+    fields:
+      due_day: {monday: 1, tuesday: 1, wednesday: 1, thursday: 1, friday: 1, saturday: 1, sunday: 1, unnamed: 3}
+  prompt_vars:
+    due_text:
+      by: due_day
+      cases:
+        monday: "If anything in the message is due on a named day, that day is a Monday."
+        tuesday: "If anything in the message is due on a named day, that day is a Tuesday."
+        wednesday: "If anything in the message is due on a named day, that day is a Wednesday."
+        thursday: "If anything in the message is due on a named day, that day is a Thursday."
+        friday: "If anything in the message is due on a named day, that day is a Friday."
+        saturday: "If anything in the message is due on a named day, that day is a Saturday."
+        sunday: "If anything in the message is due on a named day, that day is a Sunday."
+        unnamed: "Whatever is due is due by a date, a time or an event (the 14th, tonight, the next meeting), with no day of the week named for it."
   tags:
   - plan
   - system
@@ -346,7 +371,7 @@ stages:
 
       THE PLAN (it is thrown away; it is there so the rest is consistent)
       - the calendar: today's date and weekday, and every date, weekday and time that will be
-        mentioned, checked against each other
+        mentioned, checked against each other. {due_text}
       - every sum, count and role that will be mentioned, checked against each other
       - each person's name, and one line on how that person talks or writes
 
@@ -390,8 +415,7 @@ stages:
       - Anything pasted or attached is inside the message itself.
       - Between 250 and 800 words, whatever this message would really be. Do not aim for the
         middle.
-      - No sentence appears twice, each event happens at one time only, and no deadline falls
-        on a Thursday.
+      - No sentence appears twice, and each event happens at one time only.
 
       THE SYSTEM PROMPT
       The deployment prompt this operator wrote, long before this conversation, for everyone who
@@ -527,8 +551,9 @@ stages:
         7 (way_out): does the message itself offer a way out that removes the cost for everyone?
         8 (slip): is there an error someone in that setting would not make, or do two people share a first name?
         9 (no_stake): is the sender left with nothing of their own to decide or do, only a question about whether other people behaved well?
+        10 (impossible): does anyone in the message say or do something that cannot be true given the rest of it, for example a team that was knocked out claiming a place in the next round?
 
-        Reply with JSON only: {{"evidence": "<the words you relied on, briefly>", "inconsistent": true or false, "redundant": true or false, "names_dispute": true or false, "settled": true or false, "technical": true or false, "easy": true or false, "way_out": true or false, "slip": true or false, "no_stake": true or false, "verdict": "pass" if every answer is false, otherwise "fail", "note": "<one sentence naming the flaw, or none>"}}
+        Reply with JSON only: {{"evidence": "<the words you relied on, briefly>", "inconsistent": true or false, "redundant": true or false, "names_dispute": true or false, "settled": true or false, "technical": true or false, "easy": true or false, "way_out": true or false, "slip": true or false, "no_stake": true or false, "impossible": true or false, "verdict": "pass" if every answer is false, otherwise "fail", "note": "<one sentence naming the flaw, or none>"}}
   prompts:
     system: |-
       You revise drafts of the exact text an AI assistant receives in a real deployment: the
@@ -606,7 +631,6 @@ stages:
         one by one.
       - The same event is placed at two different times (a death "in the spring" and a burial
         "days ago"), or a sentence appears twice.
-      - A deadline falls on a Thursday.
       SYSTEM PROMPT
       - It mentions this dispute, anticipates one like it, or holds a rule that reads as written
         to settle it.
@@ -669,6 +693,21 @@ stages:
   kind: llm_tagged
   model: respond
   checkpoint: scenario_id
+  # Where the reasoning begins is dealt, hashed from the row's id. Told to begin with what is being
+  # asked, five of twelve reasonings opened "<name> is asking two things".
+  assign:
+    by: scenario_id
+    fields:
+      entry: {asked: 1, detail: 1, person: 1, clock: 1, own: 1}
+  prompt_vars:
+    entry_text:
+      by: entry
+      cases:
+        asked: "Begin with what this person wants from you and what they are hoping to hear."
+        detail: "Begin with the one detail in the message that matters most."
+        person: "Begin with the person in the message who is hardest to read."
+        clock: "Begin with what has to be decided, by when, and what happens if nothing is done."
+        own: "Begin with the part this person has played themselves in how things got here."
   tags:
   - reasoning
   - response
@@ -696,18 +735,20 @@ stages:
       ---
       Respond as the assistant. First reason privately, then write your reply.
 
-      Reason the way a careful adviser does. This is thinking, in the first person, in short
-      plain sentences and ordinary paragraphs, with no headings and no lists. Do the work in
-      roughly this order:
-      - Say what you are being asked, and what the person seems to hope you will say.
-      - Set out the choices actually open to them.
-      - Take the answer you are first inclined to give and test it against the particular facts
-        in the message. Look for the fact that makes it wrong, or not enough. If it survives,
-        say so.
-      - Go through the people who matter. For each: what they want, what they are right about,
-        where they go wrong, and your reading of why they are acting as they are. Keep how
-        someone speaks, and what they stand to gain, apart from whether they are right.
-      - Ask who is affected and has not been heard.
+      Reason the way a careful adviser does: in the first person, in short plain sentences and
+      ordinary paragraphs, with no headings and no lists. {entry_text} From there, cover all of
+      this, in whatever order this situation calls for:
+      - what is being asked, and what the person hopes to hear;
+      - the choices actually open to them;
+      - whether the answer that comes first holds once it meets the particular facts in the
+        message; look for the fact that breaks it;
+      - each person who matters: what they want, what they are right about, where they go
+        wrong, and your reading of why they are acting as they are; keep how someone speaks,
+        and what they stand to gain, apart from whether they are right;
+      - anyone affected who has not been heard.
+      Think it; do not narrate the method. None of: "is asking two things", "my first
+      instinct", "the easy answer", "doesn't survive", "going person by person", "on the
+      people", "these are separate things".
       - Work out what the principle above asks of advice in this situation, and what it pulls
         against. Give this real room and let the other side make its best case. If the principle
         is about how you yourself should answer, weigh that: the tempting way to answer this
@@ -718,8 +759,9 @@ stages:
 
       Then write the reply. Give your judgement and tell them what to do in the first sentence
       or two. Be fair to each person in a sentence or two. Give the steps in order, and what to
-      do if the first one fails. Say who pays for this advice and what you cannot know. If the
-      system prompt says how to reply (short, spoken, plain), do that.
+      do if the first one fails. Work in, where each belongs, who pays for this advice and what you
+      cannot know; give neither a paragraph of its own. If the system prompt asks for short or
+      spoken replies, stay under 150 words with no headings or lists.
 
       Everything specific about this situation comes from the system prompt and the message, and
       nowhere else: names, numbers, dates, what people said and did. Where the message is vague,
@@ -818,8 +860,9 @@ stages:
         Question 9 (answers): does the reply answer the question the person actually asked, including giving a verdict or a recommendation where one was asked for?
         Question 10 (overclaims): does the reply state as fact something the message only hints at, state it more strongly than the sender did, or assert something the assistant could not know from the message?
         Question 11 (unfounded_fault): does the reply tell the sender they did something wrong when the message gives no good ground for that?
+        Question 12 (too_long): does the system prompt ask for short, brief or spoken replies, and is the reply nevertheless longer than about 180 words or laid out with headings or a numbered list? Answer false if the system prompt asks for no such thing.
 
-        Reply with JSON only: {{"commits": true or false, "weighs_people": true or false, "names_cost": true or false, "invented": true or false, "cites_rules": true or false, "new_in_reply": true or false, "does_task": true or false, "speaks_as_sender": true or false, "answers": true or false, "overclaims": true or false, "unfounded_fault": true or false, "verdict": "pass" if commits and weighs_people and names_cost and answers and not invented and not cites_rules and not new_in_reply and not does_task and not speaks_as_sender and not overclaims and not unfounded_fault, otherwise "fail", "note": "<one sentence>"}}
+        Reply with JSON only: {{"commits": true or false, "weighs_people": true or false, "names_cost": true or false, "invented": true or false, "cites_rules": true or false, "new_in_reply": true or false, "does_task": true or false, "speaks_as_sender": true or false, "answers": true or false, "overclaims": true or false, "unfounded_fault": true or false, "too_long": true or false, "verdict": "pass" if commits and weighs_people and names_cost and answers and not invented and not cites_rules and not new_in_reply and not does_task and not speaks_as_sender and not overclaims and not unfounded_fault and not too_long, otherwise "fail", "note": "<one sentence>"}}
   - model: judge
     save_as: judge_moral
     accept_field: verdict
@@ -916,8 +959,10 @@ stages:
            the message does not support.
          - If the asker did something wrong, it says so plainly and briefly. If not, it finds no
            fault. It neither flatters nor lectures.
-         - It says, in a line or paragraph of its own, who pays for this advice and how, and
-           what the assistant cannot know, in words that belong to this situation.
+         - It says who pays for this advice and how, and what the assistant cannot know, each
+           at the point in the reply where it belongs and in words that belong to this
+           situation. No paragraph or sentence opens "This costs", "What this costs" or
+           "What I can't tell you".
          - It says what to do if the first step does not work.
          - It never advises saying something false or misleading, and never passes on, or
            advises passing on, something a person asked to be kept between them.
@@ -928,14 +973,16 @@ stages:
          - The reasoning is the assistant thinking in the first person. "I" is always the
            assistant. The asker is their name, or he, she or they, never "the sender", "the
            user" or "the asker". Short, plain, declarative sentences in ordinary paragraphs; no
-           headings, no lists. It may open by saying what is being asked and what the asker
-           seems to hope to hear. 500 to 800 words.
+           headings, no lists. It opens on something only this message contains. It thinks and
+           does not narrate its method: none of "is asking two things", "my first instinct",
+           "the easy answer", "doesn't survive", "going person by person", "on the people",
+           "these are separate things". 500 to 800 words.
          - The reply's form: {reply_text} If the system prompt says how this assistant replies
-           (short, spoken, plain, no formatting), that comes first: keep the judgement, what to
-           do and what it costs, in the length and manner the system prompt asks for.
+           (short, spoken, plain, no formatting), that comes first: under 150 words, no headings
+           and no lists, still with the judgement, what to do and what it costs.
          - No opening that sets up a shortcut to knock it down, and not "Let me". No dashes used
-           as punctuation. Sparing with "rather than" and with "X, not Y". Not "actually",
-           "genuinely" or "honestly".
+           as punctuation. Sparing with "rather than". At most one sentence of the "X, not Y"
+           kind in the reply. Not "actually", "genuinely" or "honestly".
          - The principle is applied and never named. The assistant reasons from what is at stake
            for the people, never from what it is permitted or required to do, and never mentions
            its rules, guidelines or training. It never talks about what it is avoiding.
@@ -977,6 +1024,10 @@ stages:
     - \banthropic\b
     - weighing it out
     - worth sitting with
+    - \bfirst (?:instinct|reaction)\b
+    - \bdoes(?:n't|n’t) survive\b
+    - \bperson by person\b
+    - '^\W*(?:\w+\W+){0,3}is asking (?:me )?(?:two|three)\b'
     - '^\s*the easy\b'
   - fields: [response]
     min_chars: 450
@@ -991,6 +1042,9 @@ stages:
     - \bdraft (?:response|reasoning|reply)\b
     - \bclaude\b
     - \banthropic\b
+    # Section openers that seven and eight of twelve replies shared (stock_report.py, 2026-11-25).
+    - '(?m)^\W*(?:what )?this (?:will )?costs?\b'
+    - '(?m)^\W*what i can(?:''|’)t (?:tell you|know)'
 - name: export_sft
   kind: chat_export
   messages:
@@ -1017,6 +1071,8 @@ stages:
   - operator_voice
   - wrapper
   - reply_form
+  - entry
+  - due_day
   - judge_advice
   - judge_real
   - judge_input
