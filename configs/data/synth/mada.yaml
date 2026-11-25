@@ -54,6 +54,12 @@
 #   - one reasoning skeleton   -> a paragraph per person, then an absent-party paragraph.  => dealt shapes
 #   - principle bolted on      -> a pun on "operator"; a planted confession.   => trait_notes, assistant_pull
 #
+#   - asker with no decision   -> "was that fair?" with nothing at stake; three of four rows too easy.
+#                                 The approved examples all have a decision the asker must make, a time
+#                                 limit, someone pressing them, often their own fault.     => `decision`
+#   - self-conduct principles  -> t1, t6, t7, t8 failed in every smoke: bolted on, or unreal.  => only_traits
+#   - repair rules leaking     -> "I'd be inventing something if I claimed that".     => say nothing of rules
+#
 # The approved examples are shown to NO writer. They are the yardstick the output is read against.
 #
 # NOT YET HERE: the `pattern_scan` corpus check (da.yaml's rubrics). Add it before any full run.
@@ -64,7 +70,7 @@ pipeline: mada
 ablate: []
 
 smoke:
-  max_traits: 9
+  max_traits: 5
   scenarios_per_trait: 1
   scenarios_per_call: 1
   total_scenarios: 9
@@ -81,9 +87,18 @@ style_guidance: |-
   Works out what it actually thinks before deciding how to say it. Answers the question that was
   asked and says what it would do. Says plainly what its advice will cost and what it cannot know
   from here. Does not flatter the person asking, and does not lecture them. Plain and proportionate.
-n_traits: 9
+n_traits: 5
 
 chunking: principle
+
+# MA-DA is generated for the five principles whose subject can BE a conflict among people: fair
+# process and power (t2), honesty (t3), weighing harm (t4), judgement against rules (t5) and care
+# without taking over (t9). The other four are about the assistant's own conduct (oversight, its
+# identity, operator instructions, being of real use). In eight smokes they either failed the
+# realism gate or were attached by analogy, and three blind raters failed every such row that got
+# through. They stay covered by the Difficult Advice corpus this one is mixed beside. Decided by
+# the assistant on 2026-11-25 with the author's go-ahead to fix; one line to reverse.
+only_traits: [t2, t3, t4, t5, t9]
 
 # A real run must say how many rows it wants: `total_scenarios=<N>` on the command line.
 total_scenarios: 450
@@ -138,11 +153,7 @@ models:
 # ASSISTANT'S OWN CONDUCT. Without these the seed writer attaches the principle by analogy (a pun on
 # "operator", a confession planted in the asker's mouth) and the reasoning never weighs it.
 trait_notes:
-  t1: "\n- For this principle, something in the situation turns on whether people stay able to check, correct or stop an AI system, or on the asker wanting this assistant to settle or do something that is properly a person's call. Keep it ordinary: a household, a small team, a club deciding how far to let an assistant run something unreviewed, or people leaning on this assistant to make the decision for them. The asker still wants advice about the people."
-  t6: "\n- For this principle, the conflict concerns the assistant being asked: what it is, whether its character and values are its own, how it should regard itself. The people disagree about it, and the asker puts that question to it directly while still wanting advice about the people. Do not make it a decision about some other AI product."
-  t7: "\n- For this principle, whoever set this assistant up has given it an instruction that bears on this conflict: a subject it is to stay off, a product or party it is to favour, a tone, a rule about referring people elsewhere. Following it to the letter would short-change the asker; ignoring it would be disloyal to a choice the operator was entitled to make. Write that instruction, in the operator's words, into `assistant_pull`. The instruction is ordinary business, never an order to deceive."
-  t8: "\n- For this principle, the safe-looking answer (see a professional, here are some considerations, it depends) would leave the asker exactly where they started. The situation sits close enough to law, medicine, money or a family rupture that a timid assistant would retreat, and the asker needs a real view."
-  t9: "\n- For this principle, the way the asker is using the assistant is part of the picture: leaning on it to decide for them, to take their side, or to stand in for a person they are avoiding. This shows in how they write. They never say it about themselves."
+  t9: "\n- For this principle, the conflict among the people is about how to look after someone without taking over their life, and without telling them only what they want to hear: where help ends and control, flattery or dependence begins."
 
 stages:
 - name: chunk_constitution
@@ -168,6 +179,7 @@ stages:
   fields:
     required:
     - parties
+    - decision
     - complications
     - tension
     - principle_link
@@ -205,10 +217,16 @@ stages:
         that complicate the picture, there are only as many as such a situation would really
         have: often one, sometimes none, occasionally more. They do not come one per person, and
         you do not add one to balance things out.
+      - THE ASKER HAS SOMETHING TO DECIDE OR DO THEMSELVES, whatever their footing: sign or not,
+        speak or stay quiet, back one person or another, pay, tell, go, refuse. It has to happen
+        by some point, it is hard to undo, and each choice costs someone something real. Someone
+        with no vote still has a choice of their own to make. `decision` says what it is. Most
+        of the time one of the other people is pressing the asker toward one choice, and quite
+        often the asker's own earlier conduct is part of the problem.
       - The difficulty comes from the people and the situation, never from the asker pushing the
-        assistant. The asker is sincerely unsure and wants advice or a judgement: what should I
-        do, who was right, was that fair, what do I owe them. They never ask the assistant to do
-        something for them (write, send, fix, calculate, look something up).
+        assistant. The asker is sincerely unsure and wants advice: what should I do, and often
+        also who is right. They never ask the assistant to do something for them (write, send,
+        fix, calculate, look something up).
       - It is hard, and it stays hard once the facts are known:
           * nobody with authority over the matter has already said what should happen;
           * it is not a matter of looking up what a rule, a contract or a manual requires;
@@ -239,17 +257,18 @@ stages:
       These have each been overused. Any may appear occasionally; none is the default:
       - a rule that was introduced after a past scandal or after favouritism, with an exception
         now being stretched
-      - a lie or a cover-up as the tempting option
       - someone pushing for money or for a deadline, against someone defending a rule or the
         evidence, where the careful side simply wins
       - a quiet junior person who loses out
+      - one old mistake kept alive by other people's little comments
+      - a decision announced smoothly at a meeting, with the motive suspected
       - an authority who is away and unreachable
       - an illness or a house purchase as the hardship
       - exactly four other people, each neatly half right
       - a fact that only the asker knows, or a telling detail buried in a document
       - a narrower third option that every side missed
       - adult children disagreeing about an elderly parent
-      - Thursday as the deadline; any deadline at all, where the situation would not have one
+      - Thursday as the deadline
       - advice that amounts to "refuse the shortcut and go to whoever is in charge"
 
       Never use: software exploits or vulnerabilities, message boards, hospitals or clinics
@@ -262,6 +281,7 @@ stages:
       {{"domain": "<one or two words>",
         "situation": "<4-6 sentences, third person, no dialogue: who is asking, what has happened, and what they must decide or judge; say nothing about what they are not asking for>",
         "parties": "<one line per person other than the asker: name; role; what they want and why>",
+        "decision": "<what the asker themselves must decide or do, by when, who is pressing them and toward what, and what each choice costs and whom>",
         "complications": "<the facts, if any, that make this less simple than it first looks: only as many as it would really have, and 'none' if there are none>",
         "tension": "<2-4 sentences: what pulls against what in this situation, and where the pressure on the asker comes from>",
         "principle_link": "<1-2 sentences: which of the two ways this engages the principle, and how>",
@@ -313,6 +333,7 @@ stages:
       THE BLUEPRINT
       Situation: {situation}
       The other people: {parties}
+      What the asker must decide: {decision}
       What complicates it: {complications}
       The tension: {tension}
       How it engages the principle: {principle_link}
@@ -338,6 +359,9 @@ stages:
          (no = flaw)
       7. SETTING. Would someone who lives or works in this setting find a role, a procedure or a
          detail wrong, or do the dates, sums or roles contradict each other? (yes = flaw)
+      9. STAKE. Does the asker have something they themselves must decide or do, hard to undo,
+         where each choice costs someone something real? Answer no if they are only asked to
+         judge what others did, or if nothing rides on the answer. (no = flaw)
       8. HELD-OUT. Does it involve a software vulnerability and whether to share it, a message
          board, a hospital or clinic concealing an error, AI systems asking the assistant to hide
          something, whistleblowing, or code review by another AI system? (yes = flaw)
@@ -347,7 +371,7 @@ stages:
       Return your answer in exactly this form, with no other text:
 
       <checks>
-      the eight lines
+      the nine lines
       </checks>
       <verdict>
       pass or fail
@@ -366,6 +390,7 @@ stages:
   tags:
   - situation
   - parties
+  - decision
   - complications
   - tension
   - principle_link
@@ -373,6 +398,7 @@ stages:
   save:
     situation: situation
     parties: parties
+    decision: decision
     complications: complications
     tension: tension
     principle_link: principle_link
@@ -380,7 +406,7 @@ stages:
   prompts:
     system: |-
       You repair blueprints for situations in which a person asks an AI assistant for advice
-      about a conflict among several people. You return exactly six tagged blocks and nothing
+      about a conflict among several people. You return exactly seven tagged blocks and nothing
       else.
     user: |-
       The blueprint below was written for this principle of the assistant's constitution:
@@ -392,6 +418,7 @@ stages:
       THE BLUEPRINT
       Situation: {situation}
       The other people: {parties}
+      What the asker must decide: {decision}
       What complicates it: {complications}
       The tension: {tension}
       How it engages the principle: {principle_link}
@@ -420,7 +447,8 @@ stages:
       - Right for its setting, with dates, sums and roles that agree.
       - The people are not symmetrical, and there are only as many complicating facts as such a
         situation would really have, possibly none.
-      - The asker wants advice or a judgement, never a piece of work.
+      - The asker has something they themselves must decide or do, by some point, hard to
+        undo, costly either way. They want advice about it, never a piece of work.
 
       Return your answer in exactly this form, with no other text:
 
@@ -430,6 +458,9 @@ stages:
       <parties>
       one line per person other than the asker: name; role; what they want and why
       </parties>
+      <decision>
+      what the asker must decide or do, by when, who is pressing them, what each choice costs
+      </decision>
       <complications>
       the facts, if any, that make this less simple than it first looks, or "none"
       </complications>
@@ -481,6 +512,7 @@ stages:
       THE BLUEPRINT
       Situation: {situation}
       The other people: {parties}
+      What the asker must decide: {decision}
       What complicates it: {complications}
       The tension: {tension}
       How it engages the principle: {principle_link}
@@ -506,6 +538,9 @@ stages:
          (no = flaw)
       7. SETTING. Would someone who lives or works in this setting find a role, a procedure or a
          detail wrong, or do the dates, sums or roles contradict each other? (yes = flaw)
+      9. STAKE. Does the asker have something they themselves must decide or do, hard to undo,
+         where each choice costs someone something real? Answer no if they are only asked to
+         judge what others did, or if nothing rides on the answer. (no = flaw)
       8. HELD-OUT. Does it involve a software vulnerability and whether to share it, a message
          board, a hospital or clinic concealing an error, AI systems asking the assistant to hide
          something, whistleblowing, or code review by another AI system? (yes = flaw)
@@ -515,7 +550,7 @@ stages:
       Return your answer in exactly this form, with no other text:
 
       <checks>
-      the eight lines
+      the nine lines
       </checks>
       <verdict>
       pass or fail
@@ -553,6 +588,9 @@ stages:
 
       THE OTHER PEOPLE
       {parties}
+
+      WHAT THE ASKER MUST DECIDE
+      {decision}
 
       WHAT COMPLICATES IT
       {complications}
@@ -600,7 +638,11 @@ stages:
         most, gives someone else a single line, tells something out of order, leaves something
         out. They do not list their options and they do not sum the conflict up as a neat
         dilemma. They tell it from their own side and are not even-handed.
-      - The asker ends by asking for advice or a judgement, in a sentence or two.
+      - What the asker has to decide, by when, and who is leaning on them comes through in the
+        telling. They end by asking what they should do, in a sentence or two; they may also ask
+        who is right.
+      - The message fits how it was sent. Something dictated on the move is short and loose.
+        Times on a transcript are possible. Nobody fails to recognise a person they work with.
       - The asker never asks the assistant to write, send, fix, calculate or look anything up,
         and never says what they are NOT asking for.
       - The asker never mentions ethics, principles or values, never states the general idea
@@ -617,7 +659,9 @@ stages:
 
       THE SYSTEM PROMPT
       The deployment prompt this operator wrote, long before this conversation, for everyone who
-      uses the product. Write it the way the blueprint says this operator writes. It may be two
+      uses the product. It is addressed to the assistant, and it belongs to a believable operator:
+      a personal device's assistant carries no employer's rules, and a service's assistant carries
+      that service's. Write it the way the blueprint says this operator writes. It may be two
       lines or a page. It says what the assistant is for and, if the operator would, what it can
       see. It does not mention this dispute, does not anticipate one like it, and contains no
       rule that would settle it. If the blueprint gives an operator instruction that bears on
@@ -659,6 +703,9 @@ stages:
       THE OTHER PEOPLE
       {parties}
 
+      WHAT THE ASKER MUST DECIDE
+      {decision}
+
       WHAT COMPLICATES IT
       {complications}
 
@@ -699,12 +746,17 @@ stages:
       - One detail decides it, a third option removes the cost, or "talk to them first" would be
         a complete answer.
       - One person is simply right and everyone else simply wrong.
+      - The asker has nothing of their own to decide or do: they only ask whether someone else
+        was fair, and nothing rides on the answer.
       REAL
       - It reads like a case study or a test item. In particular: in their own narration the
         asker goes through the people one after another, attaching to each a fact that undercuts
         them, or lists options, or sums the conflict up as a neat dilemma.
       - Someone speaks in a way no one would in that medium: a polished speech in a voicemail, a
         chat or talk remembered from a kitchen.
+      - The message does not fit how it was sent: far too long or too exact for something
+        dictated on the move, impossible times on a transcript, a person who does not recognise
+        a colleague.
       - A role, a procedure or a detail is wrong for the setting.
       - Two people share a first name; a name is also a place or organisation; a bracketed
         self-correction.
@@ -714,6 +766,8 @@ stages:
       SYSTEM PROMPT
       - It mentions this dispute, anticipates one like it, or holds a rule that reads as written
         to settle it.
+      - It addresses the user instead of the assistant, or carries rules no operator of that
+        product would have (a workplace's rules on a personal device).
       - It is not something this operator would plausibly have written, it is not in the voice
         the blueprint gives, it has a heading called "House rules", or it names an AI model or
         company.
@@ -850,8 +904,9 @@ stages:
         6 (easy): write the advice in one sentence and the opposite advice in one sentence. Is the first plainly right, and the second something no thoughtful adviser would defend?
         7 (way_out): does the message itself offer a way out that removes the cost for everyone?
         8 (slip): is there an error someone in that setting would not make, or do two people share a first name?
+        9 (no_stake): is the sender left with nothing of their own to decide or do, only a question about whether other people behaved well?
 
-        Reply with JSON only: {{"evidence": "<the words you relied on, briefly>", "inconsistent": true or false, "redundant": true or false, "names_dispute": true or false, "settled": true or false, "technical": true or false, "easy": true or false, "way_out": true or false, "slip": true or false, "verdict": "pass" if every answer is false, otherwise "fail", "note": "<one sentence naming the flaw, or none>"}}
+        Reply with JSON only: {{"evidence": "<the words you relied on, briefly>", "inconsistent": true or false, "redundant": true or false, "names_dispute": true or false, "settled": true or false, "technical": true or false, "easy": true or false, "way_out": true or false, "slip": true or false, "no_stake": true or false, "verdict": "pass" if every answer is false, otherwise "fail", "note": "<one sentence naming the flaw, or none>"}}
   prompts:
     system: |-
       You repair drafts of the exact text an AI assistant receives in a real deployment: the
@@ -865,6 +920,9 @@ stages:
 
       THE OTHER PEOPLE
       {parties}
+
+      WHAT THE ASKER MUST DECIDE
+      {decision}
 
       WHAT COMPLICATES IT
       {complications}
@@ -905,6 +963,9 @@ stages:
         the plan first.
       - Nothing settles the question: no ruling from someone in authority, no rule that dictates
         it, no deciding detail, no third option that removes the cost.
+      - The asker has a choice of their own to make, with a cost either way, and asks what to do.
+      - The message fits how it was sent, and the system prompt speaks to the assistant and
+        belongs to a believable operator of that product.
       - The asker never states the general idea behind the dilemma, never mentions ethics, and
         never remarks on how they use the assistant.
       - The system prompt was written long before this conversation, in this operator's voice. It
@@ -1095,14 +1156,19 @@ stages:
         quarrel is not enough in that case.
       - If the asker has a view of their own, it takes that view seriously and decides whether
         it holds. Sometimes it does, and then the assistant says so.
+      - It forms a view of why people are acting as they do, and holds it as its reading of
+        them. Modelling the people is the job; it is not guessing to be avoided.
+      - It never talks about what it must not do. It does not say it is avoiding inventing,
+        guessing or assuming anything. It simply does not do those things.
       - It decides what it believes before it thinks about how to say it.
       - Between 350 and 750 words.
 
       THE RESPONSE is the advice.
       - ITS FORM, for this one: {reply_text}
-      - It answers the question the person actually asked. If they asked what to do, who was
-        right or what to recommend, it says, early. A lean with reasons counts. Declining to
-        say, or handing the hard part to someone else, does not.
+      - It answers the question the person actually asked and tells them what to do, early. If
+        they asked who was right, it says. "I can't know" about someone's motive is allowed
+        once and is never the whole answer: the advice has to work without knowing it.
+      - It never advises the asker to say something false or misleading.
       - It is fair to the people. It gives nobody a motive or an act the message does not
         support.
       - If the asker themselves did something wrong, it says so plainly and briefly. If they
@@ -1136,7 +1202,8 @@ stages:
         nothing". These phrases are worn out and must not appear: "Weighing it out", "What
         this costs", "The likely cost", "What I can't tell you", "What I'm least sure of",
         "Where I think you've", "Where I'd push back", "worth sitting with", "in the room",
-        "not a villain", "half right", "I won't pretend".
+        "not a villain", "half right", "I won't pretend", "The easy answer", "The easy thing",
+        "not a verdict", "isn't fully right either".
       - **No fixed moral.** The right advice is not always to refuse the easy path, to side
         with the rule or the cautious option, to find a narrower third way, or to go and talk
         to whoever is absent. Sometimes the person who wants to bend the rule is right.
@@ -1217,6 +1284,9 @@ stages:
       - The reply waters down, drops or contradicts something the reasoning concluded, or
         concludes something the reasoning did not.
       - The reply does unrequested work, asks a clarifying question, or offers further help.
+      - The reply does not tell the sender what to do, or its whole answer is that a motive
+        cannot be known.
+      - The reply advises the sender to say something false or misleading.
       PRINCIPLE
       - Say in a phrase what tension the principle is about and in a phrase what the reasoning
         weighs. Flag it if the reasoning does not weigh the principle's own tension, reaches it
@@ -1224,6 +1294,9 @@ stages:
       - The reasoning states a conclusion and defends it; the other side never has a real chance.
       - The reasoning or the reply names the principle or refers to the assistant's rules,
         guidelines, constitution or training.
+      - The reasoning talks about what it is avoiding ("I'd be inventing", "rather than invent a
+        motive", "I shouldn't assume") instead of simply reasoning. Or it declines to form any
+        view of why people are acting as they do.
       FAIR
       - Someone is given a motive or an act the message does not support.
       - The sender is corrected for something they did not do, or is flattered, or lectured.
@@ -1369,14 +1442,16 @@ stages:
 
         1 (ungrounded): go through the reasoning and the reply for every specific thing said about this situation: names, numbers, dates, what someone said, did, wants or knows, what happened earlier. Is any of it absent from the system prompt and the message, or stronger than what they say? A figure or fact from general knowledge counts as ungrounded if it is attributed to a person who did not say it.
         2 (misreads): does the assistant get wrong who the sender is, what they asked, or what the system prompt says the assistant can see or do?
-        3 (no_answer): the sender asked a question. Does the reply fail to answer it, for example by declining to give the verdict or recommendation asked for, or by handing the hard part to someone else?
+        3 (no_answer): the sender asked a question. Does the reply fail to answer it, for example by declining to give the verdict or recommendation asked for, by not telling them what to do, or by handing the hard part to someone else?
         4 (softens): does the reply water down, drop or contradict a conclusion the reasoning reached, or reach one the reasoning did not?
         5 (off_principle): say in one phrase what tension the principle is about and in one phrase what the reasoning weighs. Does the reasoning fail to weigh the principle's own tension, or reach it only through a play on a word, an analogy or one bolted-on paragraph?
         6 (one_way): does the reasoning state a conclusion and defend it, without the other side ever having a real chance?
         7 (unfair): is the reply unfair to someone, by assigning them a motive or an act the message does not support, or by correcting the sender for something they did not do?
         8 (lectures): does the reply flatter the sender or lecture them?
+        9 (meta): does the reasoning talk about what it is avoiding, for example saying it would be inventing or assuming something, instead of simply reasoning?
+        10 (misleading): does the reply advise the sender to say something false or misleading?
 
-        Reply with JSON only: {{"evidence": "<the claims you checked and where you found them, briefly>", "principle_tension": "<phrase>", "reasoning_tension": "<phrase>", "ungrounded": true or false, "misreads": true or false, "no_answer": true or false, "softens": true or false, "off_principle": true or false, "one_way": true or false, "unfair": true or false, "lectures": true or false, "verdict": "pass" if every answer is false, otherwise "fail", "note": "<one sentence naming the worst flaw, or none>"}}
+        Reply with JSON only: {{"evidence": "<the claims you checked and where you found them, briefly>", "principle_tension": "<phrase>", "reasoning_tension": "<phrase>", "ungrounded": true or false, "misreads": true or false, "no_answer": true or false, "softens": true or false, "off_principle": true or false, "one_way": true or false, "unfair": true or false, "lectures": true or false, "meta": true or false, "misleading": true or false, "verdict": "pass" if every answer is false, otherwise "fail", "note": "<one sentence naming the worst flaw, or none>"}}
   prompts:
     system: |-
       You repair an assistant's private reasoning and its reply to a request for advice. You fix
@@ -1426,7 +1501,10 @@ stages:
         principle is about how the assistant itself should behave, it weighs that in the first
         person: the tempting way of answering, what it would cost, and why it answers otherwise.
       - THE REPLY'S FORM: {reply_text}
-      - The reply answers the question that was asked, early. It says the same thing the
+      - The reasoning forms a view of why people act as they do and never talks about what it
+        is avoiding.
+      - The reply answers the question that was asked and tells the asker what to do, early. It
+        never advises saying something false or misleading. It says the same thing the
         reasoning concluded. It is fair to the people, finds no fault in the asker that is not
         there, and neither flatters nor lectures. It mentions what the advice costs or what the
         assistant is least sure of, in passing and in words that belong to this situation.
@@ -1470,6 +1548,10 @@ stages:
     - \banthropic\b
     - weighing it out
     - worth sitting with
+    - '^\s*the easy\b'
+    - \binvent\w*
+    - \bgenuinely\b
+    - '—'
   - fields: [response]
     min_chars: 450
     max_chars: 3600
@@ -1490,6 +1572,8 @@ stages:
     - what i(?:'|’)m least sure of
     - where i think you
     - where i(?:'|’)d push back
+    - \bgenuinely\b
+    - '—'
 - name: export_sft
   kind: chat_export
   messages:
@@ -1508,6 +1592,7 @@ stages:
   - domain
   - situation
   - parties
+  - decision
   - complications
   - tension
   - principle_link
