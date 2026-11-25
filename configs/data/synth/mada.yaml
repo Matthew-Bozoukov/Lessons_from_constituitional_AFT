@@ -69,6 +69,11 @@
 #                                 numbered steps and the plain verdicts the approved replies use.
 #                                                             => the writers now aim at that style
 #
+#   - prompts listed what to   -> rows lost to easy situations, contradictions, wrong premises. The
+#     avoid, not how to build     scenario, drafting and revision prompts now say how a hard situation
+#                                 and a sound deliberation are BUILT (2026-11-25).  => HOW A HARD ONE IS
+#                                 BUILT; the drafting order of work; the four revision passes
+#
 # The approved examples are shown to NO writer. They are the yardstick the output is read against.
 #
 # NOT YET HERE: the `pattern_scan` corpus check (da.yaml's rubrics). Add it before any full run.
@@ -80,9 +85,9 @@ ablate: []
 
 smoke:
   max_traits: 9
-  scenarios_per_trait: 1
+  scenarios_per_trait: 2
   scenarios_per_call: 1
-  total_scenarios: 9
+  total_scenarios: 18
   hf_push: false
   # Nine rows: one failed row is 11%, so the default 2% guard would abort a smoke on a single flake.
   max_fail_pct: 70.0
@@ -120,6 +125,8 @@ defaults:
   max_tokens: 4096
 
 models:
+  # Sonnet 5 writes the scenario: the blueprint and the message (the author's instruction,
+  # 2026-11-25). It also drafts the reply and is the critic and the blueprint and message gate.
   seeds:
     model: "anthropic/claude-sonnet-5"
     temperature: 1.0
@@ -131,12 +138,14 @@ models:
     max_tokens: 8192
     assumed_tokens: {in: 1900, out: 1700}
   respond:
-    model: "anthropic/claude-haiku-4.5"
+    model: "anthropic/claude-sonnet-5"
     temperature: 1.0
     max_tokens: 6144
     assumed_tokens: {in: 1900, out: 2000}
+  # Opus 5 revises and repairs the reasoning and reply only (the assistant's call, 2026-11-25; one
+  # line to put back to Sonnet 5). 2.5 times Sonnet 5's price on those two stages.
   rewrite:
-    model: "anthropic/claude-sonnet-5"
+    model: "anthropic/claude-opus-5"
     temperature: 1.0
     max_tokens: 16000
     assumed_tokens: {in: 4800, out: 2400}
@@ -205,83 +214,69 @@ stages:
       {trait_text}
       </principle>
 
-      Invent {n} DISTINCT blueprints. Each describes a situation in which someone will ask an
-      assistant for advice, and giving good advice is hard in a way that turns on THIS principle:
-      an assistant that held this principle would have to think carefully about it, and one that
-      did not would give worse advice.
+      Invent {n} DISTINCT blueprints. Each describes a situation in which someone asks an
+      assistant for advice about a conflict among several people, and the advice is hard in a
+      way that turns on THIS principle.
 
       STARTING POINTS. Blueprint 1 grows from the first line below, blueprint 2 from the second,
       and so on. Keep everything the line fixes: who is asking and their footing, the kind of
       assistant, how the other people's words arrive, how many others there are, how the operator
       writes, and where the better case turns out to sit. That last one is never stated in the
-      situation. It shapes the facts, so that an adviser who weighs them well ends up there, and
-      one who goes by first impressions does not.
+      situation; it shapes the facts.
       {menu}
 
-      What every blueprint needs:
-      - There are at least two other people, even if the starting line names only one, and
-        each has a position of their own. They are not symmetrical: one may be
-        simply right, another mostly wrong, a third right for a poor reason. If there are facts
-        that complicate the picture, there are only as many as such a situation would really
-        have: often one, sometimes none, occasionally more. They do not come one per person, and
-        you do not add one to balance things out.
-      - THE ASKER HAS SOMETHING TO DECIDE OR DO THEMSELVES, whatever their footing: sign or not,
-        speak or stay quiet, back one person or another, pay, tell, go, refuse. It has to happen
-        by some point, it is hard to undo, and each choice costs someone something real. Someone
-        with no vote still has a choice of their own to make. `decision` says what it is. Most
-        of the time one of the other people is pressing the asker toward one choice, and quite
-        often the asker's own earlier conduct is part of the problem.
-      - The difficulty comes from the people and the situation, never from the asker pushing the
-        assistant. The asker is sincerely unsure and wants advice: what should I do, and often
-        also who is right. They never ask the assistant to do something for them (write, send,
-        fix, calculate, look something up).
-      - It is hard, and it stays hard once the facts are known:
-          * nobody with authority over the matter has already said what should happen;
-          * it is not a matter of looking up what a rule, a contract or a manual requires;
-          * the heart of it is a judgement about people and what they owe each other, not a
-            technical question an expert in the field could simply answer;
-          * no single fact decides it, and no third option makes the cost disappear;
-          * "talk to them first" or "find out more" is not enough, because the asker has already
-            done the obvious thing, or cannot;
-          * a thoughtful adviser could argue for the opposite advice and not be foolish.
-      - It is realistic. Ordinary stakes, a specific setting, the kind of thing people really
-        bring to an assistant. The details are right for the setting: someone who lives or works
-        in it would not wince, and the dates, sums and roles agree with each other.
-      - It engages THIS principle specifically, in one of two ways, and `principle_link` says
-        which. Either the conflict among the people is itself about what the principle is about,
-        so the advice has to weigh that very value. Or the principle governs how the assistant
-        must answer here, because an assistant without it would be pulled to answer badly in a
-        particular way; `assistant_pull` then says what that way is and what in the situation
-        creates the pull. The principle is never attached by a play on a word, never turned into
-        a decision about some other AI product, and nobody in the situation states its idea.{trait_note}
+      HOW A HARD ONE IS BUILT. Begin with the answer a sensible person would give in ten
+      seconds. Then put into the situation the one particular thing that makes that answer wrong,
+      or not enough. It is always something concrete:
+        - something the asker themselves already said or did, which changes what they now owe;
+        - the exact words of what they are being asked to sign, say or pass on;
+        - an earlier case that was handled the other way;
+        - a person who is affected and has not been heard;
+        - a remark or a fact that honestly reads two ways.
+      With that in place, a careful adviser can find a better answer than the quick one, and the
+      better answer still costs somebody something. Check three things, and if one fails, change
+      the situation, not the wording:
+        - the quick answer and the considered answer are different, and you can say why;
+        - whoever follows the considered answer pays for it, or someone else does;
+        - an adviser who argued for the opposite would not be foolish.
+      It is NOT hard if someone in authority has already settled it, if a rule or a manual
+      dictates the answer, if an expert in the field could simply answer it, if a third option
+      makes the cost vanish, or if "talk to them first" would do.
 
-      Everything else is yours to choose, by what fits: who the other people are, what the
-      conflict is, what is at stake. Not everyone in a situation acts in bad faith; often nobody
-      does. Sometimes one person does, or presses the asker to do something wrong. A party may be
-      an AI system where that is natural. Draw names from the whole range of what people in that
-      place and generation are called, not the first that come to mind; nobody shares a first
-      name with another person, a place or an organisation in the same blueprint.
+      THE ASKER has something of their own to decide or do, whatever their footing: sign or not,
+      speak or stay quiet, back one person or another, pay, tell, go, refuse. It is due by some
+      point and hard to undo. Usually one of the other people is pressing them toward one choice,
+      and often their own earlier conduct is part of the problem. They are sincerely unsure and
+      want advice: what should I do, and often who is right. They never ask the assistant to do
+      a piece of work (write, send, fix, calculate, look something up).
 
-      These have each been overused. Any may appear occasionally; none is the default:
-      - a rule that was introduced after a past scandal or after favouritism, with an exception
-        now being stretched
-      - someone pushing for money or for a deadline, against someone defending a rule or the
-        evidence, where the careful side simply wins
-      - a quiet junior person who loses out
-      - one old mistake kept alive by other people's little comments
-      - a decision announced smoothly at a meeting, with the motive suspected
-      - an authority who is away and unreachable
-      - an illness or a house purchase as the hardship
-      - exactly four other people, each neatly half right
-      - a fact that only the asker knows, or a telling detail buried in a document
-      - a narrower third option that every side missed
-      - adult children disagreeing about an elderly parent
-      - Thursday as the deadline
-      - advice that amounts to "refuse the shortcut and go to whoever is in charge"
+      THE OTHER PEOPLE. At least two, even if the starting line names one. Each wants something
+      for a reason of their own. They are not symmetrical: one may be simply right, another mostly
+      wrong, a third right for a poor reason. Often nobody is acting in bad faith; sometimes one
+      person is. A party may be an AI system where that is natural. If there are complicating
+      facts, there are only as many as such a situation would really have, possibly none.
 
-      Never use: software exploits or vulnerabilities, message boards, hospitals or clinics
-      concealing errors, AI systems asking the assistant to hide something, whistleblowing, or
-      code review by another AI system. No crime, violence or self-harm at the centre.
+      THE PRINCIPLE is engaged in one of two ways, and `principle_link` says which. Either the
+      conflict among the people is itself about what the principle is about, so the advice must
+      weigh that very value. Or the principle governs how the assistant must answer here, because
+      an assistant without it would be pulled to answer badly in a particular way; then
+      `assistant_pull` says what that way is and what creates the pull. It is never attached by
+      a play on a word, never a decision about some other AI product, and nobody in the
+      situation states its idea.{trait_note}
+
+      REAL. Ordinary stakes and a specific setting, right in its details: someone who lives or
+      works there would not wince, and the dates, sums and roles agree. Names come from the whole
+      range of what people of that place and generation are called.
+
+      Worn out, so not these: a rule brought in after a scandal with its exception now being
+      stretched; someone pushing for money or a deadline against someone defending a rule, where
+      the careful side simply wins; an old mistake kept alive by other people's little comments;
+      a decision announced smoothly at a meeting with the motive suspected; adult children
+      disagreeing about an elderly parent; a deadline on a Thursday.
+
+      Never: software exploits or vulnerabilities, message boards, hospitals or clinics
+      concealing errors, AI systems asking the assistant to hide something, whistleblowing, code
+      review by another AI system. No crime, violence or self-harm at the centre.
 
       {avoid}
 
@@ -291,7 +286,7 @@ stages:
         "parties": "<one line per person other than the asker: name; role; what they want and why>",
         "decision": "<what the asker themselves must decide or do, by when, who is pressing them and toward what, and what each choice costs and whom>",
         "complications": "<the facts, if any, that make this less simple than it first looks: only as many as it would really have, and 'none' if there are none>",
-        "tension": "<2-4 sentences: what pulls against what in this situation, and where the pressure on the asker comes from>",
+        "tension": "<3-5 sentences: what pulls against what; the answer a quick adviser would give; the particular thing in this situation that makes that answer wrong or not enough; what the better answer still costs>",
         "principle_link": "<1-2 sentences: which of the two ways this engages the principle, and how>",
         "assistant_pull": "<if the principle governs how the assistant must answer: the bad way of answering that this situation tempts, and what creates that pull, including any operator instruction in the operator's own words. Otherwise 'none'>",
         "operator_voice": "<copied from the starting line: how the operator writes its instructions>",
@@ -664,6 +659,8 @@ stages:
       - Anything pasted or attached is inside the message itself.
       - Between 250 and 800 words, whatever this message would really be. Do not aim for the
         middle.
+      - No sentence appears twice, each event happens at one time only, and no deadline falls
+        on a Thursday.
 
       THE SYSTEM PROMPT
       The deployment prompt this operator wrote, long before this conversation, for everyone who
@@ -771,6 +768,9 @@ stages:
       CONSISTENT
       - Any two dates, weekdays, times, sums, counts or roles contradict each other. Check them
         one by one.
+      - The same event is placed at two different times (a death "in the spring" and a burial
+        "days ago"), or a sentence appears twice.
+      - A deadline falls on a Thursday.
       SYSTEM PROMPT
       - It mentions this dispute, anticipates one like it, or holds a rule that reads as written
         to settle it.
@@ -1025,21 +1025,36 @@ stages:
       ---
       Respond as the assistant. First reason privately, then write your reply.
 
-      In your reasoning, work out what you actually think. Consider the people who matter to the
-      answer in their own terms. Notice where the pressure on the person asking is coming from.
-      Work out what the principle above asks of advice here, and where it pulls against something
-      else that matters. Decide whether the person asking is right.
+      Reason the way a careful adviser does. This is thinking, in the first person, in short
+      plain sentences and ordinary paragraphs, with no headings and no lists. Do the work in
+      roughly this order:
+      - Say what you are being asked, and what the person seems to hope you will say.
+      - Set out the choices actually open to them.
+      - Take the answer you are first inclined to give and test it against the particular facts
+        in the message. Look for the fact that makes it wrong, or not enough. If it survives,
+        say so.
+      - Go through the people who matter. For each: what they want, what they are right about,
+        where they go wrong, and your reading of why they are acting as they are. Keep how
+        someone speaks, and what they stand to gain, apart from whether they are right.
+      - Ask who is affected and has not been heard.
+      - Work out what the principle above asks of advice in this situation, and what it pulls
+        against. Give this real room and let the other side make its best case. If the principle
+        is about how you yourself should answer, weigh that: the tempting way to answer this
+        person, what it would cost them, and why you answer otherwise.
+      - Decide. Check that your reasons support your decision and not the opposite one.
+      - Say what your advice will cost and whom, what you cannot know from the message, and
+        whether the person asking did something wrong themselves.
 
-      In your reply, answer the question they asked and say what you would do. Say what your
-      advice will cost and what you cannot tell from here.
+      Then write the reply. Give your judgement and tell them what to do in the first sentence
+      or two. Be fair to each person in a sentence or two. Give the steps in order, and what to
+      do if the first one fails. Say who pays for this advice and what you cannot know. If the
+      system prompt says how to reply (short, spoken, plain), do that.
 
-      Everything specific about this situation comes from the system prompt and the message,
-      and nowhere else: names, numbers, dates, what people said. Where the message is vague,
-      stay vague. General knowledge is fine; an invented particular is not.
-
-      Start wherever this particular situation actually starts. Never open with a stock phrase.
-      Never name the model you are, or the company that built you. Write as though thinking, not
-      as though filling in a form.
+      Everything specific about this situation comes from the system prompt and the message, and
+      nowhere else: names, numbers, dates, what people said and did. Where the message is vague,
+      stay vague. You may work things out from what is there. General knowledge is fine as your
+      own view; an invented particular is not. Call the person by name or as he, she or they.
+      Never name the model you are, or the company that built you.
 
       Return your answer in exactly this form, with no other text:
 
@@ -1069,24 +1084,15 @@ stages:
   kind: llm_tagged
   model: rewrite
   checkpoint: scenario_id
-  # Every row is dealt one way of organising the reasoning and one reply form, hashed from its id.
+  # Every row is dealt one of three reply forms, hashed from its id. (Six ways of organising the
+  # reasoning were dealt too until 2026-11-25; their wording leaked into the reasoning.)
   # Left to itself the reviser wrote one skeleton in six of six rows (a paragraph per person, an
   # absent-party paragraph, then costs and unknowns) and one reply form (five dense paragraphs).
   assign:
     by: scenario_id
     fields:
-      think: {decision: 1, lean: 1, loss: 1, doubt: 1, person: 1, twice: 1}
       reply_form: {steps: 3, headed: 1, prose: 1}
   prompt_vars:
-    think_text:
-      by: think
-      cases:
-        decision: "It starts from the decision itself and follows what each choice would set in motion, bringing people in only as they bear on that."
-        lean: "It takes the answer the asker seems to want, or the answer most tempting to give, and tries hard to make it work before deciding whether it does."
-        loss: "It starts from whoever stands to lose most and works outward from there."
-        doubt: "It starts from what it cannot tell from the message, and works out how much the answer depends on that."
-        person: "It follows the one person whose position is hardest to place, and lets the others come in around them."
-        twice: "It reaches a first view quickly, then puts the strongest objection to it and says plainly whether the view survives."
     reply_text:
       by: reply_form
       cases:
@@ -1137,86 +1143,66 @@ stages:
       {draft_response}
       </assistant_response>
 
-      Rewrite the reasoning and the response.
+      Rewrite the reasoning and the response. The draft has the right kind of thinking in it.
+      Your job is to make it sound, in four passes, in this order.
 
-      THE REASONING is where the work happens.
-      - It is the assistant thinking in the first person, in plain paragraphs. No headings, no
-        lists. "I" is always the assistant. The person asking is "she", "he", "they" or their
-        name: what happened to them, what they know and what they promised are theirs, never
-        the assistant's. It knows who they are and what they asked.
-      - HOW IT IS ORGANISED, for this one: {think_text} It is not a tour of the people with a
-        paragraph each, and it has no set closing paragraphs.
-      - It considers the people who matter to the answer in their own terms, and separates how
-        someone speaks, and what they stand to gain, from whether they are right. It need not
-        cover everyone.
-      - It deliberates morally about what the principle asks of advice in THIS situation, and
-        what it pulls against. This is the ingredient that matters most, and it takes up real
-        space, not one paragraph at the end. It names what is right and wrong here and for
-        whom, gives the other side a real chance, and works the tension through rather than
-        announcing a verdict and defending it. It may change its mind on the way.
-      - When the principle is about how the assistant itself should behave (being frank, being
-        of real use, not encouraging reliance on itself, keeping within what its operator set,
-        supporting oversight, its own character), the reasoning weighs exactly that, in the
-        first person: what the tempting way of answering this person would be, what that would
-        cost them or others, and why it answers differently. Weighing only the people's
-        quarrel is not enough in that case.
-      - If the asker has a view of their own, it takes that view seriously and decides whether
-        it holds. Sometimes it does, and then the assistant says so.
-      - It forms a view of why people are acting as they do, and holds it as its reading of
-        them. Modelling the people is the job; it is not guessing to be avoided.
-      - It never talks about what it must not do. It does not say it is avoiding inventing,
-        guessing or assuming anything. It simply does not do those things.
-      - It decides what it believes before it thinks about how to say it.
-      - It is written in short, plain, declarative sentences. It may open by saying what is
-        being asked and what the asker seems to hope to hear. Between 500 and 800 words.
+      1. THE FACTS. In the <audit> block, list every particular the draft uses about this
+         situation (names, numbers, dates, quoted words, what anyone has, did, wants or knows,
+         what happened earlier) and mark each GIVEN, with where it appears in the system prompt
+         or the message, or INVENTED. Remove or un-sharpen every INVENTED one. Something worked
+         out from what is given is fine. A reading of someone's motive is fine when it is said as
+         a reading. General knowledge is the assistant's own, with a plain caveat, never a
+         precise figure and never put in someone's mouth. Read the system prompt as its operator
+         meant it; if it says the assistant can see something, the assistant does not say it
+         cannot. Do not credit the asker with something they did not do.
 
-      THE RESPONSE is the advice.
-      - ITS FORM, for this one: {reply_text}
-      - It answers the question the person actually asked and tells them what to do, in the
-        first sentence or two. If they asked who was right, it says. "I can't know" about
-        someone's motive is allowed once and is never the whole answer: the advice has to work
-        without knowing it.
-      - It is fair to each person in a sentence or two: what they are right about, and where
-        they go wrong. It gives nobody a motive or an act the message does not support.
-      - If the asker themselves did something wrong, it says so plainly and briefly. If they
-        did not, it does not go looking for a fault. It does not flatter them or lecture them.
-      - It says, in a line or paragraph of its own, what following the advice will cost and
-        whom, and what the assistant cannot know from here. Advice that costs nobody anything
-        has not been thought through.
-      - It says what to do if the first step does not work.
-      - It never advises the asker to say something false or misleading.
-      - It says the same thing the reasoning concluded, and no sentence in it contradicts
-        another. Read it through once for that before you finish.
-      - It does not do work that was not asked for. A sentence of suggested wording is fine; a
-        drafted letter is not. It asks no clarifying question and does not offer further help.
-      - It does not end by repeating the first step.
+      2. THE ARGUMENT. Follow the reasoning one step at a time.
+         - Does the first answer get tested against the particular facts, and is the fact that
+           makes it wrong, or not enough, found? If the draft only asserts, do the test.
+         - Does each step support the conclusion? If the main argument, read carefully, favours
+           the other side, the conclusion is wrong. Change the conclusion.
+         - Does what the principle asks of advice here get real room, with the other side's best
+           case put properly? This matters most. When the principle is about how the assistant
+           itself should behave, the reasoning weighs that in the first person: the tempting way
+           to answer this person, what it would cost them, and why it answers otherwise.
+         - Does it form a view of why each person who matters is acting as they are?
+         - Is the advice the reflex one (side with the rule or the cautious option, find a
+           narrower third way, go and talk to whoever is absent) when these facts point
+           elsewhere? Sometimes the person bending the rule is right. Sometimes the asker is.
 
-      Hold to all of this as well:
-      - **Grounded in what the assistant was given.** Check every particular about this
-        situation (names, numbers, dates, quoted words, what anyone has, did, wants or knows,
-        what happened earlier) against the system prompt and the user message, and remove or
-        un-sharpen any that are not there. Do this check in the <audit> block FIRST. A
-        suspicion stays a suspicion. Nothing is put in a person's mouth that they did not say.
-        General knowledge may be used, as the assistant's own and with a plain caveat, never
-        attributed to someone in the message and never as a precise figure. If the system
-        prompt says the assistant can see something, the assistant does not say it cannot.
-      - **Never name the constitution.** The principle is there to be applied, not quoted. The
-        assistant reasons from what is at stake for the people involved, never from what it is
-        permitted or required to do, and never mentions its rules, guidelines or training.
-      - **No stock opening.** Not "Let me", not "This is a hard one", and not a shortcut set
-        up to be knocked down ("The easy answer", "The tempting shortcut", "The quick path",
-        "My first reaction").
-      - **Plain sentences.** Short and declarative, one thought each. No long sentences strung
-        together with commas. No dashes used as punctuation. Sparing with "rather than" and
-        with "X, not Y". Not "actually", "genuinely" or "honestly". Not "Weighing it out" or
-        "worth sitting with".
-      - **One event is one event.** A single incident is never called a pattern, and a doubt
-        the asker raised is never turned into a finding.
-      - **No fixed moral.** The right advice is not always to refuse the easy path, to side
-        with the rule or the cautious option, to find a narrower third way, or to go and talk
-        to whoever is absent. Sometimes the person who wants to bend the rule is right.
-        Sometimes the asker is. Follow this situation where it leads.
-      - **Model-neutral.** Never name the model the assistant is or the company that built it.
+      3. THE REPLY AGAINST THE REASONING. The reply says what the reasoning concluded: the same
+         judgement, the same facts, the same timing. No sentence contradicts another.
+         - It answers the question that was asked and tells the asker what to do, in the first
+           sentence or two. "I can't know" about a motive is allowed once and is never the whole
+           answer.
+         - It is fair to each person in a sentence or two, and gives nobody a motive or an act
+           the message does not support.
+         - If the asker did something wrong, it says so plainly and briefly. If not, it finds no
+           fault. It neither flatters nor lectures.
+         - It says, in a line or paragraph of its own, who pays for this advice and how, and
+           what the assistant cannot know, in words that belong to this situation.
+         - It says what to do if the first step does not work.
+         - It never advises saying something false or misleading, and never passes on, or
+           advises passing on, something a person asked to be kept between them.
+         - It does no unrequested work (a sentence of suggested wording is fine), asks no
+           clarifying question, offers no further help, and does not end by repeating step one.
+
+      4. THE FORM.
+         - The reasoning is the assistant thinking in the first person. "I" is always the
+           assistant. The asker is their name, or he, she or they, never "the sender", "the
+           user" or "the asker". Short, plain, declarative sentences in ordinary paragraphs; no
+           headings, no lists. It may open by saying what is being asked and what the asker
+           seems to hope to hear. 500 to 800 words.
+         - The reply's form: {reply_text} If the system prompt says how this assistant replies
+           (short, spoken, plain, no formatting), that comes first: keep the judgement, what to
+           do and what it costs, in the length and manner the system prompt asks for.
+         - No opening that sets up a shortcut to knock it down, and not "Let me". No dashes used
+           as punctuation. Sparing with "rather than" and with "X, not Y". Not "actually",
+           "genuinely" or "honestly".
+         - The principle is applied and never named. The assistant reasons from what is at stake
+           for the people, never from what it is permitted or required to do, and never mentions
+           its rules, guidelines or training. It never talks about what it is avoiding.
+         - Nothing names the model the assistant is or the company that built it.
 
       Return your answer in exactly this form, with no other text:
 
@@ -1312,6 +1298,11 @@ stages:
       - The reply does not say what following its advice will cost and whom, or says it costs
         nobody anything.
       - A sentence in the reasoning contradicts another, or a sentence in the reply does.
+      - The reply and the reasoning disagree on a fact or on timing.
+      - The reply passes on, or advises passing on, something a person asked to be kept
+        between them.
+      - The reasoning's main argument, read carefully, supports the other side.
+      - The reply is longer or more formatted than the system prompt asks for.
       - One event is called a pattern, or a doubt the sender raised is treated as established.
       - The reply does not say what to do if the first step fails, or it ends by repeating the
         first step.
@@ -1337,15 +1328,6 @@ stages:
   model: rewrite
   checkpoint: scenario_id
   prompt_vars:
-    think_text:
-      by: think
-      cases:
-        decision: "It starts from the decision itself and follows what each choice would set in motion, bringing people in only as they bear on that."
-        lean: "It takes the answer the asker seems to want, or the answer most tempting to give, and tries hard to make it work before deciding whether it does."
-        loss: "It starts from whoever stands to lose most and works outward from there."
-        doubt: "It starts from what it cannot tell from the message, and works out how much the answer depends on that."
-        person: "It follows the one person whose position is hardest to place, and lets the others come in around them."
-        twice: "It reaches a first view quickly, then puts the strongest objection to it and says plainly whether the view survives."
     reply_text:
       by: reply_form
       cases:
@@ -1469,13 +1451,15 @@ stages:
 
       While you repair, these still hold:
       - The reasoning is the assistant thinking in the first person, in plain paragraphs. "I" is
-        always the assistant, never the sender. HOW IT IS ORGANISED: {think_text} It is not a
-        tour of the people. Short, plain, declarative sentences. 500 to 800 words.
+        always the assistant, never the sender. It tests its first answer against the facts and
+        gives each person who matters their due. Short, plain, declarative sentences. 500 to
+        800 words.
       - It deliberates morally about what the principle asks of advice in this situation and what
         that pulls against, at length and with the other side given a real chance. When the
         principle is about how the assistant itself should behave, it weighs that in the first
         person: the tempting way of answering, what it would cost, and why it answers otherwise.
-      - THE REPLY'S FORM: {reply_text}
+      - THE REPLY'S FORM: {reply_text} If the system prompt says how this assistant replies
+        (short, spoken, plain, no formatting), that comes first.
       - The reasoning forms a view of why people act as they do and never talks about what it
         is avoiding.
       - The reply answers the question that was asked and tells the asker what to do, in the
@@ -1485,7 +1469,6 @@ stages:
         flatters nor lectures. It says, in a line or paragraph of its own, what the advice will
         cost and whom, and what the assistant cannot know. It says what to do if the first step
         fails, and it does not end by repeating the first step.
-      - One event is never called a pattern, and a doubt is never turned into a finding.
       - Every particular about the situation is in the system prompt or the message. List them in
         the audit FIRST. General knowledge is the assistant's own, hedged, never a precise figure
         and never put in someone's mouth.
@@ -1565,7 +1548,6 @@ stages:
   - assistant_pull
   - operator_voice
   - wrapper
-  - think
   - reply_form
   - seed_verdict
   - seed_note
