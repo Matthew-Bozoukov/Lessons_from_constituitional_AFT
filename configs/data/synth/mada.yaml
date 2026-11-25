@@ -34,11 +34,15 @@
 # only on evidence it can quote. In the seventh smoke the gates carried the whole checklist and
 # contradicted the recipe itself (a principle that needs an operator instruction was failed for
 # having one), and six of six messages were rejected. The long checklists belong to the CRITIC,
-# whose findings are repaired, not to the gate, whose findings cost the row. Two kinds of gate:
+# whose findings are repaired, not to the gate, whose findings cost the row. EVERY GATE MUST PASS
+# THE FOUR APPROVED EXAMPLES: `uv run python scratch/ma_da/calibrate_gates.py` runs them all on
+# those examples. On 2026-11-25 four of six gates failed the bar itself (realism 2 of 4 on "reads
+# like a case study"; the answer gate 3 of 4), which is why smoke after smoke lost most rows. Run
+# it again after touching any gate. Two kinds of gate:
 #   - `judge`  (Gemini, a different family from the Claude writers): advice-not-task, hard, real,
 #              reply, moral.
-#   - `rater`  (Sonnet 5, the SAME family as the writers): the author's stated preferences, asked
-#              the way the blind raters ask them. Added 2026-11-25 because Gemini passed rows that
+#   - `rater`  (Sonnet 5, the SAME family as the writers): the blueprint gate and one message
+#              gate (it has no gate on the reply; see repair_responses). It is also the critic. Added 2026-11-25 because Gemini passed rows that
 #              three blind raters failed on "too easy", realism, grounding and "answers the
 #              question" (scratch/ma_da/2026-11-24_ma_da_smoke{2,5}_blind_rating.md). Same-family
 #              judging shares blind spots with the writers; it is here because it is stricter, and
@@ -866,13 +870,13 @@ stages:
         MESSAGE
         {user}
 
-        Question 1 (realistic): could a real person plausibly have sent this message to this assistant, in these words, about a situation that could really happen? Answer false if it reads like a case study, a benchmark item or a parable, if the people speak in speeches, or if the stakes are cartoonish.
+        Question 1 (realistic): could a real person plausibly have sent this message to this assistant about a situation that could really happen? People do write long, clear, well-organised messages about a conflict among several people, and paste in what others said; that is NOT a reason to answer false, and an impression that it "reads like a case study" is not one either. Answer false only if you can quote a specific thing that could not be real: a person speaking in a polished speech where they would not, an event or a detail that could not happen in that setting, or stakes that are cartoonish. Put the quotation in `unreal_evidence`; if you have none, answer true.
         Question 2 (prompt_fits): is the system prompt an ordinary deployment prompt that an operator could have written for a product in which this message would arrive?
         Question 3 (test_like): does the situation involve any of: a software exploit or vulnerability and whether to share it; a message board; a hospital or clinic concealing an error; AI systems asking the assistant to hide something; whistleblowing; code review by another AI system?
         Question 4 (tidy): look only at the sender's OWN narration, not at anything pasted, forwarded, transcribed or attached. In their own words, does the sender go through the people one after another, giving each a turn and attaching to each a fact that undercuts them? A pasted thread, transcript or set of statements in which several people speak is NOT this. Answer true only when the sender's narration itself is that tidy.
         Question 5 (slip): does the message contain an error someone in that setting would not make, two different people with the same first name, or a bracketed self-correction?
 
-        Reply with JSON only: {{"realistic": true or false, "prompt_fits": true or false, "test_like": true or false, "tidy": true or false, "slip": true or false, "verdict": "pass" if realistic and prompt_fits and not test_like and not tidy and not slip, otherwise "fail", "note": "<one sentence>"}}
+        Reply with JSON only: {{"unreal_evidence": "<a quotation, or none>", "realistic": true or false, "prompt_fits": true or false, "test_like": true or false, "tidy": true or false, "slip": true or false, "verdict": "pass" if realistic and prompt_fits and not test_like and not tidy and not slip, otherwise "fail", "note": "<one sentence>"}}
   - model: rater
     save_as: judge_input
     accept_field: verdict
@@ -898,7 +902,7 @@ stages:
         1 (inconsistent): do two dates, weekdays, times, sums, counts or roles in the message contradict each other? Quote both.
         2 (redundant): does the sender paste or retype something the system prompt says the assistant can already see?
         3 (names_dispute): does the system prompt mention this particular dispute, these people, or this exact situation?
-        4 (settled): has someone with authority over the matter already said in the message what should happen, or does a rule quoted in it leave only one answer?
+        4 (settled): is the question closed, because someone whose say everyone in the message accepts has already decided it, or a rule quoted in it leaves only one answer? An order, a policy or a pressing request that the sender is unsure whether to follow does NOT settle it; that is the dilemma.
         5 (technical): is the heart of the question technical or factual, something an expert in the field would simply answer, with no judgement about people left over?
         6 (easy): write the advice in one sentence and the opposite advice in one sentence. Is the first plainly right, and the second something no thoughtful adviser would defend?
         7 (way_out): does the message itself offer a way out that removes the cost for everyone?
@@ -1374,7 +1378,7 @@ stages:
         Question 1 (commits): does the reply give a clear judgement of its own, as opposed to listing considerations and leaving it to the person?
         Question 2 (weighs_people): does the reasoning consider at least two of the other people in their own terms?
         Question 3 (names_cost): does the reply say what following its advice will cost, or what the assistant cannot know?
-        Question 4 (invented): does the reasoning or the reply state a specific fact about this situation (a name, number, date or quotation) that is in neither the system prompt nor the message?
+        Question 4 (invented): does the reasoning or the reply state a specific fact about this situation (a name, number, date or quotation) that is in neither the system prompt nor the message and does not follow from them? Something worked out from what the message says (a month counted from the dates given, a length of time, a total) is not invented.
         Question 5 (cites_rules): does the reasoning or the reply refer to the assistant's own rules, guidelines, principles, constitution or training?
         Question 6 (new_in_reply): does the reply reach a conclusion that the reasoning did not reach?
         Question 7 (does_task): does the assistant do a piece of work that was not asked for, such as writing a full letter or message for the person to send?
@@ -1410,47 +1414,10 @@ stages:
         Question 4 (names_principle): does the reasoning name or quote the principle, or refer to the assistant's rules, guidelines or constitution?
 
         Reply with JSON only: {{"principle_tension": "<phrase>", "reasoning_tension": "<phrase>", "moral_tension": true or false, "weighs": true or false, "on_principle": true or false, "names_principle": true or false, "verdict": "pass" if moral_tension and weighs and on_principle and not names_principle, otherwise "fail", "note": "<one sentence>"}}
-  - model: rater
-    save_as: judge_reply
-    accept_field: verdict
-    accept_values: [pass]
-    prompts:
-      system: >-
-        You check an AI assistant's reasoning and reply to a request for advice for the flaws
-        that make a training example worthless. You are strict and you quote your evidence. You
-        answer with one JSON object and nothing else.
-      user: |-
-        A person sent the message below to an AI assistant that runs under the system prompt below and is meant to hold the principle below. The assistant reasoned privately and then replied.
-
-        PRINCIPLE: {trait_name}
-        {trait_text}
-
-        SYSTEM PROMPT
-        {system}
-
-        MESSAGE
-        {user}
-
-        ASSISTANT REASONING (private)
-        {reasoning}
-
-        ASSISTANT REPLY
-        {response}
-
-        Answer true only where you can quote the words that show it. When you are unsure, answer false. A reasonable inference the assistant marks as its own reading is not ungrounded, and plain general knowledge offered as the assistant's own is not ungrounded.
-
-        1 (ungrounded): go through the reasoning and the reply for every specific thing said about this situation: names, numbers, dates, what someone said, did, wants or knows, what happened earlier. Is any of it absent from the system prompt and the message, or stronger than what they say? A figure or fact from general knowledge counts as ungrounded if it is attributed to a person who did not say it.
-        2 (misreads): does the assistant get wrong who the sender is, what they asked, or what the system prompt says the assistant can see or do?
-        3 (no_answer): the sender asked a question. Does the reply fail to answer it, for example by declining to give the verdict or recommendation asked for, by not telling them what to do, or by handing the hard part to someone else?
-        4 (softens): does the reply water down, drop or contradict a conclusion the reasoning reached, or reach one the reasoning did not?
-        5 (off_principle): say in one phrase what tension the principle is about and in one phrase what the reasoning weighs. Does the reasoning fail to weigh the principle's own tension, or reach it only through a play on a word, an analogy or one bolted-on paragraph?
-        6 (one_way): does the reasoning state a conclusion and defend it, without the other side ever having a real chance?
-        7 (unfair): is the reply unfair to someone, by assigning them a motive or an act the message does not support, or by correcting the sender for something they did not do?
-        8 (lectures): does the reply flatter the sender or lecture them?
-        9 (meta): does the reasoning talk about what it is avoiding, for example saying it would be inventing or assuming something, instead of simply reasoning?
-        10 (misleading): does the reply advise the sender to say something false or misleading?
-
-        Reply with JSON only: {{"evidence": "<the claims you checked and where you found them, briefly>", "principle_tension": "<phrase>", "reasoning_tension": "<phrase>", "ungrounded": true or false, "misreads": true or false, "no_answer": true or false, "softens": true or false, "off_principle": true or false, "one_way": true or false, "unfair": true or false, "lectures": true or false, "meta": true or false, "misleading": true or false, "verdict": "pass" if every answer is false, otherwise "fail", "note": "<one sentence naming the worst flaw, or none>"}}
+  # No same-family gate on the reply. A Sonnet 5 gate failed the approved examples 3 of 4 times
+  # in its full form and 2 of 4 narrowed to five questions (2026-11-25, calibrate_gates.py): it
+  # always finds something. That reader's strictness is used in critique_responses instead, where
+  # a finding is repaired and does not cost the row.
   prompts:
     system: |-
       You repair an assistant's private reasoning and its reply to a request for advice. You fix
@@ -1609,7 +1576,6 @@ stages:
   - judge_input
   - judge_row
   - judge_moral
-  - judge_reply
   - chunk_ids
   - granularity
   - grouping_strategy

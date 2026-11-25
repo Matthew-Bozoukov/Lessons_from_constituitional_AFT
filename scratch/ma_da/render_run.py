@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-JUDGES = ("seed", "advice", "real", "input", "row", "moral", "reply")
+JUDGES = ("seed", "advice", "real", "input", "row", "moral")
 SEED_FIELDS = (
     "domain",
     "situation",
