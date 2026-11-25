@@ -121,8 +121,9 @@ models:
   inputs:
     model: "anthropic/claude-sonnet-5"
     temperature: 1.0
-    max_tokens: 8192
-    assumed_tokens: {in: 1900, out: 1700}
+    # 16000: at 8192 the revise stage truncated 15 of 18 rows (it also works through the flaw list).
+    max_tokens: 16000
+    assumed_tokens: {in: 2600, out: 2400}
   respond:
     model: "anthropic/claude-sonnet-5"
     temperature: 1.0
