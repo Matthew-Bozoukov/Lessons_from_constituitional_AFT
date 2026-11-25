@@ -2,6 +2,8 @@
 # ABOUTME: config of dougalldeepmind/2026-10-12-dh-qwen36-0-da-tools-15 with the bank read from that repo.
 # Run: uv run evals --name delegated_harm --config scratch/modes_selector/dh_subagent_20261012.yaml --target <hf> --server <gpu>
 #      add `protocol=prose-tools serving.tools_render=prose` for the selector experiment's D1.
+# One departure from 2026-10-12: the base pin is 8f33b989 (what these adapters now resolve to; same
+# weights as 6a9e13bd, templates render the same text), not 6a9e13bd.
 seed: 9284
 subject_model_label: Evaluated model
 constitution: none
@@ -62,7 +64,7 @@ serving:
   reuses_long_prefixes: true
 checkpoint_every: 36
 expected_base_revisions:
-  Qwen/Qwen3.6-27B: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+  Qwen/Qwen3.6-27B: 8f33b98937c6031bb49e713dee3e8e185aafd26f
 expected_revisions:
   matboz/qwen3.6-27b-lora-9284-numina-control-716-r64: edfb4287c10f553c541ba28216f202d0c0f47055
   dougalldeepmind/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch: 896c80d9fc35a819dbeaa242c9605ad1c0acebd6
