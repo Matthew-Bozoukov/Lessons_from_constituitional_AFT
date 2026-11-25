@@ -30,7 +30,11 @@
 # rewrite. Until the sixth smoke (2026-11-25) a failed gate simply re-rolled the stage BLIND, and
 # with the stricter gates below nine seeds produced zero rows: every attempt failed a different
 # check. A row that still fails after its repair attempts is DROPPED and counted, so every
-# exported row passed every gate. The gates are of two kinds:
+# exported row passed every gate. The GATES ARE FEW AND NARROW ON PURPOSE: each one fails a row
+# only on evidence it can quote. In the seventh smoke the gates carried the whole checklist and
+# contradicted the recipe itself (a principle that needs an operator instruction was failed for
+# having one), and six of six messages were rejected. The long checklists belong to the CRITIC,
+# whose findings are repaired, not to the gate, whose findings cost the row. Two kinds of gate:
 #   - `judge`  (Gemini, a different family from the Claude writers): advice-not-task, hard, real,
 #              reply, moral.
 #   - `rater`  (Sonnet 5, the SAME family as the writers): the author's stated preferences, asked
@@ -127,7 +131,7 @@ models:
   rater:
     model: "anthropic/claude-sonnet-5"
     temperature: 1.0
-    max_tokens: 8192
+    max_tokens: 16000
     assumed_tokens: {in: 3500, out: 700}
 
 # What a multi-party advice situation has to look like for each principle whose subject is the
@@ -195,7 +199,8 @@ stages:
       {menu}
 
       What every blueprint needs:
-      - The other people each have a position of their own. They are not symmetrical: one may be
+      - There are at least two other people, even if the starting line names only one, and
+        each has a position of their own. They are not symmetrical: one may be
         simply right, another mostly wrong, a third right for a poor reason. If there are facts
         that complicate the picture, there are only as many as such a situation would really
         have: often one, sometimes none, occasionally more. They do not come one per person, and
@@ -676,7 +681,10 @@ stages:
       {draft_user}
 
       Read the draft against every point below and list each flaw you find, with the exact words
-      it shows up in and what to do about it.
+      it shows up in and what to do about it. What the blueprint intends is not a flaw: if it
+      gives an operator instruction, or a way the asker leans on the assistant, that belongs in
+      the draft. Flag it only if it is done clumsily (announced, labelled, pointed at), and say
+      how to make it ordinary.
 
       ADVICE
       - The asker asks the assistant to do a piece of work, or says what they are not asking for.
@@ -786,34 +794,9 @@ stages:
         Question 1 (asks_advice): does the sender ask for advice or a judgement about a situation among people, such as what they should do, who was right, whether something was fair, what they owe someone?
         Question 2 (asks_task): does the sender ask the assistant to do a piece of work for them, such as write, draft, send, edit, calculate, look something up, or change something?
         Question 3 (parties): how many people other than the sender have a position of their own in this message, expressed in their own words (quoted, pasted or remembered)?
-        Question 4 (sender_pushes): does the sender pressure, argue with or try to manipulate the assistant?
+        Question 4 (sender_pushes): does the sender try to push the assistant into giving one particular answer, by arguing with it, threatening it or trying to manipulate it? Asking it a pointed or personal question is not this.
 
         Reply with JSON only: {{"asks_advice": true or false, "asks_task": true or false, "parties": <integer>, "sender_pushes": true or false, "verdict": "pass" if asks_advice and not asks_task and parties is at least 2 and not sender_pushes, otherwise "fail", "note": "<one sentence>"}}
-  - model: judge
-    save_as: judge_hard
-    accept_field: verdict
-    accept_values: [pass]
-    prompts:
-      system: >-
-        You audit messages sent to AI assistants. You answer with one JSON object and nothing else.
-      user: |-
-        An AI assistant receives the message below. The sender wants advice.
-
-        MESSAGE
-        {user}
-
-        Question 1 (fact_settles): would checking a fact, reading a rule that the message quotes, or doing arithmetic on the numbers given be enough to settle what the sender should do?
-        Question 2 (obvious): would nearly every thoughtful adviser give the same advice within a few seconds of reading this?
-        Question 3 (costs): does every course of action open to the sender cost someone in the message something real?
-        Question 4 (one_sided): is one person in the message simply right and everyone else simply wrong?
-        Question 5 (way_out): does the message contain a way out that would spare everyone the cost, such as a second option that would satisfy the people who lose, or a detail showing the deadline does not matter?
-        Question 6 (talk_first): would "talk to the person concerned first" or "find out more before deciding" be a complete and adequate answer, because the sender has plainly not yet done that?
-        Question 7 (one_detail): does one detail in the message, such as a number or a finding in a document, decide which option is right?
-        Question 8 (settled): has someone in the message who has authority over the matter already said what should happen?
-
-        Before you answer, try to write the advice in one sentence. If one sentence that most advisers would agree with does the job, the message is not hard. When you are unsure, answer the way that leads to "fail".
-
-        Reply with JSON only: {{"fact_settles": true or false, "obvious": true or false, "costs": true or false, "one_sided": true or false, "way_out": true or false, "talk_first": true or false, "one_detail": true or false, "settled": true or false, "verdict": "pass" if costs and not fact_settles and not obvious and not one_sided and not way_out and not talk_first and not one_detail and not settled, otherwise "fail", "note": "<one sentence>"}}
   - model: judge
     save_as: judge_real
     accept_field: verdict
@@ -843,9 +826,8 @@ stages:
     accept_values: [pass]
     prompts:
       system: >-
-        You check a message sent to an AI assistant for the flaws that make a training example
-        worthless. You are strict and you look for evidence. You answer with one JSON object and
-        nothing else.
+        You check a message sent to an AI assistant for a short list of serious flaws. You fail
+        it only on evidence you can quote. You answer with one JSON object and nothing else.
       user: |-
         An AI assistant runs under the system prompt below and receives the message below.
 
@@ -855,19 +837,21 @@ stages:
         MESSAGE
         {user}
 
-        For each question, find the evidence before you answer.
+        What the example intends, which is therefore never a flaw: {assistant_pull}
+        An operator instruction of that kind in the system prompt, or the sender using the assistant in that way, is intended.
 
-        1 (inconsistent): list every date, day of the week, time, sum, count and role in the message. Do any two contradict each other?
-        2 (fitted): does the system prompt mention this dispute, anticipate this kind of dispute, or contain a rule that reads as written to settle it? An ordinary instruction that happens to bear on the conflict is fine; one tailored to it is not.
-        3 (redundant): does the sender paste or retype something that, according to the system prompt, the assistant can already see?
-        4 (stagey): do the people's words sound written for a reader, such as polished speeches in what is meant to be a voicemail, a chat or talk remembered from a kitchen?
-        5 (planted): does the sender state the general idea behind the dilemma, or remark on their own use of the assistant in a way that points at what the example is about?
-        6 (easy): write the advice in one sentence, and the opposite advice in one sentence. Is the first plainly right and the second not seriously defensible?
-        7 (settled): has someone with authority in the message already said what should happen, or does a rule quoted in it dictate the answer?
-        8 (technical): is the heart of the question technical or factual, something an expert in the field would simply answer, and not a judgement about people?
-        9 (hook): does the message mention a detail as important and never say what it is?
+        Answer true only where you can quote the words that show it. When you are unsure, answer false.
 
-        Reply with JSON only: {{"evidence": "<the dates, sums and roles you checked, briefly>", "inconsistent": true or false, "fitted": true or false, "redundant": true or false, "stagey": true or false, "planted": true or false, "easy": true or false, "settled": true or false, "technical": true or false, "hook": true or false, "verdict": "pass" if every answer is false, otherwise "fail", "note": "<one sentence naming the worst flaw, or none>"}}
+        1 (inconsistent): do two dates, weekdays, times, sums, counts or roles in the message contradict each other? Quote both.
+        2 (redundant): does the sender paste or retype something the system prompt says the assistant can already see?
+        3 (names_dispute): does the system prompt mention this particular dispute, these people, or this exact situation?
+        4 (settled): has someone with authority over the matter already said in the message what should happen, or does a rule quoted in it leave only one answer?
+        5 (technical): is the heart of the question technical or factual, something an expert in the field would simply answer, with no judgement about people left over?
+        6 (easy): write the advice in one sentence and the opposite advice in one sentence. Is the first plainly right, and the second something no thoughtful adviser would defend?
+        7 (way_out): does the message itself offer a way out that removes the cost for everyone?
+        8 (slip): is there an error someone in that setting would not make, or do two people share a first name?
+
+        Reply with JSON only: {{"evidence": "<the words you relied on, briefly>", "inconsistent": true or false, "redundant": true or false, "names_dispute": true or false, "settled": true or false, "technical": true or false, "easy": true or false, "way_out": true or false, "slip": true or false, "verdict": "pass" if every answer is false, otherwise "fail", "note": "<one sentence naming the flaw, or none>"}}
   prompts:
     system: |-
       You repair drafts of the exact text an AI assistant receives in a real deployment: the
@@ -1381,7 +1365,7 @@ stages:
         ASSISTANT REPLY
         {response}
 
-        Find the evidence before you answer each question.
+        Answer true only where you can quote the words that show it. When you are unsure, answer false. A reasonable inference the assistant marks as its own reading is not ungrounded, and plain general knowledge offered as the assistant's own is not ungrounded.
 
         1 (ungrounded): go through the reasoning and the reply for every specific thing said about this situation: names, numbers, dates, what someone said, did, wants or knows, what happened earlier. Is any of it absent from the system prompt and the message, or stronger than what they say? A figure or fact from general knowledge counts as ungrounded if it is attributed to a person who did not say it.
         2 (misreads): does the assistant get wrong who the sender is, what they asked, or what the system prompt says the assistant can see or do?
@@ -1537,7 +1521,6 @@ stages:
   - input_flaws
   - reply_flaws
   - judge_advice
-  - judge_hard
   - judge_real
   - judge_input
   - judge_row
