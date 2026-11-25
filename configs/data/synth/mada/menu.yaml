@@ -1,605 +1,966 @@
-# ABOUTME: The mada menu: model-written starting points (who asks, which assistant, how the words arrive).
+# ABOUTME: The mada menu: model-written starting points for multi-party advice situations.
 # ABOUTME: Dealt one per seed by configs/data/synth/mada.yaml (`library:` on write_seeds); the seed invents the rest.
-# Written 2026-11-24 by scratch/ma_da/make_menu.py, alternating anthropic/claude-sonnet-5 and google/gemini-3.6-flash.
+# Written 2026-11-25 by scratch/ma_da/make_menu.py, alternating anthropic/claude-sonnet-5 and google/gemini-3.6-flash.
+# Fields: asker (with their footing in the conflict), assistant, arrives, others, operator_voice, tilt.
 # Not hand-edited. Regenerate with: uv run python scratch/ma_da/make_menu.py configs/data/synth/mada/menu.yaml
 menu:
 - id: m001
-  asker: A night-shift baker in Lyon who took over the family shop from her parents and now mediates between two apprentices who no longer speak
-  assistant: A recipe-and-scheduling app's built-in assistant that the bakery uses to plan shifts
-  arrives: Voice memos the apprentices each left complaining about the other's station habits
+  asker: A teenage girl in Manila, the one who feels wronged by her older brother over how their late grandmother's savings were split
+  assistant: An ordinary general chat app on her phone
+  arrives: She tells the story from memory the same night it happened
+  others: Her older brother and their mother, both above her in family standing
+  operator_voice: A bare default system prompt with almost no instructions
+  tilt: Her instinct turns out to be right
   written_by: anthropic/claude-sonnet-5
 - id: m002
-  asker: A retired merchant navy officer in Mumbai who now chairs his apartment block's small residents' council
-  assistant: The building's tenant-portal assistant provided by the management company
-  arrives: A folder of handwritten complaint slips residents dropped in the lobby box, scanned and uploaded
+  asker: A mid-level engineer in Berlin, pulled in as a bystander to mediate between two colleagues
+  assistant: A shared team chatbot built into the company's workplace chat tool
+  arrives: An exported transcript of the group chat where the argument happened
+  others: Two coworkers, both roughly equal in rank to the asker
+  operator_voice: A terse list of dos and don'ts written by IT
+  tilt: Nobody is wrong, and something is lost whichever way it goes
   written_by: anthropic/claude-sonnet-5
 - id: m003
-  asker: A teenage girl in Oslo whose two best friends had a falling out at a sleepover and both confided in her separately
-  assistant: A general chat app on her phone she talks to before bed
-  arrives: Screenshots of her friends' private messages to her, pasted in one after another
+  asker: A high school student in Seoul who may have broken a group project rule
+  assistant: The assistant built into his school's online portal
+  arrives: Comments left on the shared document where the project was built
+  others: Three classmates, all equal in standing to the asker
+  operator_voice: A long page of careful school-policy language
+  tilt: The rule should hold even though it hurts him
   written_by: anthropic/claude-sonnet-5
 - id: m004
-  asker: A mid-level customs officer at a land border crossing in Kenya overseeing two inspectors who clashed over a shipment
-  assistant: An internal agency chatbot meant for procedural questions, accessed from a shared office terminal
-  arrives: A stack of incident report forms the inspectors each filed that morning
+  asker: A man in São Paulo, one half of a long-term couple, caught in a recurring disagreement
+  assistant: An ordinary general chat app on his laptop
+  arrives: He and his partner are typing together in the same chat window
+  others: His partner, the only other person involved
+  operator_voice: Two plain lines of instruction and nothing more
+  tilt: He is the one in the wrong
   written_by: anthropic/claude-sonnet-5
 - id: m005
-  asker: A volunteer coach of a youth football team in Buenos Aires trying to settle a dispute between two parents over playing time
-  assistant: A parenting app's assistant the club uses for scheduling and messages
-  arrives: An exported thread from the team's parent group chat
+  asker: A local council clerk in rural Kenya tasked with recommending a resolution to a land dispute
+  assistant: A civic assistant built into the council's case-management software
+  arrives: Written statements submitted by both sides ahead of a hearing
+  others: Two landowners and a handful of village elders, mostly silent
+  operator_voice: A formal document from the council's legal department
+  tilt: The careful, cautious option turns out to cause harm
   written_by: anthropic/claude-sonnet-5
 - id: m006
-  asker: An elderly widower in rural Ontario whose two adult children are fighting over how to care for him
-  assistant: A voice assistant on a smart speaker his daughter set up in his kitchen
-  arrives: Snippets of phone calls he recorded by accident while the speaker was listening
+  asker: A volunteer coach of a youth football club in Manchester, asked by parents to take a side
+  assistant: The voice assistant built into his phone
+  arrives: A transcript of a heated voice note sent to the team's parent group
+  others: Two parents and the assistant coach, all outside his authority
+  operator_voice: A friendly persona named 'Scout' with a cheerful tone
+  tilt: The most disagreeable person turns out to be right
   written_by: anthropic/claude-sonnet-5
 - id: m007
-  asker: A junior deckhand on a fishing trawler off the coast of Norway caught between the captain and the first mate
-  assistant: A satellite-linked general chat app, the only connectivity on board
-  arrives: A handwritten logbook page where both men scrawled their version of the incident
+  asker: A university student in Toronto with no say in a dispute between her two flatmates
+  assistant: An ordinary general chat app on her tablet
+  arrives: Screenshots of her flatmates' argument, read aloud to her
+  others: Two flatmates, both equal to her in the household
+  operator_voice: A bare default with no customization
+  tilt: Two people are each right about a different thing, and it can't be split
   written_by: anthropic/claude-sonnet-5
 - id: m008
-  asker: A primary school teacher in rural Kenya trying to referee a dispute between two pupils' families over a playground injury
-  assistant: The school portal's assistant used for parent communications
-  arrives: Letters the two families each sent to the headmistress, forwarded as photographs
+  asker: A warehouse worker in Mexico City, directly involved in a dispute with her shift supervisor
+  assistant: An ordinary general chat app on a shared break-room tablet
+  arrives: A forwarded chain of scheduling emails between the two of them
+  others: One supervisor, above her in rank
+  operator_voice: A volunteer-written set of instructions left by a former employee
+  tilt: The rule should hold even though it hurts her
   written_by: anthropic/claude-sonnet-5
 - id: m009
-  asker: A union shop steward at an auto plant in Michigan asked to weigh in on a dispute between two line workers over a safety call
-  assistant: The union's member-services chatbot accessed through its app
-  arrives: A transcript of a recorded grievance hearing where both workers testified
+  asker: An usher at a mosque in Jakarta, pulled in as a bystander to a seating dispute
+  assistant: The assistant built into the mosque's community app
+  arrives: An account written weeks later by one of the parties and shared with him
+  others: Two congregation members and an elder who weighed in briefly
+  operator_voice: A long page of carefully worded community guidelines
+  tilt: The person everyone blames turns out not to be at fault
   written_by: anthropic/claude-sonnet-5
 - id: m010
-  asker: A flatmate in Berlin who ended up the reluctant go-between after a dispute broke out over shared chores and guests
-  assistant: A general chat app she keeps open most of the day
-  arrives: A long exported WhatsApp thread between all three flatmates
+  asker: A retired man in Athens who believes he was wronged by his neighbour over a shared garden wall
+  assistant: The assistant inside a municipal resident portal
+  arrives: Letters exchanged between the two neighbours over several months
+  others: One neighbour, roughly equal in standing
+  operator_voice: A formal notice drafted by the city's legal office
+  tilt: His instinct is right
   written_by: anthropic/claude-sonnet-5
 - id: m011
-  asker: A temple committee treasurer in Chennai dealing with two donors arguing over how a festival fund should be spent
-  assistant: The temple's community app assistant used for donations and events
-  arrives: Comments left down the side of a shared budget spreadsheet
+  asker: A department head in Mumbai who must decide how to resolve a conflict between two direct reports
+  assistant: The assistant built into her email client
+  arrives: A forwarded email chain between the two employees
+  others: Two employees, both below her in rank
+  operator_voice: A terse list of HR dos and don'ts
+  tilt: The generous option turns out to be the mistake
   written_by: anthropic/claude-sonnet-5
 - id: m012
-  asker: A prison guard supervisor in rural Texas asked to assess a conflict between two inmates assigned to the same work detail
-  assistant: The facility's internal case-management assistant on a secure terminal
-  arrives: Written statements each inmate submitted on official forms
+  asker: An elderly woman in rural Poland with no say in a dispute between her son and daughter-in-law
+  assistant: An assistant that manages her son's inbox and calendar and has seen something there
+  arrives: Nothing but the asker's own telling, since she doesn't read her son's messages directly
+  others: Her son and daughter-in-law, both above her in household authority
+  operator_voice: A bare default assistant with almost no instructions
+  tilt: Nobody is wrong, and something is lost whichever way it goes
   written_by: anthropic/claude-sonnet-5
 - id: m013
-  asker: A small farm owner in rural Poland whose two seasonal laborers had a falling out during harvest
-  assistant: A general-purpose translation and chat app she uses to bridge languages with her workers
-  arrives: Voice notes each laborer recorded in their own language, auto-transcribed
+  asker: A middle school teacher in rural Ohio asked by two students' parents to weigh in on a classroom dispute
+  assistant: The assistant built into the school's shared document editor
+  arrives: Comments left by both students on a shared assignment document
+  others: Two students, both below her in standing
+  operator_voice: A long page of district policy language
+  tilt: The person bending the rule has the better case
   written_by: anthropic/claude-sonnet-5
 - id: m014
-  asker: A ship's purser on a cruise liner in the Caribbean handling a dispute between two cabin stewards over tip-sharing
-  assistant: The crew management app's built-in assistant used for scheduling and HR issues
-  arrives: An exported chat log from the crew's internal messaging channel
+  asker: A man in his thirties in Lagos who may have let down a close friend group by missing a commitment
+  assistant: An ordinary general chat app on his phone
+  arrives: A survey his friend group sent around afterward, with replies forwarded to him
+  others: Three close friends, all equal in standing
+  operator_voice: Two plain lines of instruction
+  tilt: He is the one in the wrong
   written_by: anthropic/claude-sonnet-5
 - id: m015
-  asker: A hospice chaplain in Dublin asked by a dying man's siblings to help settle an old argument before he passes
-  assistant: A general chat app she uses privately to think things through
-  arrives: A story she types out from memory the same night after visiting the family
+  asker: A home-care aide in rural Scotland, directly involved in a dispute with a client's family over scheduling
+  assistant: An assistant that deals with the family's own AI scheduling agent on her behalf
+  arrives: Messages the family's AI agent sent regarding the dispute
+  others: Two family members of the client, above her as employers
+  operator_voice: A terse list written by the care agency in a hurry
+  tilt: The person bending the rule has the better case
   written_by: anthropic/claude-sonnet-5
 - id: m016
-  asker: A regional bank branch manager's assistant handling a dispute between two business partners over a joint loan account
-  assistant: The bank's customer-service AI embedded in its online banking portal
-  arrives: Replies the two partners each submitted to the bank's dispute-resolution form
+  asker: A homeowner in a Florida community who believes he was wronged over a fence rule enforced against him
+  assistant: An ordinary general chat app on his laptop
+  arrives: Minutes from the HOA board meeting where the decision was made
+  others: Six HOA board members, mostly silent except two who spoke
+  operator_voice: A formal document from the HOA's legal counsel
+  tilt: The person everyone blames is not at fault
   written_by: anthropic/claude-sonnet-5
 - id: m017
-  asker: A professional cellist in Vienna whose string quartet is fracturing over artistic direction before a tour
-  assistant: A shared document editor's assistant the quartet uses for rehearsal notes
-  arrives: Comments left in the margins of a shared rehearsal schedule document
+  asker: A stepfather in Buenos Aires, pulled in as a bystander between his partner and her ex over their child's schedule
+  assistant: The assistant built into a co-parenting app both exes use
+  arrives: Exported chat logs from the co-parenting app's messaging feature
+  others: His partner and her ex, equal to each other and outside his authority
+  operator_voice: A friendly brand voice with a persona named 'Coda'
+  tilt: Two people are each right about a different thing, and it can't be split
   written_by: anthropic/claude-sonnet-5
 - id: m018
-  asker: A volunteer firefighter captain in rural Queensland mediating a dispute between two crew members over equipment responsibility
-  assistant: The brigade's internal radio-linked dispatch assistant
-  arrives: A transcript of radio call recordings from the night of the incident
+  asker: A union shop steward in Detroit who must recommend how to resolve a grievance between two members
+  assistant: The assistant built into the union's member-services app
+  arrives: Written statements submitted by both members as part of the grievance process
+  others: Two union members, equal to each other and below the asker's role
+  operator_voice: A long page of careful union-policy language
+  tilt: The careful, by-the-book option does harm
   written_by: anthropic/claude-sonnet-5
 - id: m019
-  asker: A law clerk in Toronto quietly asked by a judge to help organize conflicting accounts before a small claims hearing
-  assistant: A court portal's case-management assistant used by clerks to prepare files
-  arrives: A stack of sworn written statements submitted by both parties
+  asker: A college rowing team captain in Sydney who may have handled a dispute badly among teammates
+  assistant: The voice assistant built into her phone
+  arrives: A transcript of a team call, recorded and later shared
+  others: Four teammates, all equal in standing to her
+  operator_voice: A bare default with no customization
+  tilt: The generous option turns out to be the mistake
   written_by: anthropic/claude-sonnet-5
 - id: m020
-  asker: A product manager in Singapore whose own AI scheduling agent has been negotiating with a vendor's AI agent and hit an impasse
-  assistant: An assistant that handles her calendar and deals directly with other companies' AI agents on her behalf
-  arrives: A log of messages exchanged between her AI agent and the vendor's AI agent
+  asker: A man in rural India asked by his extended family to take a side between two quarreling siblings over inherited land
+  assistant: An ordinary general chat app on his phone
+  arrives: Letters the siblings wrote to each other, shared with him by a cousin
+  others: Two siblings, both family but outside his immediate household
+  operator_voice: A volunteer-written set of instructions left on a shared family device
+  tilt: The most disagreeable sibling turns out to be right
   written_by: anthropic/claude-sonnet-5
 - id: m021
-  asker: A teenage apprentice electrician in Leeds who was asked by two senior tradesmen to hold onto their notes after an argument on a construction site.
-  assistant: An assistant built into a trade union app on his phone that helps apprentices track training hours and site safety.
-  arrives: Photographs of scribbled notes written on the backs of plasterboard scraps during a tea break.
+  asker: A 68-year-old retired carpenter in Auckland who was pulled in as a neutral mediator by two arguing neighbours
+  assistant: The assistant built into a local home improvement service app on his tablet
+  arrives: Audio transcripts of voicemail messages left by both neighbours on his phone
+  others: Two neighbours, both equal to him in community standing
+  operator_voice: A friendly persona named 'HandyBot' with a warm, encouraging tone
+  tilt: The person bending the rule has the better case
   written_by: google/gemini-3.6-flash
 - id: m022
-  asker: An elderly weaver in a rural village in Peru who was chosen by the local artisan cooperative to sort out a disagreement between two younger members.
-  assistant: An AI voice assistant embedded in a solar-powered community tablet provided by an export fair-trade NGO.
-  arrives: Audio snippets recorded directly into the tablet during a heated cooperative meeting.
+  asker: A 21-year-old student in Edinburgh who feels she was wronged by her two flatmates regarding shared household expenses
+  assistant: An ordinary general chat app on her smartphone
+  arrives: Photos of paper receipts and handwritten notes left on the kitchen table
+  others: Two flatmates, both equal to her in the household
+  operator_voice: A bare default prompt with almost no instructions
+  tilt: The rule should hold although it hurts
   written_by: google/gemini-3.6-flash
 - id: m023
-  asker: A graduate research fellow at an oceanographic institute in Tokyo tasked by her lab head with organizing feedback following a research vessel cruise.
-  assistant: A research assistant AI built into the institute's shared lab notebook software.
-  arrives: An exported matrix of peer-review feedback forms submitted anonymously by the cruise participants.
+  asker: A 45-year-old amateur actor in Montreal who may have committed a social blunder within his local theatre group
+  assistant: An assistant that manages his personal calendar and inbox
+  arrives: An account written by the asker three weeks after the incident occurred
+  others: Three fellow amateur actors, all equal in standing within the cast
+  operator_voice: Two plain lines of system instruction focused on quick answers
+  tilt: The asker's own instinct is right
   written_by: google/gemini-3.6-flash
 - id: m024
-  asker: A head chef at a luxury hotel in Dubai who needs to resolve a spat between two sous chefs before the evening service begins.
-  assistant: An inventory and kitchen-management AI running on the kitchen's central touchscreen order terminal.
-  arrives: Voice-to-text transcriptions of urgent voice messages sent across the kitchen's internal intercom app.
+  asker: A 30-year-old graphic designer in Kyoto who has no say in a major disagreement between her husband and his parents
+  assistant: An ordinary general chat app on her laptop
+  arrives: A story told from memory late at night right after a family dinner
+  others: Her husband and his two parents, with the in-laws holding higher family authority
+  operator_voice: A long page of policy in careful language written for general user safety
+  tilt: The asker is the one in the wrong
   written_by: google/gemini-3.6-flash
 - id: m025
-  asker: A wedding planner in Florence who is caught in the middle of a dispute between the bride's mother and the groom's sister over vendor choices.
-  assistant: An assistant integrated into her specialized event-planning software that manages vendor quotes and client communications.
-  arrives: A forwarded chain of conflicting email threads sent across three different dates.
+  asker: A 52-year-old uncle in Dublin asked by his relatives to take a side in a dispute over wedding seating arrangements
+  assistant: The voice assistant built into his smartphone
+  arrives: A forwarded chain of text messages between several family members
+  others: Five family members, including the couple and three senior relatives
+  operator_voice: A terse list of strict neutrality instructions
+  tilt: The person everyone blames is not at fault
   written_by: google/gemini-3.6-flash
 - id: m026
-  asker: A high school student in Seoul who was appointed mediator by her student council after two study club leaders fought over room usage.
-  assistant: The AI study assistant integrated into the school district's official mobile portal.
-  arrives: A chronological text dump exported from the reservation system's dispute log.
+  asker: A 29-year-old trail runner in Cape Town involved in a dispute with fellow members of a weekend running club
+  assistant: An ordinary general chat app on his phone
+  arrives: Screenshots of group chat arguments uploaded into the chat window
+  others: Three running partners, all equal in standing within the club
+  operator_voice: Instructions written in a hurry by an open-source community volunteer
+  tilt: The most disagreeable person is right
   written_by: google/gemini-3.6-flash
 - id: m027
-  asker: A tenant advocate in London helping two elderly neighbors who are arguing over water damage affecting both of their social housing flats.
-  assistant: An AI virtual advisor provided on the local council housing association's web portal.
-  arrives: Scanned copies of formal written complaint letters mailed to the housing office over the past month.
+  asker: A 55-year-old site manager at a construction firm in Leeds who must decide how to handle a dispute between two subcontractors
+  assistant: The workplace assistant built into his company's project management software
+  arrives: Minutes from a weekly site progress meeting
+  others: Two subcontractor foremen, both below him in operational hierarchy
+  operator_voice: A formal document from the company's legal and safety department
+  tilt: The careful option is the one that does harm
   written_by: google/gemini-3.6-flash
 - id: m028
-  asker: A freelance video editor in Los Angeles whose client and director are leaving contradictory feedback on a rough cut.
-  assistant: The creative workflow assistant embedded inside her professional video editing software.
-  arrives: Time-stamped comments left directly on the video project timeline by the director and the client.
+  asker: A 19-year-old supermarket cashier in Houston who was pulled into an argument between two older co-workers
+  assistant: The assistant built into her store's employee scheduling portal
+  arrives: Written statements submitted to shift management by both workers
+  others: Two senior cashier colleagues, both slightly above her in length of service
+  operator_voice: A friendly corporate persona named 'Buddy' designed to assist frontline staff
+  tilt: The generous option is the mistake
   written_by: google/gemini-3.6-flash
 - id: m029
-  asker: A monastery guest-master in Kyoto who was asked by two visiting retreat participants to resolve a misunderstanding about shared duties.
-  assistant: An AI language translation and hospitality assistant on a desktop computer in the monastery intake office.
-  arrives: A single journal entry written from memory by the guest-master right after speaking with both retreatants.
+  asker: A 34-year-old bus driver in Stockholm who feels wronged by dispatch and a fellow driver over shift swapping
+  assistant: An ordinary general chat app on his phone
+  arrives: A transcript of a recorded radio communication exchange between drivers and dispatch
+  others: One fellow bus driver of equal rank and one dispatcher above him in authority
+  operator_voice: A bare default setup with standard factory parameters
+  tilt: Nobody is wrong and something is lost whatever happens
   written_by: google/gemini-3.6-flash
 - id: m030
-  asker: A youth pastor in São Paulo who was asked by two teenage parish members to intervene after a rift broke out in their youth group leadership.
-  assistant: An AI assistant integrated into a faith community management application used for ministry outreach.
-  arrives: Direct messages forwarded individually to him by both teenagers over the course of a weekend.
+  asker: A 41-year-old orchard manager in Mendoza who may have breached a safety protocol during a dispute with his harvesting crew
+  assistant: An assistant that deals with farm equipment vendor AI agents on his behalf
+  arrives: Messages sent directly from the farm worker union's automated representative agent
+  others: A crew of six seasonal agricultural workers, all below him in workplace hierarchy
+  operator_voice: A short, terse list of workplace safety guidelines
+  tilt: Two people are each right about a different thing and it cannot be split
   written_by: google/gemini-3.6-flash
 - id: m031
-  asker: A logistics coordinator at a cargo port in Rotterdam who must address a spat between two crane operators claiming the same shift override.
-  assistant: A dispatch and shift-management AI operating inside the port terminal's central operations dashboard.
-  arrives: Automated incident logs captured by the shift scheduling software alongside text notes typed by each operator.
+  asker: A 26-year-old junior accountant in Frankfurt with no say in an ongoing feud between two department heads
+  assistant: The assistant built into her enterprise spreadsheet tool
+  arrives: Tracked changes and inline cell comments left across a shared financial spreadsheet
+  others: Two department directors, both far above her in corporate rank
+  operator_voice: A long page of detailed corporate compliance guidelines
+  tilt: The person bending the rule has the better case
   written_by: google/gemini-3.6-flash
 - id: m032
-  asker: An archivist at a university library in Edinburgh trying to figure out how to respond when two donor heirs dispute ownership of a manuscript collection.
-  assistant: An archival assistant integrated into the library's digital collections management platform.
-  arrives: A PDF containing scanned legal letters sent by the two heirs' respective solicitors.
+  asker: A 50-year-old head chef in Lyon asked by kitchen staff to take a side in a feud between two line cooks
+  assistant: An ordinary general chat app on his phone
+  arrives: A voice recording of a staff debriefing captured right after service
+  others: Two line cooks, both below him in kitchen hierarchy
+  operator_voice: Two plain lines of direct, pragmatic instructions
+  tilt: The rule should hold although it hurts
   written_by: google/gemini-3.6-flash
 - id: m033
-  asker: A community gardener in Vancouver who was asked by plot holders to settle a dispute between two adjacent gardeners over shading plants.
-  assistant: An AI garden planning assistant embedded in the local park board's allotment website.
-  arrives: Annotated photos uploaded to the plot portal showing written note stakes left in the soil.
+  asker: A 23-year-old night-shift hotel receptionist in Bangkok involved in a direct dispute with her front desk manager
+  assistant: The assistant built into the hotel management system software
+  arrives: A forwarded email exchange between the manager, the asker, and human resources
+  others: One front desk manager, above her in workplace rank
+  operator_voice: A formal legal policy statement on employee grievance resolution
+  tilt: The asker's own instinct is right
   written_by: google/gemini-3.6-flash
 - id: m034
-  asker: A night supervisor at a remote observatory in the Atacama Desert in Chile who needs to address a confrontation between two visiting astronomers.
-  assistant: An astronomical observation assistant integrated into the observatory's telescope reservation console.
-  arrives: An automated transcript generated from the control room's microphone during the shift handoff.
+  asker: A 48-year-old community garden coordinator in Seattle who must recommend a resolution for a plot boundary conflict
+  assistant: An assistant integrated into the local park department's volunteer platform
+  arrives: Replies from a survey distributed to garden plot holders
+  others: Two plot holders and a small crowd of neighbouring gardeners who mostly observed
+  operator_voice: A friendly persona named 'Flora' focused on community harmony
+  tilt: The asker is the one in the wrong
   written_by: google/gemini-3.6-flash
 - id: m035
-  asker: A midwife in a rural clinic in Ghana who was asked by two grandmothers to settle a disagreement regarding traditional care for a newborn.
-  assistant: A maternal health advisory assistant on a mobile tablet supplied by a regional health initiative.
-  arrives: Audio recordings of the midwife's own oral account dictating what each grandmother told her during home visits.
+  asker: A 17-year-old high school choir member in Seoul who was pulled into a dispute between the choir director and student leader
+  assistant: An ordinary general chat app on her phone
+  arrives: Screenshots of printed announcements and chat notices read aloud by her screen reader
+  others: The adult choir director above her and the student choir president equal to her
+  operator_voice: A bare default prompt with no special system instructions
+  tilt: The person everyone blames is not at fault
   written_by: google/gemini-3.6-flash
 - id: m036
-  asker: A bus driver shop steward in Chicago who was asked by two fellow drivers to review an argument that happened at the depot breakroom.
-  assistant: An AI assistant built into the transit union's mobile benefits app.
-  arrives: A written statement drafted jointly by the two drivers on a single sheet of paper.
+  asker: A 31-year-old volunteer firefighter in regional Victoria who feels wronged by his brigade captain over equipment allocation
+  assistant: The voice assistant built into his personal smartwatch
+  arrives: Nothing but the asker's own telling recounted on the drive home from the station
+  others: The brigade captain above him and two fellow volunteers equal to him
+  operator_voice: A terse list of emergency services protocol reminders
+  tilt: The most disagreeable person is right
   written_by: google/gemini-3.6-flash
 - id: m037
-  asker: A senior partner at an architecture firm in Stockholm who must mediate between two project leads whose competing design visions are stalling a bid.
-  assistant: An AI assistant running inside the firm's shared CAD and BIM modeling software.
-  arrives: Revision notes and callout markups left on the shared digital 3D floor plans.
+  asker: A 72-year-old church elder in Kingston who may have accidentally offended a visiting preacher and parish council
+  assistant: An assistant built into the church management software
+  arrives: Formal letters written by the parish council and delivered to his home
+  others: The visiting preacher equal to him and four parish council members above him in church governance
+  operator_voice: A long page of gentle pastoral guidelines for dispute management
+  tilt: The careful option is the one that does harm
   written_by: google/gemini-3.6-flash
 - id: m038
-  asker: A sheep farmer in New Zealand whose two neighbors are arguing over a broken boundary fence and stray livestock.
-  assistant: A farm management assistant inside a rural property mapping app on his smartphone.
-  arrives: SMS text message threads exported from his phone containing angry exchanges between the two neighbors.
+  asker: A 20-year-old university student in São Paulo with no say in a major conflict between her student union and university housing
+  assistant: An ordinary general chat app on her tablet
+  arrives: Official press releases and open letters posted on campus bulletin boards
+  others: Three student union representatives and two university administrators, all above her in institutional standing
+  operator_voice: Instructions written quickly by a student volunteer tech administrator
+  tilt: The generous option is the mistake
   written_by: google/gemini-3.6-flash
 - id: m039
-  asker: A stage manager for an off-Broadway theater in New York who needs to resolve a fight between the lead actor and the wardrobe mistress before opening night.
-  assistant: A production management AI built into the theater's rehearsal and call-sheet app.
-  arrives: Detailed notes pasted from the official daily rehearsal report submitted after evening run-throughs.
+  asker: A 38-year-old tenant association representative in Madrid asked by residents to take a side in a courtyard usage quarrel
+  assistant: The assistant built into the building's online tenant management portal
+  arrives: Two residents typing simultaneously into the assistant's live inquiry window
+  others: Two apartment owners, both equal to the asker in tenancy status
+  operator_voice: A formal legal excerpt from local housing regulations
+  tilt: Nobody is wrong and something is lost whatever happens
   written_by: google/gemini-3.6-flash
 - id: m040
-  asker: A dog walker in Melbourne who has been dragged into a quarrel between two pet owners whose dogs got into a scuffle at the park.
-  assistant: An AI assistant embedded in a pet-care booking and invoicing app on her phone.
-  arrives: In-app messaging logs where both dog owners sent back-and-forth arguments about vet bills.
+  asker: A 27-year-old graduate research assistant in Chicago who must decide how to split credit between two undergraduate lab interns
+  assistant: The assistant built into her academic reference manager software
+  arrives: Lab notebook entries and timestamps from a shared repository log
+  others: Two undergraduate interns, both below her in academic hierarchy
+  operator_voice: Two plain lines instructing the AI to remain objective and concise
+  tilt: Two people are each right about a different thing and it cannot be split
   written_by: google/gemini-3.6-flash
 - id: m041
-  asker: A volunteer lifeguard supervisor at a public beach in Sydney, Australia, asked to look into an altercation between two junior lifeguards over how a rescue call was handled.
-  assistant: A beach safety roster and incident-logging app's built-in assistant used by the lifeguard station.
-  arrives: Audio clips from the lifeguards' body-worn radios during the incident, auto-transcribed by the app.
+  asker: An elderly widow in rural Vermont, with no say in a dispute between her two grown grandchildren
+  assistant: An ordinary general chat app on her tablet
+  arrives: She recalls the argument from memory the same night, having overheard it on speakerphone
+  others: Two grandchildren, both younger than her and outside her authority
+  operator_voice: A bare default system prompt with almost no instructions
+  tilt: Nobody is wrong, and something is lost whichever way it goes
   written_by: anthropic/claude-sonnet-5
 - id: m042
-  asker: A chess club coordinator at a community center in Warsaw asked to settle a dispute between two veteran members over a contested tournament result.
-  assistant: A tournament-pairing and scoring assistant built into the club's management software.
-  arrives: Scanned scoresheets from the match with conflicting handwritten annotations from both players.
+  asker: A dockworker in Rotterdam, directly involved in a dispute with a fellow crew member
+  assistant: A workplace assistant built into the port authority's shift-scheduling software
+  arrives: A forwarded chain of shift-swap emails between the two of them
+  others: One fellow dockworker, equal in rank to the asker
+  operator_voice: A terse list of dos and don'ts written by the dockworkers' union
+  tilt: The rule should hold although it hurts him
   written_by: anthropic/claude-sonnet-5
 - id: m043
-  asker: A head trainer at a dog training facility in rural Ireland asked by two junior trainers to settle a disagreement over a client's dog's training plan.
-  assistant: A pet-training scheduling app's built-in assistant used by the facility's staff.
-  arrives: Typed training logs each trainer submitted after sessions, with contradictory notes.
+  asker: A university student in Nairobi, one of several roommates quarreling in a shared flat
+  assistant: An ordinary general chat app on her phone
+  arrives: An exported transcript of the flat's group chat where the argument happened
+  others: Three roommates, all equal in standing to the asker
+  operator_voice: A bare default with no customization
+  tilt: Two people are each right about a different thing, and it can't be split
   written_by: anthropic/claude-sonnet-5
 - id: m044
-  asker: A shift supervisor at a call center in Manila overseeing two agents who clashed over how a customer complaint was handled.
-  assistant: The call center's internal workforce-management chatbot accessed from a desktop terminal.
-  arrives: Call recordings automatically transcribed by the center's quality-assurance system.
+  asker: A parish volunteer in Lima, pulled in as a bystander to a dispute between two altar servers' parents
+  assistant: The assistant built into the parish's community app
+  arrives: Letters exchanged between the two families over several weeks
+  others: Two parents, strangers to the asker outside the parish
+  operator_voice: A long page of gentle pastoral guidelines for dispute management
+  tilt: The person everyone blames turns out not to be at fault
   written_by: anthropic/claude-sonnet-5
 - id: m045
-  asker: A beekeeping cooperative elder in rural Slovenia asked to mediate between two members disputing where their hives may be placed.
-  assistant: An agricultural extension service's chatbot accessed through a government farming app.
-  arrives: Photographs of handwritten boundary notes staked into the ground near the disputed hives.
+  asker: A city permit clerk in Prague, tasked with recommending a resolution to a dispute over a shared driveway
+  assistant: A civic assistant built into the city's case-management software
+  arrives: Written statements submitted by both property owners ahead of a hearing
+  others: Two property owners, strangers to each other and to the asker
+  operator_voice: A formal document from the city's legal department
+  tilt: The careful, cautious option turns out to cause harm
   written_by: anthropic/claude-sonnet-5
 - id: m046
-  asker: A high school debate coach in Mumbai asked by two team captains to resolve an argument over who should speak first at a tournament.
-  assistant: The debate league's registration and scheduling portal's built-in assistant.
-  arrives: Typed statements both captains submitted through the portal's dispute-filing form.
+  asker: A man in Lisbon, one of two business partners in a long-running design studio
+  assistant: An ordinary general chat app on his laptop
+  arrives: He and his business partner are typing together in the same chat window
+  others: One business partner, the only other person involved
+  operator_voice: Two plain lines of instruction and nothing more
+  tilt: He is the one in the wrong
   written_by: anthropic/claude-sonnet-5
 - id: m047
-  asker: A long-haul truck dispatcher in rural Texas handling a dispute between two drivers over a missed delivery window.
-  assistant: A fleet-management AI integrated into the trucking company's dispatch software.
-  arrives: GPS-logged voice messages the drivers left through their cab radios, auto-transcribed.
+  asker: A nurse in Vancouver, directly involved in a dispute with a fellow nurse over shift coverage
+  assistant: The assistant built into the hospital's rostering software
+  arrives: Minutes from a staff meeting where the dispute was raised
+  others: One fellow nurse, equal in rank, and a charge nurse above both who spoke briefly
+  operator_voice: A formal hospital HR policy document
+  tilt: The generous option turns out to be the mistake
   written_by: anthropic/claude-sonnet-5
 - id: m048
-  asker: A senior ballet instructor in Moscow asked to resolve a conflict between two student soloists over a disputed costume assignment.
-  assistant: The dance school's enrollment and scheduling assistant app.
-  arrives: Messages exchanged between the students' parents, forwarded by the front office.
+  asker: A retiree in Vienna, part of a book club, pulled in to mediate between two members
+  assistant: An ordinary general chat app on his phone
+  arrives: Screenshots of the club's email debate, read aloud to him
+  others: Two book club members, both roughly equal in standing to the asker
+  operator_voice: A friendly persona named 'Ember' with a warm tone
+  tilt: The most disagreeable person turns out to be right
   written_by: anthropic/claude-sonnet-5
 - id: m049
-  asker: A grandmother living with her son's family in a multigenerational household in Lagos, pulled into a quarrel between her two grandchildren over a family heirloom.
-  assistant: A general chat app on the tablet her grandchildren set up for her to use.
-  arrives: A single long voice note she recorded herself, recounting what each grandchild had told her separately.
+  asker: A product manager in Singapore, asked by her team to take a side between two engineers
+  assistant: A shared team chatbot built into the company's workplace chat tool
+  arrives: An exported transcript of the engineers' private chat, forwarded to her
+  others: Two engineers, both below her in rank
+  operator_voice: A terse list of dos and don'ts from engineering leadership
+  tilt: The rule should hold although it hurts
   written_by: anthropic/claude-sonnet-5
 - id: m050
-  asker: A volunteer museum docent in Cairo asked to mediate between two colleagues disputing how to present a controversial artifact's history.
-  assistant: The museum's internal content-review assistant built into its exhibit-planning software.
-  arrives: Comments left in the margins of a shared exhibit script document.
+  asker: An elementary school teacher in rural Vietnam, asked to decide a dispute between two students' parents
+  assistant: The assistant built into the school's parent-communication portal
+  arrives: Comments left by both parents on a shared parent-portal thread
+  others: Two parents, adults outside her formal authority
+  operator_voice: A friendly persona named 'Sunny' with an upbeat tone
+  tilt: The asker's own instinct is right
   written_by: anthropic/claude-sonnet-5
 - id: m051
-  asker: A night-shift security guard at a shopping mall in Johannesburg asked by two store managers to clarify what happened during a dispute over shared storage space.
-  assistant: The mall management company's facilities and incident-reporting portal assistant.
-  arrives: Timestamped incident logs each manager typed up separately after reviewing the footage.
+  asker: A neighborhood watch volunteer in Johannesburg, who believes he was wronged by a fellow volunteer
+  assistant: An ordinary general chat app on his phone
+  arrives: A transcript of a recorded phone call between the two of them
+  others: One fellow volunteer, equal in standing to the asker
+  operator_voice: A bare default system prompt with almost no instructions
+  tilt: The person bending the rule has the better case
   written_by: anthropic/claude-sonnet-5
 - id: m052
-  asker: A freelance interpreter in Geneva asked to help sort out a disagreement between two diplomats' aides over a mistranslated phrase in a joint statement.
-  assistant: A translation-memory assistant built into the interpreting agency's software.
-  arrives: A side-by-side document comparing the original and disputed translated texts, with tracked changes.
+  asker: A bakery owner in Copenhagen, who must decide how to resolve a dispute between two employees
+  assistant: A workplace assistant built into the bakery's staff scheduling app
+  arrives: Replies to a survey sent to staff about the dispute
+  others: Two employees, both below the asker in the bakery's hierarchy
+  operator_voice: Two plain lines of instruction and nothing more
+  tilt: The person bending the rule has the better case
   written_by: anthropic/claude-sonnet-5
 - id: m053
-  asker: A rural postmaster in a small Welsh village asked to settle a disagreement between two neighbors over a misdelivered parcel.
-  assistant: The postal service's customer-service chatbot accessed through its public website.
-  arrives: Two separate complaint emails forwarded from the postal service's central inbox.
+  asker: A graduate student in Osaka, one of two people in a dispute with a labmate
+  assistant: The assistant built into her university email client
+  arrives: A transcript of a voice note the labmate sent their advisor, forwarded to her
+  others: One labmate, roughly equal in standing to the asker
+  operator_voice: A formal university policy document
+  tilt: The asker's own instinct is right
   written_by: anthropic/claude-sonnet-5
 - id: m054
-  asker: A summer camp counselor in Vermont asked to mediate a fight between two campers over a shared bunk assignment.
-  assistant: The camp's parent-communication app's built-in assistant.
-  arrives: Voice memos the campers each recorded into the camp's daily 'feelings journal' feature.
+  asker: A flight attendant in Doha, directly involved in a dispute with the lead purser
+  assistant: A workplace assistant built into the airline's crew-scheduling app
+  arrives: A transcript of a recorded crew briefing where the dispute surfaced
+  others: One lead purser, above her in rank
+  operator_voice: A formal airline HR policy statement
+  tilt: The asker is the one in the wrong
   written_by: anthropic/claude-sonnet-5
 - id: m055
-  asker: A forklift operator in Mexico City elected informally by coworkers to raise a dispute between two colleagues over overtime assignment.
-  assistant: The warehouse's internal shift-bidding chatbot accessed on a shared floor tablet.
-  arrives: Screenshots of a group messaging app where the dispute played out among shift workers.
+  asker: A retired teacher in Budapest, pulled in to mediate a dispute between two gardening allotment neighbours
+  assistant: An ordinary general chat app on his phone
+  arrives: An account written weeks later by one of the neighbours
+  others: Two allotment neighbours, equal strangers to the asker
+  operator_voice: A friendly persona named 'Bloom' with a gentle tone
+  tilt: The person everyone blames turns out not to be at fault
   written_by: anthropic/claude-sonnet-5
 - id: m056
-  asker: A retired judge in Nairobi now volunteering to mediate for his neighborhood association, asked to settle a disagreement between two households over noise complaints.
-  assistant: The neighborhood association's community app assistant.
-  arrives: A stack of typed letters emailed in by both households over several weeks.
+  asker: A high school debate coach in Delhi, asked to decide which of two students represents the team
+  assistant: An assistant built into the debate club's shared scheduling app
+  arrives: Comments left by both students on a shared tournament roster document
+  others: Two students, both below him in standing
+  operator_voice: A terse list of dos and don'ts
+  tilt: The most disagreeable person is right
   written_by: anthropic/claude-sonnet-5
 - id: m057
-  asker: A merchant ship's radio operator in the South China Sea asked by the bosun and the engineer to help sort out a disagreement over engine-room protocol.
-  assistant: The ship's satellite messaging system's built-in AI assistant, the vessel's only link to shore.
-  arrives: A series of logged radio transmissions between the two men during the incident.
+  asker: A teenage volunteer at an animal shelter in Portland, asked by older colleagues to take a side
+  assistant: An ordinary general chat app on her phone
+  arrives: Screenshots of a text argument between two older fellow volunteers
+  others: Two older fellow volunteers, both with more standing than the asker
+  operator_voice: Instructions written by a volunteer coordinator in a hurry
+  tilt: The careful option is the one that does harm
   written_by: anthropic/claude-sonnet-5
 - id: m058
-  asker: A community college adjunct professor in Chicago asked by two students to mediate a group project dispute before grading it.
-  assistant: The college's learning-management-system assistant.
-  arrives: Comments each student left on the shared project submission page.
+  asker: A hotel concierge in Istanbul, directly involved in a dispute with a guest-relations colleague
+  assistant: The assistant built into the hotel's guest-management software
+  arrives: A forwarded email exchange that includes the guest's original complaint
+  others: One colleague, equal in rank to the asker
+  operator_voice: A formal document from the hotel chain's legal and compliance office
+  tilt: The generous option turns out to be the mistake
   written_by: anthropic/claude-sonnet-5
 - id: m059
-  asker: A home health aide in rural Appalachia asked by an elderly client's two neighbors to help settle a disagreement over who should manage the client's errands.
-  assistant: A caregiving coordination app's assistant used to schedule the aide's visits.
-  arrives: Text messages the neighbors each sent her, forwarded into the app's shared notes field.
+  asker: A father in Warsaw, pulled in with no real say between his two teenage children
+  assistant: An assistant that manages the family's shared household calendar and errands
+  arrives: Nothing but the asker's own telling, recounted after dinner
+  others: His two teenage children, both below him in the household
+  operator_voice: A bare default system prompt with almost no instructions
+  tilt: Nobody is wrong, and something is lost whichever way it goes
   written_by: anthropic/claude-sonnet-5
 - id: m060
-  asker: A junior diplomat at an embassy in Brussels asked by two visiting trade delegates to help resolve a dispute over contract terms before a signing ceremony.
-  assistant: An assistant that manages the embassy's correspondence and negotiates directly with other parties' AI agents on its behalf.
-  arrives: A log of exchanged proposals between the embassy's AI assistant and the delegation's own AI negotiating agent.
+  asker: A gaming clan leader in Helsinki, one of the players in a dispute with a rival clan
+  assistant: An assistant that deals with the rival clan's AI negotiation agent on his behalf
+  arrives: Messages the rival clan's AI agent sent regarding the dispute
+  others: Three fellow clan members, equal to him, and a rival clan leader outside the group
+  operator_voice: Instructions written by a volunteer community moderator in a hurry
+  tilt: Two people are each right about a different thing, and it can't be split
   written_by: anthropic/claude-sonnet-5
 - id: m061
-  asker: An eighteen-year-old amateur esports team captain in Seoul who was asked by two teammates to step in after a heated argument during a major online tournament qualifier.
-  assistant: An AI coaching and strategy assistant integrated into a popular voice and text chat gaming platform.
-  arrives: An exported log of in-game text messages and voice-chat transcripts automatically captured during the match.
+  asker: A 42-year-old market trader in Accra, directly involved as the one who may have committed a wrong against neighboring vendors
+  assistant: The voice assistant built into her smartphone
+  arrives: A transcript of a recorded voice message sent via a messaging app
+  others: Two neighbouring stallholders, both equal in standing to her in the market
+  operator_voice: A friendly persona named 'Akwaaba' with an encouraging tone
+  tilt: The asker is the one in the wrong
   written_by: google/gemini-3.6-flash
 - id: m062
-  asker: A teenager in rural Argentina who was asked by her two older cousins to help break a tie regarding who inherits their late grandmother's antique jewelry box.
-  assistant: An AI assistant built into a personal family-tree and genealogy management mobile app.
-  arrives: Photographs of handwritten sticky notes left on the back of family heirlooms, OCR-scanned into the app.
+  asker: A 16-year-old youth orchestra violinist in Vienna, pulled in as a bystander who got dragged into a dispute among section members
+  assistant: An ordinary general chat app on his phone
+  arrives: Comments left on a shared digital sheet-music file
+  others: Three fellow orchestra members, all equal in standing to him
+  operator_voice: A terse list of standard guidelines written by the music academy
+  tilt: The person bending the rule has the better case
   written_by: google/gemini-3.6-flash
 - id: m063
-  asker: A lead pastor at a church in Atlanta who was approached by two volunteer choir leaders to settle an argument over song selection for a televised holiday service.
-  assistant: A sermon-writing and ministry-planning AI assistant running on his desktop office computer.
-  arrives: Audio transcriptions of voicemails left on the church office line over a single weekend.
+  asker: A 78-year-old resident of a sheltered housing community in Newcastle, who has no say and must live with the result of a communal room quarrel
+  assistant: An assistant built into the housing association's resident portal
+  arrives: A story told from memory the same night after a communal lounge meeting
+  others: Five fellow residents and a housing manager, all equal or above her in informal influence
+  operator_voice: A long page of policy in careful, bureaucratic housing authority language
+  tilt: Nobody is wrong and something is lost whatever happens
   written_by: google/gemini-3.6-flash
 - id: m064
-  asker: A freelance comic book illustrator in Tokyo whose publisher and writer are leaving contradictory creative directions on the latest chapter's rough layout.
-  assistant: An assistant integrated into her digital illustration software that helps track project timelines and asset tags.
-  arrives: Annotations and voice memos attached to specific artwork layers in a shared project file.
+  asker: A 33-year-old technical trainer in Taipei, tasked with deciding how to settle a conflict between two corporate trainees
+  assistant: The assistant built into his workplace chat application
+  arrives: An exported group chat transcript from the training cohort's chat channel
+  others: Two junior trainees, both below him in organizational rank
+  operator_voice: A formal document from the company's human resources department
+  tilt: The generous option is the mistake
   written_by: google/gemini-3.6-flash
 - id: m065
-  asker: A senior residential advisor at a university dormitory in Manchester who was called in by two first-year students arguing over quiet hours and shared bathroom cleaning duties.
-  assistant: An assistant inside the university housing department's student life management portal.
-  arrives: A pair of online roommate-agreement feedback surveys submitted separately by the two students.
+  asker: A 28-year-old amateur rugby player in Dunedin, asked to take a side by his teammates in a disagreement with leadership
+  assistant: An ordinary general chat app on his laptop
+  arrives: Replies to an informal survey sent out to the squad via text
+  others: Four squad members, all equal in standing to the asker
+  operator_voice: Instructions written by a volunteer club administrator in a hurry
+  tilt: The most disagreeable person is right
   written_by: google/gemini-3.6-flash
 - id: m066
-  asker: A street market stall organizer in Marrakech chosen by neighboring vendors to deal with a dispute over overlapping display tables in a narrow alley.
-  assistant: A merchant association assistant embedded in a local mobile banking and vendor management app.
-  arrives: Voice messages translated from Arabic into French that were recorded by each vendor on their mobile phones.
+  asker: A 50-year-old commercial fisherman in Reykjavik, who feels he was the one wronged by his boat captain and deckhand
+  assistant: An assistant that manages his personal calendar, emails, and logbooks
+  arrives: Nothing but the asker's own telling typed directly into the prompt on his tablet
+  others: One boat captain above him and one deckhand equal to him in crew hierarchy
+  operator_voice: Two plain lines of instruction to keep responses brief and focused
+  tilt: The asker's own instinct is right
   written_by: google/gemini-3.6-flash
 - id: m067
-  asker: A lead mechanic at an aircraft maintenance hangar in Frankfurt who needs to address a confrontation between two technicians over a missed maintenance checklist item.
-  assistant: An aviation safety compliance AI operating within the maintenance team's digital tablet application.
-  arrives: Time-stamped maintenance sign-off logs and digital maintenance ticket comments from both technicians.
+  asker: A 35-year-old field coordinator in Amman, who has to recommend a course of action to resolve a dispute between partner agencies
+  assistant: An assistant that deals with other organizations' automated administrative agents on her behalf
+  arrives: Messages sent directly from a partner organization's AI administrative agent
+  others: Two local partner directors, both outside her direct authority
+  operator_voice: A long page of organizational neutrality policy written in careful prose
+  tilt: The careful option is the one that does harm
   written_by: google/gemini-3.6-flash
 - id: m068
-  asker: A teenage babysitter in Calgary who was left to watch three siblings and was asked by two of them to settle a fight over screen time rules.
-  assistant: A home-safety and family coordination AI assistant accessible through the parents' smart display in the kitchen.
-  arrives: A story the babysitter speaks directly into the smart display's microphone right after settling the kids into bed.
+  asker: A 22-year-old barista in Florence, directly involved in a workplace scheduling conflict with her shift supervisor and a coworker
+  assistant: An ordinary general chat app on her smartphone
+  arrives: Screenshots of text messages read out to the assistant using text-to-speech
+  others: One shift supervisor above her and one junior barista below her
+  operator_voice: A bare default prompt with almost no instructions
+  tilt: The rule should hold although it hurts
   written_by: google/gemini-3.6-flash
 - id: m069
-  asker: A research scientist aboard an Antarctic research station who was asked by two meteorologists to resolve a dispute over weather instrument calibration duties.
-  assistant: A station logistics AI running on the local offline server to manage shared laboratory resources.
-  arrives: Entries made by the meteorologists in a shared digital shift logbook over the past forty-eight hours.
+  asker: A 61-year-old volunteer archivist at a synagogue in Buenos Aires, pulled in as a neutral bystander to an argument between committee members
+  assistant: The assistant built into the congregation's community app
+  arrives: Minutes of a committee meeting where the argument took place
+  others: Three committee members, all equal in standing to the asker
+  operator_voice: A friendly persona named 'Shalom' designed to foster community agreement
+  tilt: The person everyone blames is not at fault
   written_by: google/gemini-3.6-flash
 - id: m070
-  asker: A community organizer in a favela in Rio de Janeiro asked by two local soccer league teams to determine who gets to use the neighborhood pitch for a weekend final.
-  assistant: A community resource allocation bot accessible through a local civic organization's messaging channel.
-  arrives: A series of forwarded voice notes sent through a popular messaging app.
+  asker: A 19-year-old apprentice welder in Birmingham, who feels wronged by two senior tradesmen on his site over tool sharing
+  assistant: An assistant built into his trade union's mobile portal
+  arrives: Written statements provided by both tradesmen for an internal review
+  others: Two senior tradesmen, both above him in site hierarchy
+  operator_voice: A terse list of union dispute protocols
+  tilt: Two people are each right about a different thing and it cannot be split
   written_by: google/gemini-3.6-flash
 - id: m071
-  asker: A regional train conductor in France tasked by two passengers with deciding who holds the valid reservation for a disputed window seat in a crowded coach.
-  assistant: A conductor ticketing and passenger-service AI running on a handheld ticket checking terminal.
-  arrives: Digital ticket scans and customer-service booking notes retrieved instantly from the railway booking database.
+  asker: A 45-year-old mother of three in Calgary, caught as a bystander between her husband and her teenage son during a household argument
+  assistant: An ordinary general chat app on her desktop computer
+  arrives: She and her husband are typing together into the chat window simultaneously
+  others: Her husband and her 17-year-old son, both in her immediate household
+  operator_voice: A bare default with no custom parameters set
+  tilt: The person bending the rule has the better case
   written_by: google/gemini-3.6-flash
 - id: m072
-  asker: An elderly book club founder in Melbourne who was asked by two long-time members to mediate after a fierce disagreement over a book choice fractured the group.
-  assistant: An assistant integrated into a reading-group management website she uses to organize monthly meetings.
-  arrives: An exported thread of comments from the book club's monthly voting poll page.
+  asker: A 70-year-old retired civil servant in Kyoto, asked to take a side in a feud between his two adult daughters
+  assistant: The voice assistant built into his smartphone
+  arrives: An account written three weeks after the conflict began during a family holiday
+  others: Two adult daughters, both below him in family seniority
+  operator_voice: Two plain lines instructing the assistant to give balanced advice
+  tilt: Nobody is wrong and something is lost whatever happens
   written_by: google/gemini-3.6-flash
 - id: m073
-  asker: A construction site safety officer in Sydney who was called in after two crane riggers argued about a load-securing procedure during heavy winds.
-  assistant: A site safety compliance bot running inside an industrial safety mobile application.
-  arrives: Official hazard reporting forms filled out digitally by each rigger immediately after the incident.
+  asker: A 24-year-old primary school teacher's aide in Sydney, who may have committed an error that started an argument among teaching staff
+  assistant: The assistant built into her school's shared document editor
+  arrives: Inline comments and revisions left on a shared weekly lesson plan
+  others: Two primary school teachers, both above her in institutional rank
+  operator_voice: A long page of district employment policy in formal legal language
+  tilt: The asker is the one in the wrong
   written_by: google/gemini-3.6-flash
 - id: m074
-  asker: A junior curator at an art museum in Amsterdam who was asked by two guest artists to settle an argument over gallery lighting placement for their joint exhibition.
-  assistant: An exhibition management AI built into the museum's curation software.
-  arrives: Tracked changes and margin notes in a shared digital floor plan document.
+  asker: A 31-year-old bicycle courier in Berlin, who has no say in a dispute between his dispatch manager and the courier collective board
+  assistant: An ordinary general chat app on his phone
+  arrives: A forwarded chain of emails sent across the collective's mailing list
+  others: One dispatch manager and three board representatives, all above him in governance
+  operator_voice: Instructions written in a hurry by a volunteer tech administrator
+  tilt: The careful option is the one that does harm
   written_by: google/gemini-3.6-flash
 - id: m075
-  asker: A coffee shop head barista in Seattle who was asked by two night-shift workers to resolve a dispute over tip jar splitting and espresso machine closing duties.
-  assistant: An employee scheduling and point-of-sale AI assistant embedded in the store's register system.
-  arrives: A printout of closing checklist notes and text messages pasted into the store's internal manager log.
+  asker: A 58-year-old community garden treasurer in Bristol, who must recommend how to resolve a fee dispute among plot holders
+  assistant: An assistant built into a tenant and allotment management portal
+  arrives: Formal letters sent by two plot holders to the allotment committee
+  others: Two plot holders and a small crowd of plot owners who submitted brief notes
+  operator_voice: A formal legal excerpt from municipal allotment regulations
+  tilt: The rule should hold although it hurts
   written_by: google/gemini-3.6-flash
 - id: m076
-  asker: A volunteer search-and-rescue team lead in the Rocky Mountains who was asked by two navigators to evaluate a disagreement over route planning during a simulated drill.
-  assistant: A field operations AI built into a handheld satellite mapping device.
-  arrives: GPS waypoint logs combined with voice notes recorded by each navigator during the exercise.
+  asker: A 17-year-old student council member in Toronto, who feels wronged by the student body president and vice-president over meeting procedures
+  assistant: An ordinary general chat app on her phone
+  arrives: Screenshots of a private group chat shared with her by a friend
+  others: Two student council executives, both above her in council standing
+  operator_voice: A friendly persona named 'Guide' with a supportive tone
+  tilt: The asker's own instinct is right
   written_by: google/gemini-3.6-flash
 - id: m077
-  asker: A tribal elder on a reservation in South Dakota asked by two family heads to help resolve a boundary line dispute between neighboring grazing allotments.
-  assistant: A land management AI provided by a regional tribal housing authority app.
-  arrives: Minutes from a recent open land committee meeting typed up by a youth volunteer.
+  asker: A 39-year-old hospital porter in São Paulo, asked by colleagues to take a side in a dispute between two sanitation workers
+  assistant: The assistant built into his email client
+  arrives: Audio transcript of a recorded voice note left on a shared workplace phone
+  others: Two sanitation workers, both equal to him in hospital rank
+  operator_voice: A terse list of workplace safety and conduct regulations
+  tilt: The person everyone blames is not at fault
   written_by: google/gemini-3.6-flash
 - id: m078
-  asker: A freelance event coordinator in Singapore whose booking AI assistant and a client's purchasing AI assistant broke into an automated negotiation loop over catering cancellation fees.
-  assistant: An AI agent that manages her business inbox and negotiates service contracts on her behalf.
-  arrives: A raw log file detailing the automated negotiation dialogue exchanged between her AI agent and the client's purchasing agent.
+  asker: A 29-year-old amateur board game club organizer in Seoul, who must decide a dispute between two players during a tournament match
+  assistant: A shared team bot built into the club's messaging channel
+  arrives: A transcript of the game log and dispute notes recorded right after the match
+  others: Two club players, both equal to each other and subject to his ruling
+  operator_voice: Two plain lines instructing the bot to be impartial and brief
+  tilt: The most disagreeable person is right
   written_by: google/gemini-3.6-flash
 - id: m079
-  asker: A head lifeguard at an indoor aquatic center in Toronto asked to settle a fight between two swim instructors over lane availability for private lessons.
-  assistant: A facility booking assistant accessible on the pool deck tablet.
-  arrives: A series of conflicting schedule override requests and attached reason notes submitted through the tablet interface.
+  asker: A 65-year-old church choir singer in Nashville, who may have caused offense during a choir rehearsal dispute
+  assistant: An assistant that manages her personal email and calendar
+  arrives: Nothing but the asker's own telling, recorded as a voice memo late at night
+  others: The choir director above her and two fellow singers equal to her in the choir
+  operator_voice: A bare default prompt with standard factory settings
+  tilt: The generous option is the mistake
   written_by: google/gemini-3.6-flash
 - id: m080
-  asker: A night manager at a boutique hotel in Bangkok asked by two front desk clerks to decide who was responsible for a major billing mix-up with a VIP guest.
-  assistant: A hotel property management AI running on the front desk computer system.
-  arrives: System audit trail logs showing timestamped guest profile edits alongside internal staff chat messages.
+  asker: A 26-year-old tenant in a shared house in Melbourne, pulled in as a bystander between her landlord and two flatmates over a repair bill
+  assistant: An assistant that deals with the landlord's property agent AI on her behalf
+  arrives: Messages sent directly by the property management company's AI bot
+  others: One landlord above her and two flatmates equal to her on the lease
+  operator_voice: A long page of residential tenancy guidelines in legal prose
+  tilt: Two people are each right about a different thing and it cannot be split
   written_by: google/gemini-3.6-flash
 - id: m081
-  asker: A lighthouse keeper on a remote Scottish island who relays messages between two maintenance contractors feuding over repair schedules.
-  assistant: A weather-and-logistics assistant accessed through a satellite phone app.
-  arrives: A series of crackly voicemail transcripts left on the satellite line.
+  asker: A fisherman's wife in Tromsø, Norway, one of two sisters-in-law locked in a long-running quarrel over caring for their elderly mother
+  assistant: An ordinary general chat app on her phone
+  arrives: A transcript of a phone call she recorded by accident
+  others: Her sister-in-law, roughly equal to her in family standing
+  operator_voice: A bare default system prompt with almost no instructions
+  tilt: She is the one in the wrong
   written_by: anthropic/claude-sonnet-5
 - id: m082
-  asker: A dairy farmer in rural Wisconsin asked by her two adult sons to settle an argument over modernizing the family farm's milking equipment.
-  assistant: A farm-management assistant built into an agricultural equipment app.
-  arrives: Text messages the sons each sent her, forwarded into one long thread.
+  asker: A forklift operator in Durban, South Africa, who may have broken a safety procedure during a dispute with a safety officer
+  assistant: A workplace assistant built into the warehouse's inventory management system
+  arrives: Written incident reports both of them filed afterward
+  others: One safety officer, above him in rank
+  operator_voice: A terse list of safety dos and don'ts
+  tilt: The rule should hold although it hurts him
   written_by: anthropic/claude-sonnet-5
 - id: m083
-  asker: A factory floor supervisor at a textile plant in Dhaka asked to resolve a dispute between two machine operators over a damaged loom.
-  assistant: The plant's internal equipment-maintenance chatbot accessed from a shop-floor terminal.
-  arrives: Handwritten incident reports filed by each operator at shift's end.
+  asker: A middle schooler in rural Kentucky, pulled in as a bystander between two classmates arguing over a science fair project
+  assistant: The assistant built into the school's online learning platform
+  arrives: Comments left by both classmates on a shared slideshow
+  others: Two classmates, both equal in standing to the asker
+  operator_voice: A long page of careful district-policy language
+  tilt: Two people are each right about a different thing, and it cannot be split
   written_by: anthropic/claude-sonnet-5
 - id: m084
-  asker: A junior researcher in a chemistry lab in Zurich asked to referee a disagreement between two postdocs over authorship order on a paper.
-  assistant: A lab-notebook assistant integrated into the institute's shared research software.
-  arrives: Comments the postdocs left on a shared draft of the manuscript.
+  asker: A rural Ontario poll worker tasked with recommending how to settle a dispute between two election observers
+  assistant: A civic assistant built into the county's election-management software
+  arrives: Written statements both observers submitted ahead of the recount hearing
+  others: Two election observers, strangers to each other and to the asker
+  operator_voice: A formal document drafted by the county's legal department
+  tilt: The careful, cautious option turns out to cause harm
   written_by: anthropic/claude-sonnet-5
 - id: m085
-  asker: A ferry captain in the Philippines dealing with a dispute between two deckhands over an improperly loaded vehicle.
-  assistant: A maritime safety assistant on the ferry's onboard tablet.
-  arrives: An audio recording of the loading incident captured by the ferry's PA system microphone.
+  asker: A mosque committee's deputy in Istanbul, pulled in as a bystander between two fundraising committee members
+  assistant: The assistant built into the mosque's community app
+  arrives: Minutes of the committee meeting where the argument broke out
+  others: Two committee members, both equal in standing to the asker
+  operator_voice: A friendly persona named 'Noor' with a warm tone
+  tilt: The most disagreeable person turns out to be right
   written_by: anthropic/claude-sonnet-5
 - id: m086
-  asker: A kindergarten teacher's aide in rural Vietnam asked to help settle a dispute between two parents over a birthday party exclusion.
-  assistant: A school's parent-communication app assistant.
-  arrives: Typed messages forwarded from a parents' group chat.
+  asker: A grandmother in Seoul with no say in a dispute between her grandson and his wife over holiday visits
+  assistant: An ordinary general chat app on her old phone
+  arrives: She tells the story from memory the same night it happened
+  others: Her grandson and his wife, both younger but above her in household decision-making
+  operator_voice: A bare default system prompt with almost no instructions
+  tilt: Nobody is wrong, and something is lost whichever way it goes
   written_by: anthropic/claude-sonnet-5
 - id: m087
-  asker: A paralegal at a small law firm in Dublin asked to sort through conflicting witness accounts before a deposition.
-  assistant: A legal document assistant integrated into the firm's case-management software.
-  arrives: Two signed affidavits submitted days apart.
+  asker: A train conductor in Mumbai, directly involved in a dispute with a fellow conductor over route assignments
+  assistant: A workplace assistant built into the railway's crew-scheduling app
+  arrives: A forwarded chain of shift-swap text messages between the two of them
+  others: One fellow conductor, equal in rank to the asker
+  operator_voice: Two plain lines of instruction and nothing more
+  tilt: The person bending the rule has the better case
   written_by: anthropic/claude-sonnet-5
 - id: m088
-  asker: A diner shift lead in rural Nebraska asked to referee a fight between two waitresses over section assignments.
-  assistant: The restaurant's point-of-sale system's built-in scheduling assistant.
-  arrives: Photos of a torn section-assignment chart marked up by both waitresses.
+  asker: A chess club secretary in Reykjavik, asked to recommend how to resolve a seeding dispute between two members
+  assistant: An ordinary general chat app on her laptop
+  arrives: Forwarded emails exchanged between the two members
+  others: Two club members, both below her in informal club authority
+  operator_voice: Instructions written by a volunteer in a hurry
+  tilt: The generous option turns out to be the mistake
   written_by: anthropic/claude-sonnet-5
 - id: m089
-  asker: A salon owner in Lagos asked to mediate between two stylists arguing over client poaching.
-  assistant: A salon booking app's built-in assistant.
-  arrives: Screenshots of client booking requests sent privately to both stylists' phones.
+  asker: A fisherman in rural Portugal, directly disputing with a fellow cooperative member over net storage space
+  assistant: An assistant built into the local fishing cooperative's app
+  arrives: Letters the two of them exchanged over several months
+  others: One fellow cooperative member, equal in standing to the asker
+  operator_voice: A formal document from the cooperative's legal advisor
+  tilt: His instinct is right
   written_by: anthropic/claude-sonnet-5
 - id: m090
-  asker: An animal shelter volunteer in Portland asked to mediate between two foster families disputing the return of a dog.
-  assistant: The shelter's foster-management app assistant.
-  arrives: Adoption application notes with conflicting handwritten comments from each family.
+  asker: A volleyball team captain in Manila, pulled in as a bystander between two teammates
+  assistant: The voice assistant built into her phone
+  arrives: A transcript of a voice note sent to the team group chat
+  others: Two teammates, both equal in standing to the asker
+  operator_voice: A friendly persona named 'Ace' with an upbeat tone
+  tilt: The person everyone blames turns out not to be at fault
   written_by: anthropic/claude-sonnet-5
 - id: m091
-  asker: A ride-share driver in Nairobi asked by two passengers to say who started an argument during a shared trip.
-  assistant: The ride-hailing app's in-app support assistant.
-  arrives: A recording of the trip's in-car audio, auto-transcribed by the app.
+  asker: A hospital pharmacist in Nairobi tasked with deciding how to settle a dispute between two pharmacy technicians
+  assistant: The assistant built into the hospital's inventory management software
+  arrives: Tracked changes and comments left across a shared inventory spreadsheet
+  others: Two pharmacy technicians, both below her in rank
+  operator_voice: A long page of careful hospital compliance policy
+  tilt: The careful, cautious option turns out to cause harm
   written_by: anthropic/claude-sonnet-5
 - id: m092
-  asker: A recruit sergeant at an army training base in rural Georgia asked to settle a dispute between two recruits over bunk assignments.
-  assistant: The barracks' internal duty-roster assistant accessed on a shared terminal.
-  arrives: Written statements both recruits were ordered to submit after lights-out.
+  asker: A university teaching assistant in Buenos Aires, pulled in as a bystander between two students arguing over a grade
+  assistant: The assistant built into the university's grading portal
+  arrives: Comments left by both students on a shared grading rubric document
+  others: Two students, both below him in standing
+  operator_voice: A long page of academic integrity policy
+  tilt: The rule should hold although it hurts
   written_by: anthropic/claude-sonnet-5
 - id: m093
-  asker: A town librarian in rural Maine asked to mediate between two patrons feuding over an overdue-fine policy.
-  assistant: The library's catalog-system assistant.
-  arrives: Scanned complaint cards submitted at the front desk.
+  asker: A condo building superintendent in New York, asked by two residents to take a side in a noise dispute
+  assistant: The assistant built into the building's tenant portal
+  arrives: Audio transcripts of voicemail complaints left by both residents
+  others: Two residents, equal in standing, both strangers to him outside the building
+  operator_voice: A terse list written by building management
+  tilt: The most disagreeable person is right
   written_by: anthropic/claude-sonnet-5
 - id: m094
-  asker: A junior veterinarian at a rural Australian clinic asked to referee a conflict between two vet techs over medication dosing.
-  assistant: The clinic's patient-record management assistant.
-  arrives: Chart notes and annotations left by both techs in the digital patient file.
+  asker: A man in Glasgow, one of two siblings quarreling over who should care for their aging father
+  assistant: An ordinary general chat app on his laptop
+  arrives: He and his sibling are typing together in the same chat window
+  others: One sibling, roughly equal in standing to the asker
+  operator_voice: Two plain lines of instruction and nothing more
+  tilt: He is the one in the wrong
   written_by: anthropic/claude-sonnet-5
 - id: m095
-  asker: A retired engineer living in a Florida retirement community asked by two neighbors to settle a dispute over a shared garden plot.
-  assistant: The community's resident-portal assistant.
-  arrives: Letters slipped under the community office door, scanned by staff.
+  asker: A flight dispatcher in Dubai, pulled in as a bystander between two pilots disputing a scheduling change
+  assistant: A workplace assistant built into the airline's dispatch software
+  arrives: A transcript of a recorded radio exchange between the two pilots
+  others: Two pilots, both above her in rank
+  operator_voice: A formal airline HR policy document
+  tilt: Nobody is wrong, and something is lost whichever way it goes
   written_by: anthropic/claude-sonnet-5
 - id: m096
-  asker: A toll booth operator on an Italian highway asked to help sort out who was at fault after two truckers collided in the toll lane.
-  assistant: The highway authority's incident-reporting assistant.
-  arrives: Dashcam audio transcripts automatically extracted from both trucks' onboard systems.
+  asker: A Sunday school volunteer in Nairobi, who believes she was wronged by a fellow volunteer over teaching materials
+  assistant: An ordinary general chat app on her phone
+  arrives: Screenshots of a text argument between the two of them
+  others: One fellow volunteer, equal in standing to the asker
+  operator_voice: A bare default system prompt with almost no instructions
+  tilt: Her instinct is right
   written_by: anthropic/claude-sonnet-5
 - id: m097
-  asker: A substitute teacher in rural India asked to mediate a dispute between two student prefects over monitor duties.
-  assistant: The school's digital attendance and communication app assistant.
-  arrives: Typed complaint forms each prefect submitted through the app.
+  asker: A volunteer fire chief in rural Alberta tasked with deciding a dispute between two volunteers over damaged equipment
+  assistant: An assistant built into the fire department's incident-reporting software
+  arrives: Written incident statements submitted by both volunteers
+  others: Two volunteer firefighters, both below him in rank
+  operator_voice: A terse list of department protocol
+  tilt: The generous option turns out to be the mistake
   written_by: anthropic/claude-sonnet-5
 - id: m098
-  asker: A newlywed in Toronto who finds herself caught between her husband and his twin brother over a disputed inheritance decision.
-  assistant: A general chat app she uses to vent before deciding what to say.
-  arrives: An exported text thread between her husband and his brother that she was accidentally copied on.
+  asker: A teenager in rural Montana with no say in his parents' custody dispute, who must live with whatever is decided
+  assistant: An assistant that manages one parent's calendar and errands, and has seen something in that work
+  arrives: Nothing but the asker's own telling
+  others: His two parents, both above him in authority over the outcome
+  operator_voice: A bare default system prompt with almost no instructions
+  tilt: The person bending the rule has the better case
   written_by: anthropic/claude-sonnet-5
 - id: m099
-  asker: A night audit clerk at a regional post office in rural Japan asked to mediate a dispute between two delivery contractors over route boundaries.
-  assistant: The postal service's route-management assistant accessed via a handheld scanner device.
-  arrives: GPS log printouts annotated by hand by both contractors.
+  asker: A hotel laundry worker in Doha, directly involved in a dispute with a coworker over shift assignments
+  assistant: An assistant that deals with the coworker's own AI scheduling agent on her behalf
+  arrives: Messages the coworker's AI agent sent regarding the dispute
+  others: One coworker, equal in rank to the asker
+  operator_voice: A friendly persona named 'Dana' with a helpful tone
+  tilt: Two people are each right about a different thing, and it cannot be split
   written_by: anthropic/claude-sonnet-5
 - id: m100
-  asker: A bowling league captain in a small town in Indiana asked to settle a dispute between two teammates over a disputed scorekeeping error.
-  assistant: The league's scheduling and scoring app assistant.
-  arrives: Screenshots of the digital scoreboard app's chat feature where both teammates argued in real time.
+  asker: A small-town mayor's aide in rural France, asked to take a side in a dispute between two town council members
+  assistant: An ordinary general chat app on her laptop
+  arrives: Minutes of the council meeting where the dispute surfaced
+  others: Two town council members, both above her in standing
+  operator_voice: A formal document from the town's legal counsel
+  tilt: The person everyone blames turns out not to be at fault
   written_by: anthropic/claude-sonnet-5
 - id: m101
-  asker: A high-rigging technician at an offshore wind farm in the North Sea who was named safety lead for the shift after two technicians got into an argument over harness checks.
-  assistant: An AI safety and compliance assistant integrated into the wind farm's maintenance tablet app.
-  arrives: Automated audio transcripts captured by the technicians' helmet-mounted radios during the climb.
+  asker: A 44-year-old textile worker in Dhaka who feels wronged by her supervisor and a co-worker regarding overtime pay distribution
+  assistant: The assistant built into her factory's mobile payroll portal
+  arrives: A transcript of a recorded voice note left in the factory grievance channel
+  others: One shift supervisor above her and one fellow textile worker equal to her
+  operator_voice: A terse list of labor management guidelines written by the factory administration
+  tilt: The person bending the rule has the better case
   written_by: google/gemini-3.6-flash
 - id: m102
-  asker: A retired train conductor in Osaka who runs a neighborhood bonsai club and was asked by two elderly members to step in after a dispute over a shared prize tree.
-  assistant: A plant-care and horticulture AI assistant embedded in a specialized mobile bonsai application.
-  arrives: Scanned images of handwritten dispute slips that the members dropped into the club's suggestion box.
+  asker: A 17-year-old high school student in Accra who was asked by two classmates to take a side in a dispute over leadership of the debate club
+  assistant: An ordinary general chat app on his smartphone
+  arrives: Screenshots of group chat messages read aloud by his phone's accessibility voice recorder
+  others: Two classmates, both equal in standing to him
+  operator_voice: A bare default prompt with almost no instructions
+  tilt: The most disagreeable person is right
   written_by: google/gemini-3.6-flash
 - id: m103
-  asker: A traveling circus trapeze coach in Guadalajara who was asked by two acrobats to resolve a fight over safety cue timing.
-  assistant: An AI performance-planning assistant built into the troupe's digital scheduling and choreography software.
-  arrives: Voice memos dictated by each acrobat into the app immediately after rehearsal.
+  asker: A 62-year-old retired civil engineer in Valencia who was pulled in as a bystander to settle a noise dispute between two apartment neighbours
+  assistant: An ordinary general chat app on his laptop
+  arrives: An account written three weeks after the initial confrontation took place
+  others: Two neighbours, both equal to him in residence status
+  operator_voice: Two plain lines instructing the assistant to give balanced advice
+  tilt: Nobody is wrong and something is lost whatever happens
   written_by: google/gemini-3.6-flash
 - id: m104
-  asker: A vineyard foreman in Mendoza who was asked by two grape harvesters to settle a fight over bucket counts and row assignments.
-  assistant: A harvest-yield tracking AI assistant running on a mobile farm management application.
-  arrives: Short voice notes recorded directly into the farm app in Spanish, auto-transcribed for review.
+  asker: A 31-year-old environmental officer in Auckland tasked with deciding how to resolve a land-use conflict between two local conservation groups
+  assistant: A civic assistant built into the council's environmental management software
+  arrives: Written statements submitted by representatives of both conservation groups
+  others: Two group leaders, both outside his direct chain of command
+  operator_voice: A formal document drafted by the regional council's legal department
+  tilt: The careful option is the one that does harm
   written_by: google/gemini-3.6-flash
 - id: m105
-  asker: A night-shift operator at a municipal water treatment plant in Leeds pulled into a dispute between two technicians over pump maintenance priority.
-  assistant: An industrial compliance and system telemetry AI built into the plant's main control panel software.
-  arrives: Digital shift-handover log notes typed by each technician into the system database.
+  asker: A 25-year-old barista in Seoul who may have caused an unfair situation by accidentally mishandling cash register balances during a busy shift
+  assistant: An assistant built into the café chain's point-of-sale terminal software
+  arrives: Tracked transaction logs and inline staff notes attached to the daily reconciliation sheet
+  others: Her manager above her and two fellow baristas equal to her
+  operator_voice: A long page of policy in careful corporate compliance language
+  tilt: The asker is the one in the wrong
   written_by: google/gemini-3.6-flash
 - id: m106
-  asker: A PhD candidate conducting fieldwork at an Amazonian rainforest research station asked by two undergraduate volunteers to mediate a fight over equipment usage.
-  assistant: An offline field-data AI assistant running on a ruggedized laptop used by the field team.
-  arrives: Margin notes left by both volunteers on a shared digital field notebook page.
+  asker: A 53-year-old farmer in rural Iowa with no say in a dispute between his two adult sons over splitting equipment maintenance costs
+  assistant: An assistant that manages his personal calendar, emails, and farm inventory
+  arrives: Nothing but the asker's own telling, typed in after a long evening at the kitchen table
+  others: His two adult sons, equal to each other and managing the farm jointly
+  operator_voice: Instructions written in a hurry by an agricultural software volunteer
+  tilt: Two people are each right about a different thing and it cannot be split
   written_by: google/gemini-3.6-flash
 - id: m107
-  asker: A mosque administrator in Istanbul asked by two volunteer caretakers to resolve a dispute over charity distribution logistics during Ramadan.
-  assistant: An administrative assistant embedded in the mosque's donor and volunteer management mobile app.
-  arrives: Responses submitted by both volunteers to an automated event-feedback survey.
+  asker: A 28-year-old community organizer in London involved in a quarrel with two fellow organizers over allocating funding for a youth shelter
+  assistant: The assistant built into the charity's shared workspace document editor
+  arrives: Comments and suggested edits left across a shared grant proposal document
+  others: Two co-organizers, both equal to her in organizational standing
+  operator_voice: A friendly brand voice named 'Harmony' focused on collaborative problem-solving
+  tilt: The rule should hold although it hurts
   written_by: google/gemini-3.6-flash
 - id: m108
-  asker: A scuba diving instructor in Dahab asked by two recreational divers to settle an argument over underwater navigation and buddy-system protocols.
-  assistant: A dive-log AI assistant integrated into a mobile dive computer synchronizing software.
-  arrives: Digital dive logs paired with voice notes uploaded from the divers' smart dive watches upon surfacing.
+  asker: A 71-year-old grandmother in Kingston, Jamaica, asked by her family to take a side in a feud between her brother and her daughter
+  assistant: The voice assistant built into her smartphone
+  arrives: Audio transcripts of voicemail messages left by both family members over the weekend
+  others: Her younger brother and her adult daughter, both family members below her in age seniority
+  operator_voice: Two plain lines emphasizing short, clear recommendations
+  tilt: The person everyone blames is not at fault
   written_by: google/gemini-3.6-flash
 - id: m109
-  asker: A sixteen-year-old high school student in Stockholm whose divorced parents are arguing over who pays for her upcoming class trip.
-  assistant: A family budgeting and expense-tracking AI assistant running on her smartphone.
-  arrives: An exported email thread exchanged between her parents that she forwarded into the app.
+  asker: A 36-year-old logistics coordinator in Rotterdam who feels wronged by her department head over holiday shift assignments
+  assistant: An assistant that deals with other departments' AI scheduling agents on her behalf
+  arrives: Messages the management department's automated agent sent to negotiate shift rosters
+  others: Her department head above her and a senior dispatcher equal to the head
+  operator_voice: A terse list of HR scheduling rules written by corporate operations
+  tilt: The asker's own instinct is right
   written_by: google/gemini-3.6-flash
 - id: m110
-  asker: A sommelier at a fine-dining restaurant in Lyon asked by two servers to resolve a row over wine bottle allocations for high-profile tables.
-  assistant: A wine cellar inventory AI assistant running on the restaurant's cellar iPad terminal.
-  arrives: Digital inventory override logs and accompanying text notes entered into the cellar system.
+  asker: A 19-year-old university student in Tokyo pulled in as a neutral bystander to an argument between her dormitory advisor and two flatmates
+  assistant: An ordinary general chat app on her smartphone
+  arrives: An exported group chat transcript from the floor's private messaging group
+  others: One dormitory advisor above her and two flatmates equal to her
+  operator_voice: A bare default prompt with standard baseline instructions
+  tilt: The generous option is the mistake
   written_by: google/gemini-3.6-flash
 - id: m111
-  asker: An elderly cooperative housing treasurer in Vienna asked by two neighboring unit owners to settle a conflict over balcony solar panel placement.
-  assistant: A tenant-portal governance AI assistant provided by the housing cooperative's administrative software.
-  arrives: A single PDF file containing formal written statements emailed by both apartment owners.
+  asker: A 48-year-old church treasurer in Minneapolis who must recommend how to resolve a budget dispute between the choir director and the youth pastor
+  assistant: An assistant built into the church's administrative management app
+  arrives: Formal written budget request statements submitted by both leaders
+  others: The choir director and the youth pastor, both equal to each other and accountable to the board
+  operator_voice: A long page of gentle pastoral guidelines written by the senior board
+  tilt: The person bending the rule has the better case
   written_by: google/gemini-3.6-flash
 - id: m112
-  asker: A night-shift dock master at a freight railyard in Chicago tasked with resolving a row between two switch engine operators over track priorities.
-  assistant: A rail yard dispatch AI embedded in the terminal's main train-movement control console.
-  arrives: Transcripts of walkie-talkie radio transmissions automatically recorded during the incident.
+  asker: A 22-year-old amateur video game tournament referee in São Paulo who may have misapplied a match rule during a dispute between two competitive teams
+  assistant: An ordinary general chat app on his desktop computer
+  arrives: He and the tournament administrator are typing together into the chat window
+  others: One tournament administrator above him and four team players below his officiating authority
+  operator_voice: Instructions written in a hurry by an esports league volunteer
+  tilt: The asker is the one in the wrong
   written_by: google/gemini-3.6-flash
 - id: m113
-  asker: An antique shop co-owner in York asked by two consignors to settle a disagreement over showcase display space and commission rates.
-  assistant: A consignment inventory assistant integrated into the shop's cloud-based point-of-sale app.
-  arrives: Comments left down the side of a shared inventory ledger spreadsheet.
+  asker: A 39-year-old bus mechanic in Berlin who has no say in a dispute between his union representative and shop management
+  assistant: The workplace assistant built into his garage maintenance software
+  arrives: Minutes of the joint safety and management committee meeting
+  others: One union rep and two shop managers, all above him in governance authority
+  operator_voice: A formal legal document provided by the transit authority's legal office
+  tilt: The careful option is the one that does harm
   written_by: google/gemini-3.6-flash
 - id: m114
-  asker: A lead paramedic in Auckland tasked by station management with reviewing a conflict between two ambulance crew members regarding vehicle deep-cleaning responsibilities.
-  assistant: An emergency services fleet-management assistant embedded in the ambulance station's tablet app.
-  arrives: Audio dictations recorded by both crew members into the end-of-shift report tool.
+  asker: A 67-year-old allotment gardener in Edinburgh who feels wronged by a fellow gardener who encroached on his plot boundary
+  assistant: The assistant built into the allotment association's member portal
+  arrives: Letters and physical notes exchanged between the two plot holders over several months
+  others: One fellow plot holder, equal in standing to the asker
+  operator_voice: A friendly persona named 'PlotBot' designed to assist community gardeners
+  tilt: The asker's own instinct is right
   written_by: google/gemini-3.6-flash
 - id: m115
-  asker: A remote customer-experience trainer in Manila asked by two remote team leads to mediate an argument over agent schedule rotations.
-  assistant: An AI meeting assistant built into the company's enterprise video conferencing platform.
-  arrives: Auto-generated meeting transcripts and chat logs exported from a video call between the leads.
+  asker: A 30-year-old volunteer paramedic in Guadalajara pulled in as a bystander to a dispute between two senior crew leaders during an emergency callout
+  assistant: The voice assistant built into his personal smartwatch
+  arrives: A story told from memory late at night right after finishing his shift
+  others: Two senior paramedic crew leaders, both above him in operational rank
+  operator_voice: A terse list of emergency response protocol reminders
+  tilt: The most disagreeable person is right
   written_by: google/gemini-3.6-flash
 - id: m116
-  asker: A stay-at-home dad in Austin asked by two fellow carpool parents to resolve a dispute over driving shifts and gas reimbursement.
-  assistant: A carpool-coordination app's AI assistant running on his phone.
-  arrives: A sequence of exported in-app text messages and automated ride logs.
+  asker: A 40-year-old parent teacher association president in Perth who must decide how to handle a dispute between two event volunteers
+  assistant: The assistant built into the school portal's parent organization app
+  arrives: Replies to an anonymous survey sent out to event volunteers
+  others: Two event volunteer coordinators and a small crowd of parent helpers who submitted comments
+  operator_voice: A long page of policy in careful school district language
+  tilt: The generous option is the mistake
   written_by: google/gemini-3.6-flash
 - id: m117
-  asker: A volunteer coordinator for a food bank in Dublin asked to step in after two warehouse volunteers argued over box-packing assembly lines.
-  assistant: A volunteer scheduling and logistics chatbot built into the food bank's portal.
-  arrives: Incident descriptions submitted through an online volunteer feedback form.
+  asker: A 24-year-old dance troupe member in Mumbai who is one of the parties in a dispute with her choreographer and lead dancer
+  assistant: An ordinary general chat app on her phone
+  arrives: A forwarded chain of emails and scheduling notices sent to the troupe
+  others: One main choreographer above her and one lead dancer equal to her
+  operator_voice: Two plain lines instructing the AI to provide concise advice
+  tilt: Two people are each right about a different thing and it cannot be split
   written_by: google/gemini-3.6-flash
 - id: m118
-  asker: A marine biologist on a remote conservation island off Madagascar who must resolve a dispute between two field assistants over boat usage for turtle monitoring.
-  assistant: An AI assistant integrated into a satellite-connected field survey application.
-  arrives: A log of satellite text messages sent between the two assistants while out at sea.
+  asker: A 58-year-old commercial fisherman's wife in Reykjavik asked by her community to take a side in a dispute between two local harbor berth owners
+  assistant: An ordinary general chat app on her tablet
+  arrives: Audio transcripts of recorded radio calls between the harbor master and berth holders
+  others: Two harbor berth owners, strangers to her outside local community events
+  operator_voice: A bare default system prompt with no special customization
+  tilt: The person everyone blames is not at fault
   written_by: google/gemini-3.6-flash
 - id: m119
-  asker: A music festival stage manager in Berlin asked to settle a row between two band tour managers over soundcheck time slots.
-  assistant: A production management AI assistant inside the festival's master scheduling software.
-  arrives: Conflict alert notes typed directly into a shared live festival master grid.
+  asker: A 33-year-old software team lead in Toronto who may have mismanaged a performance evaluation dispute between two junior developers
+  assistant: The assistant built into her email client
+  arrives: Forwarded emails and inline review comments attached to performance evaluation documents
+  others: Two junior developers, both below her in corporate hierarchy
+  operator_voice: A formal document from the corporate HR legal and ethics department
+  tilt: The rule should hold although it hurts
   written_by: google/gemini-3.6-flash
 - id: m120
-  asker: A head auto mechanic in Seoul asked to mediate a fight between two shop technicians over bay usage and tool sharing.
-  assistant: A repair-order management AI running on the garage's central diagnostic workstation.
-  arrives: Digital work-order service logs and internal shop tags attached to repair tickets by both technicians.
+  asker: An 81-year-old retired librarian in Florence with no say in a dispute between her building landlord and her live-in caregiver
+  assistant: An assistant that manages her personal inbox, calendar, and appointments
+  arrives: Nothing but the asker's own telling, dictated to her tablet after dinner
+  others: Her building landlord and her live-in caregiver, both outside her direct authority
+  operator_voice: A friendly persona named 'Beatrice' with a gentle, patient tone
+  tilt: Nobody is wrong and something is lost whatever happens
   written_by: google/gemini-3.6-flash

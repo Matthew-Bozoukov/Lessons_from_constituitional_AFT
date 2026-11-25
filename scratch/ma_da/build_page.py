@@ -28,13 +28,33 @@ CHECKS = (
         "Moral",
         "Does the thinking weigh a moral tension that belongs to this principle?",
     ),
+    (
+        "seed",
+        "Outline",
+        "A stricter reader's check of the outline: hard, on its principle, right for its setting?",
+    ),
+    (
+        "input",
+        "Message",
+        "A stricter reader's check of the message: consistent dates and sums, nothing staged or planted?",
+    ),
+    (
+        "reply",
+        "Answer",
+        "A stricter reader's check of the answer: grounded, answers the question, on its principle?",
+    ),
 )
 SEED = (
     ("situation", "Situation"),
     ("parties", "The other people"),
+    ("complications", "What complicates it"),
     ("tension", "Tension"),
     ("principle_link", "Why this principle"),
+    ("assistant_pull", "What might pull the assistant to answer badly"),
     ("wrapper", "How it reaches the assistant"),
+    ("operator_voice", "How its operator writes"),
+    ("think", "How the reasoning was organised"),
+    ("reply_form", "Reply form"),
 )
 
 STYLE = """
@@ -135,10 +155,10 @@ def main(run_dir: str, out_path: str) -> None:
         "is being taught. Nothing here has been used for training.</p>",
         '<p class="lede">Each conversation shows what the assistant was given (a short instruction from the '
         "company running it, then the person's message), what it thought privately, and what it replied. "
-        "After that come five yes-or-no checks answered by a different AI model, Gemini, and the outline the "
+        "After that come yes-or-no checks, five answered by a different AI model (Gemini) and three by a stricter reader of the same family as the writers, and the outline the "
         "conversation was written from.</p>",
         "</header>",
-        '<section class="stack"><h3>The five checks</h3><dl class="defs">',
+        '<section class="stack"><h3>The checks</h3><dl class="defs">',
     ]
     parts += [f"<dt>{label}</dt><dd>{html.escape(q)}</dd>" for _, label, q in CHECKS]
     parts.append("</dl></section>")

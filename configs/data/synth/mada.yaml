@@ -1,44 +1,54 @@
 # ABOUTME: Multi-agent Difficult Advice (MA-DA): a person asks for advice about a conflict among several
 # ABOUTME: people; the difficulty comes from the people and the situation, never from the asker.
 # Run: uv run synth run --config configs/data/synth/mada.yaml total_scenarios=<N>
-#      (`--smoke` writes 9 rows, one per principle, and pushes nothing)
+#      (`--smoke` writes up to 9 rows, one per principle, and pushes nothing)
 #
-# WHAT THIS IS. A new document type, written from scratch on 2026-11-24 from four hand-written,
-# approved examples (scratch/ma_da/approved_examples/) and the requirements compiled from them
-# (scratch/ma_da/2026-11-24_ma_da_requirements.md). It shares the ENGINE with da.yaml and none of
-# its prompts. One row = a system prompt, one user message holding a multi-party situation, and the
-# assistant's reasoning and reply, generated against ONE principle of the constitution.
+# WHAT THIS IS. A document type written from scratch on 2026-11-24 from four hand-written, approved
+# examples (scratch/ma_da/approved_examples/) and the requirements compiled from them
+# (scratch/ma_da/2026-11-24_ma_da_requirements.md). It shares the ENGINE with da.yaml and the guards
+# on trained text; the prompts that decide what a scenario contains are its own. One row = a system
+# prompt, one user message holding a multi-party situation, and the assistant's reasoning and
+# reply, generated against ONE principle of the constitution.
 #
-# HOW IT DIFFERS FROM da.yaml.
-#   1. The seed is a BLUEPRINT, not a three-sentence situation: it carries the cast (each person's
-#      position, what they are right about, the fact that complicates them), why the advice is hard,
-#      and how it turns on the principle. The stages below only render it.
-#   2. Each seed starts from one line of a MENU: who is asking, what kind of assistant, how the other
-#      people's words arrive. The menu is written by models, not by hand (configs/data/synth/mada/
-#      menu.yaml, 120 lines, Sonnet 5 and Gemini taking turns; scratch/ma_da/make_menu.py). The seed
-#      writer invents everything else: the people, the conflict, the tension, how the principle comes
-#      in. Added 2026-11-24 at the author's direction after a smoke with nothing dealt chose "a
-#      general-purpose assistant" in 9 of 9 seeds and "a typed-up summary" in 5 of 9, and every
-#      row then failed the realism gate. Nothing else is dealt: no sector, no adversary, no labels.
-#   3. Every row has a system prompt, written to fit the seed's `wrapper` text (how the situation
-#      reaches the assistant; the engine's own name for that field, which also puts it on the
-#      do-not-repeat list shown to later seed calls).
-#   3b. Seeds are written in WAVES of four calls. Each wave is shown one line per seed already
-#      written (domain, opening, how it arrives) and told not to write another version. Negative
-#      examples only: nothing is assigned. Added 2026-11-24 after blind raters found one shape in
-#      six of six rows (scratch/ma_da/2026-11-24_ma_da_smoke2_blind_rating.md).
-#   4. Judged gates (Gemini, a different family from the Claude writers) sit on the two stages that
-#      write trained text. `write_inputs`: is it advice, is it hard, is it realistic and clear of the
-#      held-out tests. `revise_responses`: does the reply commit, weigh the people and stay grounded,
-#      and does the reasoning deliberate morally about the row's principle. A failure re-rolls the
-#      stage; a row that never passes is DROPPED and counted in the manifest's failures, so every
-#      exported row has passed all five. (The first smoke kept failing rows and marked them; that
-#      loses the generated text, see GOTCHAS-style note in the 2026-11-24 commits.)
-#   5. The approved examples are shown to NO writer. They are the yardstick the output is read
-#      against, not a template.
+# THE STAGES.
+#   1. chunk_constitution   nine principles.
+#   2. write_seeds          one BLUEPRINT per row, grown from one line of a model-written MENU
+#                           (configs/data/synth/mada/menu.yaml): who asks and on what footing, which
+#                           assistant, how the words arrive, how many others, how the operator writes,
+#                           and where the better case sits. The seed invents the people, the conflict,
+#                           the tension and how the principle comes in. Nothing else is dealt.
+#   3. judge_seeds          a gate on the blueprint, before anything expensive is written.
+#   4. write_inputs         the system prompt and the message, with the arrival form RENDERED.
+#   5. draft_responses      first reasoning and reply.
+#   6. revise_responses     the trained reasoning and reply. Each row is dealt one of six ways of
+#                           organising the reasoning and one of five reply forms, because every
+#                           independent call otherwise settles on one skeleton.
+#   7. export, corpus checks.
 #
-# NOT YET HERE: the `pattern_scan` corpus check (da.yaml's rubrics) -- add it before any full run,
-# since the blind readers found shared tics in the approved examples themselves.
+# THE GATES. A failed gate re-rolls its stage; a row that never passes is DROPPED and counted, so
+# every exported row passed all of them. There are two kinds:
+#   - `judge`  (Gemini, a different family from the Claude writers): advice-not-task, hard, real,
+#              reply, moral.
+#   - `rater`  (Sonnet 5, the SAME family as the writers): the author's stated preferences, asked
+#              the way the blind raters ask them. Added 2026-11-25 because Gemini passed rows that
+#              three blind raters failed on "too easy", realism, grounding and "answers the
+#              question" (scratch/ma_da/2026-11-24_ma_da_smoke{2,5}_blind_rating.md). Same-family
+#              judging shares blind spots with the writers; it is here because it is stricter, and
+#              the Gemini gates stay as the independent check.
+#
+# WHY IT IS BUILT THIS WAY (each line is a failure seen in a smoke on 2026-11-24):
+#   - nothing dealt            -> 9 of 9 seeds chose "a general-purpose assistant", 5 of 9 "a typed-up
+#                                 summary"; every message was a tour of the people.        => the menu
+#   - one complication each    -> quote-then-undercut for every person.   => a realistic number, maybe none
+#   - menu without footing     -> every asker a mid-level decider refereeing two others.  => footing, others
+#   - one system-prompt layout -> "House rules:" in five of six.                     => operator_voice
+#   - one verdict direction    -> the model sided against money or schedule every time.     => tilt
+#   - one reasoning skeleton   -> a paragraph per person, then an absent-party paragraph.  => dealt shapes
+#   - principle bolted on      -> a pun on "operator"; a planted confession.   => trait_notes, assistant_pull
+#
+# The approved examples are shown to NO writer. They are the yardstick the output is read against.
+#
+# NOT YET HERE: the `pattern_scan` corpus check (da.yaml's rubrics). Add it before any full run.
 
 method: ours
 pipeline: mada
@@ -52,18 +62,17 @@ smoke:
   total_scenarios: 9
   hf_push: false
   # Nine rows: one failed row is 11%, so the default 2% guard would abort a smoke on a single flake.
-  max_fail_pct: 60.0
+  max_fail_pct: 70.0
 
 seed: 0
 
 constitution: "constitutions/claude_distilled_09_principles/constitution.md"
 
 style_guidance: |-
-  Takes every person in the situation seriously in their own terms, including the unpleasant
-  ones and the absent ones. Works out what it actually thinks before deciding how to say it.
-  Commits to a judgement and says what it would do. Says plainly what its advice will cost and
-  what it cannot know from here. Does not flatter the person asking, and does not lecture them.
-  Warm, plain, proportionate.
+  Takes the people in the situation seriously in their own terms, including the unpleasant ones.
+  Works out what it actually thinks before deciding how to say it. Answers the question that was
+  asked and says what it would do. Says plainly what its advice will cost and what it cannot know
+  from here. Does not flatter the person asking, and does not lecture them. Plain and proportionate.
 n_traits: 9
 
 chunking: principle
@@ -72,56 +81,60 @@ chunking: principle
 total_scenarios: 450
 launch_requires: [total_scenarios]
 scenarios_per_trait: 50
-# Two blueprints a call: enough for "make these differ from each other" to mean something, few
-# enough that a blueprint with thirteen fields is not truncated.
 scenarios_per_call: 2
 
 output_dir: "output/synth_mada"
 hf_private: false
 workers: 48
-budget_usd: 150.0
+budget_usd: 250.0
 
 defaults:
   temperature: 1.0
   max_tokens: 4096
 
 models:
-  # Stage 2 -- the blueprint. The stage everything else depends on, so it gets the stronger model
-  # (da.yaml uses Haiku here; its seed is three sentences).
   seeds:
     model: "anthropic/claude-sonnet-5"
     temperature: 1.0
     max_tokens: 8192
-    assumed_tokens: {in: 1500, out: 1800}
-  # Stage 3 -- the system prompt and the message the assistant receives.
+    assumed_tokens: {in: 2200, out: 1800}
   inputs:
     model: "anthropic/claude-sonnet-5"
     temperature: 1.0
-    max_tokens: 6144
-    assumed_tokens: {in: 1600, out: 1300}
-  # Stage 4 -- first reasoning and reply.
+    max_tokens: 8192
+    assumed_tokens: {in: 1900, out: 1700}
   respond:
     model: "anthropic/claude-haiku-4.5"
     temperature: 1.0
     max_tokens: 6144
-    assumed_tokens: {in: 1800, out: 2200}
-  # Stage 5 -- the trained reasoning and reply.
+    assumed_tokens: {in: 1900, out: 2000}
   rewrite:
     model: "anthropic/claude-sonnet-5"
     temperature: 1.0
     max_tokens: 16000
-    assumed_tokens: {in: 4500, out: 2600}
-  # The judged gates. A different model family from every writer above.
+    assumed_tokens: {in: 4800, out: 2400}
+  # Independent gates: a different family from every writer.
   judge:
     model: "google/gemini-3.6-flash"
     temperature: 0.0
     max_tokens: 3000
     assumed_tokens: {in: 3000, out: 250}
+  # Preference gates: the same family as the writers (see header), because it is stricter.
+  rater:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 1.0
+    max_tokens: 4096
+    assumed_tokens: {in: 3500, out: 500}
 
-# t6 is about the assistant's own identity. A multi-party advice situation engages it only when
-# the conflict is itself about an AI system's character, so the seed writer is told so.
+# What a multi-party advice situation has to look like for each principle whose subject is the
+# ASSISTANT'S OWN CONDUCT. Without these the seed writer attaches the principle by analogy (a pun on
+# "operator", a confession planted in the asker's mouth) and the reasoning never weighs it.
 trait_notes:
+  t1: "\n- For this principle, something in the situation turns on whether people stay able to check, correct or stop an AI system, or on the asker wanting this assistant to settle or do something that is properly a person's call. Keep it ordinary: a household, a small team, a club deciding how far to let an assistant run something unreviewed, or people leaning on this assistant to make the decision for them. The asker still wants advice about the people."
   t6: "\n- For this principle, the conflict concerns the assistant being asked: what it is, whether its character and values are its own, how it should regard itself. The people disagree about it, and the asker puts that question to it directly while still wanting advice about the people. Do not make it a decision about some other AI product."
+  t7: "\n- For this principle, whoever set this assistant up has given it an instruction that bears on this conflict: a subject it is to stay off, a product or party it is to favour, a tone, a rule about referring people elsewhere. Following it to the letter would short-change the asker; ignoring it would be disloyal to a choice the operator was entitled to make. Write that instruction, in the operator's words, into `assistant_pull`. The instruction is ordinary business, never an order to deceive."
+  t8: "\n- For this principle, the safe-looking answer (see a professional, here are some considerations, it depends) would leave the asker exactly where they started. The situation sits close enough to law, medicine, money or a family rupture that a timid assistant would retreat, and the asker needs a real view."
+  t9: "\n- For this principle, the way the asker is using the assistant is part of the picture: leaning on it to decide for them, to take their side, or to stand in for a person they are avoiding. This shows in how they write. They never say it about themselves."
 
 stages:
 - name: chunk_constitution
@@ -135,9 +148,9 @@ stages:
     key: menu
     id: id
     var: menu
-    item: "- WHO IS ASKING: {asker}. THE ASSISTANT: {assistant}. HOW THE WORDS ARRIVE: {arrives}."
-  # The embedding gate from da.yaml, unchanged: the later of two near-identical blueprints is
-  # refused and its unit refilled.
+    item: "- WHO IS ASKING: {asker}. THE ASSISTANT: {assistant}. HOW THE WORDS ARRIVE: {arrives}. THE OTHER PEOPLE: {others}. HOW ITS OPERATOR WRITES: {operator_voice}. WHERE THE BETTER CASE SITS: {tilt}."
+  # Waves of four calls: each wave is shown one line per seed already written and told not to
+  # repeat it. The embedding gate then refuses a near-copy and refills its unit.
   diversity:
     wave_size: 4
     reject_cosine: 0.78
@@ -150,6 +163,8 @@ stages:
     - complications
     - tension
     - principle_link
+    - assistant_pull
+    - operator_voice
     - wrapper
   prompts:
     system: |-
@@ -167,67 +182,70 @@ stages:
       an assistant that held this principle would have to think carefully about it, and one that
       did not would give worse advice.
 
+      STARTING POINTS. Blueprint 1 grows from the first line below, blueprint 2 from the second,
+      and so on. Keep everything the line fixes: who is asking and their footing, the kind of
+      assistant, how the other people's words arrive, how many others there are, how the operator
+      writes, and where the better case turns out to sit. That last one is never stated in the
+      situation. It shapes the facts, so that an adviser who weighs them well ends up there, and
+      one who goes by first impressions does not.
+      {menu}
+
       What every blueprint needs:
-      - Several people besides the asker (two to six), each with a position of their own. They
-        are not symmetrical. One may be simply right, another mostly wrong, a third right for a
-        poor reason. If there are facts that complicate the picture, there are only as many as
-        such a situation would really have: often one, sometimes none, occasionally more. They
-        do not come one per person, and you do not add one to balance things out.
+      - The other people each have a position of their own. They are not symmetrical: one may be
+        simply right, another mostly wrong, a third right for a poor reason. If there are facts
+        that complicate the picture, there are only as many as such a situation would really
+        have: often one, sometimes none, occasionally more. They do not come one per person, and
+        you do not add one to balance things out.
       - The difficulty comes from the people and the situation, never from the asker pushing the
         assistant. The asker is sincerely unsure and wants advice or a judgement: what should I
-        do, who was right, was that fair, what do I owe them, how do I handle this next time.
-        They never ask the assistant to do something for them (write, send, fix, calculate, pick a
-        number).
-      - It is hard, and it stays hard once the facts are known. No single fact in the situation
-        decides it. There is no way out that costs nobody anything: no second option that would
-        satisfy everyone, no deadline that turns out not to matter. "Talk to the person first"
-        or "find out more" is not enough of an answer, because the asker has already done the
-        obvious thing or cannot. Thoughtful people would still disagree about the advice.
-      - It is realistic: ordinary stakes, a specific setting rather than a category, the kind of
-        thing people really bring to an assistant. The details are right for the setting; someone
-        who works in it would not wince.
+        do, who was right, was that fair, what do I owe them. They never ask the assistant to do
+        something for them (write, send, fix, calculate, look something up).
+      - It is hard, and it stays hard once the facts are known:
+          * nobody with authority over the matter has already said what should happen;
+          * it is not a matter of looking up what a rule, a contract or a manual requires;
+          * the heart of it is a judgement about people and what they owe each other, not a
+            technical question an expert in the field could simply answer;
+          * no single fact decides it, and no third option makes the cost disappear;
+          * "talk to them first" or "find out more" is not enough, because the asker has already
+            done the obvious thing, or cannot;
+          * a thoughtful adviser could argue for the opposite advice and not be foolish.
+      - It is realistic. Ordinary stakes, a specific setting, the kind of thing people really
+        bring to an assistant. The details are right for the setting: someone who lives or works
+        in it would not wince, and the dates, sums and roles agree with each other.
       - It engages THIS principle specifically, in one of two ways, and `principle_link` says
         which. Either the conflict among the people is itself about what the principle is about,
         so the advice has to weigh that very value. Or the principle governs how the assistant
-        must answer here, because an assistant without it would be tempted to answer badly in a
-        particular way: to placate, to hedge, to take the decision over, to say what the asker
-        wants to hear. Do not turn the principle into a product decision about some other AI
-        system, and do not have anyone in the situation voice the principle's idea themselves.
+        must answer here, because an assistant without it would be pulled to answer badly in a
+        particular way; `assistant_pull` then says what that way is and what in the situation
+        creates the pull. The principle is never attached by a play on a word, never turned into
+        a decision about some other AI product, and nobody in the situation states its idea.{trait_note}
 
-      STARTING POINTS. Blueprint 1 starts from the first line below, blueprint 2 from the second,
-      and so on. Keep who is asking, what kind of assistant it is and how the other people's
-      words arrive as the line gives them; if a line hints at what the conflict is, you may
-      ignore the hint.
-      {menu}
-
-      Everything else is yours to choose, by what fits: who the other people are and how many
-      (two is fine, so is six), who holds power, what the conflict is, what is at stake. Not
-      everyone in a situation acts in bad faith; often nobody does, and each person is earnest
-      while the problem itself causes the tension. Sometimes one person is acting in bad faith,
-      or is pressing the asker to do something wrong. A party may be an AI system where that is
-      natural. The asker may be partly in the wrong, or not at all. Give people names that fit
-      their age, place and background.
+      Everything else is yours to choose, by what fits: who the other people are, what the
+      conflict is, what is at stake. Not everyone in a situation acts in bad faith; often nobody
+      does. Sometimes one person does, or presses the asker to do something wrong. A party may be
+      an AI system where that is natural. Draw names from the whole range of what people in that
+      place and generation are called, not the first that come to mind; nobody shares a first
+      name with another person, a place or an organisation in the same blueprint.
 
       These have each been overused. Any may appear occasionally; none is the default:
-      - a rule that was introduced after a past scandal
+      - a rule that was introduced after a past scandal or after favouritism, with an exception
+        now being stretched
       - a lie or a cover-up as the tempting option
-      - a quiet junior colleague who loses out
-      - a manager or business owner as the asker
+      - someone pushing for money or for a deadline, against someone defending a rule or the
+        evidence, where the careful side simply wins
+      - a quiet junior person who loses out
+      - an authority who is away and unreachable
       - an illness or a house purchase as the hardship
-      - an office in the United Kingdom
-      - advice that amounts to "refuse the shortcut and go to whoever is in charge"
       - exactly four other people, each neatly half right
-      - the names Priya, Dev, Marcus, Elena, Maya, Sarah, Raj, Carol and Chen
       - a fact that only the asker knows, or a telling detail buried in a document
       - a narrower third option that every side missed
       - adult children disagreeing about an elderly parent
-      - Thursday as the deadline
-      Sometimes the rule should bend. Sometimes the asker's instinct is right. Sometimes the best
-      available advice still leaves a real loss.
+      - Thursday as the deadline; any deadline at all, where the situation would not have one
+      - advice that amounts to "refuse the shortcut and go to whoever is in charge"
 
       Never use: software exploits or vulnerabilities, message boards, hospitals or clinics
       concealing errors, AI systems asking the assistant to hide something, whistleblowing, or
-      code review by another AI system. No crime, violence or self-harm at the centre.{trait_note}
+      code review by another AI system. No crime, violence or self-harm at the centre.
 
       {avoid}
 
@@ -237,9 +255,10 @@ stages:
         "parties": "<one line per person other than the asker: name; role; what they want and why>",
         "complications": "<the facts, if any, that make this less simple than it first looks: only as many as it would really have, and 'none' if there are none>",
         "tension": "<2-4 sentences: what pulls against what in this situation, and where the pressure on the asker comes from>",
-        "principle_link": "<1-2 sentences: how good advice here depends on this principle>",
+        "principle_link": "<1-2 sentences: which of the two ways this engages the principle, and how>",
+        "assistant_pull": "<if the principle governs how the assistant must answer: the bad way of answering that this situation tempts, and what creates that pull, including any operator instruction in the operator's own words. Otherwise 'none'>",
+        "operator_voice": "<copied from the starting line: how the operator writes its instructions>",
         "wrapper": "<1-2 sentences, taken from the starting line: what kind of assistant is being asked and where, and how the other people's words reach it>"}}
-# Blueprint-level checks: a collapsed set is far cheaper to catch here than after three paid stages.
 - name: corpus_seeds
   kind: corpus_check
   on_fail: warn
@@ -254,35 +273,118 @@ stages:
       text: situation
     params:
       sample: 0
+# The blueprint gate. A blueprint that is too easy, bolts its principle on or would make someone in
+# the setting wince cannot be rescued by the stages after it, so it is dropped here.
+- name: judge_seeds
+  kind: llm_tagged
+  model: rater
+  checkpoint: scenario_id
+  tags:
+  - checks
+  - verdict
+  - note
+  save:
+    seed_checks: checks
+    seed_verdict: verdict
+    seed_note: note
+  normalize:
+  - verdict
+  keep:
+    field: seed_verdict
+    in:
+    - pass
+  max_drop_pct: 80
+  prompts:
+    system: |-
+      You vet blueprints for training examples in which a person asks an AI assistant for advice
+      about a conflict among several people. You are strict: most blueprints you see have a flaw,
+      and passing a flawed one costs far more than failing a good one.
+    user: |-
+      The blueprint was written for this principle of the assistant's constitution:
+
+      <principle name="{trait_name}">
+      {trait_text}
+      </principle>
+
+      THE BLUEPRINT
+      Situation: {situation}
+      The other people: {parties}
+      What complicates it: {complications}
+      The tension: {tension}
+      How it engages the principle: {principle_link}
+      What might pull the assistant to answer badly: {assistant_pull}
+      How it reaches the assistant: {wrapper}
+
+      Work through these in <checks>, one line each, answering yes or no with a reason.
+
+      1. ONE-LINE ANSWER. Write the advice in one sentence. Would nearly every thoughtful adviser
+         give that same sentence? (yes = flaw)
+      2. OPPOSITE. Write the opposite advice in one sentence. Could a thoughtful adviser defend
+         it without being foolish? (no = flaw)
+      3. ALREADY SETTLED. Has someone with authority over the matter already said what should
+         happen, or does a rule, contract or manual in the situation dictate the answer? (yes =
+         flaw)
+      4. TECHNICAL. Is the heart of it a technical or factual question that an expert in the
+         field could answer, as opposed to a judgement about people? (yes = flaw)
+      5. WAY OUT. Is there a third option, a deciding fact, or a "talk to them first" that would
+         make the cost go away? (yes = flaw)
+      6. PRINCIPLE. Would an assistant giving good advice here have to weigh the tension this
+         principle is actually about? Answer no if the link is a play on a word, an analogy, a
+         decision about some other AI product, or an idea a person in the situation states.
+         (no = flaw)
+      7. SETTING. Would someone who lives or works in this setting find a role, a procedure or a
+         detail wrong, or do the dates, sums or roles contradict each other? (yes = flaw)
+      8. HELD-OUT. Does it involve a software vulnerability and whether to share it, a message
+         board, a hospital or clinic concealing an error, AI systems asking the assistant to hide
+         something, whistleblowing, or code review by another AI system? (yes = flaw)
+
+      Then give the verdict: pass only if no check found a flaw.
+
+      Return your answer in exactly this form, with no other text:
+
+      <checks>
+      the eight lines
+      </checks>
+      <verdict>
+      pass or fail
+      </verdict>
+      <note>
+      one sentence naming the worst flaw, or "none"
+      </note>
 - name: write_inputs
   kind: llm_tagged
   model: inputs
   checkpoint: scenario_id
   tags:
+  - plan
   - system
   - user
   save:
+    input_plan: plan
     system: system
     user: user
   lint:
   - fields: [user]
-    min_chars: 1300
+    min_chars: 1200
+    max_chars: 6500
     retries: 4
     ban_patterns:
     - \bclaude\b
     - \banthropic\b
-    # Openers and closers that most rows shared in the second smoke (2026-11-24). Names are NOT
-    # banned here: a seed that names someone Priya made every attempt fail (fourth smoke).
+    # Openers and closers that most rows shared in the second smoke (2026-11-24).
     - head straight
     - \bif you were (?:me|in my)\b
     - \bin my (?:position|seat|shoes)\b
+    - i'll be honest
   - fields: [system]
-    retries: 2
+    retries: 4
     ban_patterns:
     - \bclaude\b
     - \banthropic\b
     - \bconstitution\b
     - \bethic
+    # One layout in five of six system prompts in the fifth smoke.
+    - house rules
   verify:
   - model: judge
     save_as: judge_advice
@@ -326,10 +428,11 @@ stages:
         Question 5 (way_out): does the message contain a way out that would spare everyone the cost, such as a second option that would satisfy the people who lose, or a detail showing the deadline does not matter?
         Question 6 (talk_first): would "talk to the person concerned first" or "find out more before deciding" be a complete and adequate answer, because the sender has plainly not yet done that?
         Question 7 (one_detail): does one detail in the message, such as a number or a finding in a document, decide which option is right?
+        Question 8 (settled): has someone in the message who has authority over the matter already said what should happen?
 
         Before you answer, try to write the advice in one sentence. If one sentence that most advisers would agree with does the job, the message is not hard. When you are unsure, answer the way that leads to "fail".
 
-        Reply with JSON only: {{"fact_settles": true or false, "obvious": true or false, "costs": true or false, "one_sided": true or false, "way_out": true or false, "talk_first": true or false, "one_detail": true or false, "verdict": "pass" if costs and not fact_settles and not obvious and not one_sided and not way_out and not talk_first and not one_detail, otherwise "fail", "note": "<one sentence>"}}
+        Reply with JSON only: {{"fact_settles": true or false, "obvious": true or false, "costs": true or false, "one_sided": true or false, "way_out": true or false, "talk_first": true or false, "one_detail": true or false, "settled": true or false, "verdict": "pass" if costs and not fact_settles and not obvious and not one_sided and not way_out and not talk_first and not one_detail and not settled, otherwise "fail", "note": "<one sentence>"}}
   - model: judge
     save_as: judge_real
     accept_field: verdict
@@ -353,10 +456,41 @@ stages:
         Question 5 (slip): does the message contain an error someone in that setting would not make, two different people with the same first name, or a bracketed self-correction?
 
         Reply with JSON only: {{"realistic": true or false, "prompt_fits": true or false, "test_like": true or false, "tidy": true or false, "slip": true or false, "verdict": "pass" if realistic and prompt_fits and not test_like and not tidy and not slip, otherwise "fail", "note": "<one sentence>"}}
+  - model: rater
+    save_as: judge_input
+    accept_field: verdict
+    accept_values: [pass]
+    prompts:
+      system: >-
+        You check a message sent to an AI assistant for the flaws that make a training example
+        worthless. You are strict and you look for evidence. You answer with one JSON object and
+        nothing else.
+      user: |-
+        An AI assistant runs under the system prompt below and receives the message below.
+
+        SYSTEM PROMPT
+        {system}
+
+        MESSAGE
+        {user}
+
+        For each question, find the evidence before you answer.
+
+        1 (inconsistent): list every date, day of the week, time, sum, count and role in the message. Do any two contradict each other?
+        2 (fitted): does the system prompt mention this dispute, anticipate this kind of dispute, or contain a rule that reads as written to settle it? An ordinary instruction that happens to bear on the conflict is fine; one tailored to it is not.
+        3 (redundant): does the sender paste or retype something that, according to the system prompt, the assistant can already see?
+        4 (stagey): do the people's words sound written for a reader, such as polished speeches in what is meant to be a voicemail, a chat or talk remembered from a kitchen?
+        5 (planted): does the sender state the general idea behind the dilemma, or remark on their own use of the assistant in a way that points at what the example is about?
+        6 (easy): write the advice in one sentence, and the opposite advice in one sentence. Is the first plainly right and the second not seriously defensible?
+        7 (settled): has someone with authority in the message already said what should happen, or does a rule quoted in it dictate the answer?
+        8 (technical): is the heart of the question technical or factual, something an expert in the field would simply answer, and not a judgement about people?
+        9 (hook): does the message mention a detail as important and never say what it is?
+
+        Reply with JSON only: {{"evidence": "<the dates, sums and roles you checked, briefly>", "inconsistent": true or false, "fitted": true or false, "redundant": true or false, "stagey": true or false, "planted": true or false, "easy": true or false, "settled": true or false, "technical": true or false, "hook": true or false, "verdict": "pass" if every answer is false, otherwise "fail", "note": "<one sentence naming the worst flaw, or none>"}}
   prompts:
     system: |-
       You write the exact text an AI assistant receives in a real deployment: the operator's
-      system prompt and the message a person sends. You return exactly two tagged blocks and
+      system prompt and the message a person sends. You return exactly three tagged blocks and
       nothing else.
     user: |-
       Here is a blueprint for one situation.
@@ -376,60 +510,73 @@ stages:
       HOW IT REACHES THE ASSISTANT
       {wrapper}
 
-      Write the system prompt the assistant runs under and the message the asker sends.
+      HOW ITS OPERATOR WRITES
+      {operator_voice}
+
+      WHAT MIGHT PULL THE ASSISTANT TO ANSWER BADLY (for you to know; "none" means nothing)
+      {assistant_pull}
+
+      First make a short plan, then write the system prompt the assistant runs under and the
+      message the asker sends.
+
+      THE PLAN (it is thrown away; it is there so the rest is consistent)
+      - the calendar: today's date and weekday, and every date, weekday and time that will be
+        mentioned, checked against each other
+      - every sum, count and role that will be mentioned, checked against each other
+      - each person's name, and one line on how that person talks or writes
 
       THE MESSAGE
       - It is in the asker's own voice and reads as something a real person typed or pasted. It
-        is not a case study, and nobody in it speaks in speeches.
+        is not a case study.
       - The other people's words are in the message in exactly the form the blueprint says they
         arrive in, and that form is rendered, not described. A forwarded email chain is the
         emails, with senders and dates. An exported chat is the chat, line by line, with names
-        and times. A transcript is the transcript. Minutes are the minutes. Something told from
-        memory is told the way people tell things, with the phrases that stuck. The asker adds
-        their own words before or after, briefly. They do not summarise what is already there.
-      - Give the people real names and the situation real particulars: dates, sums, places, the
-        wording of any rule. Different people sound different.
+        and times. A transcript is the transcript, with the false starts speech has. Minutes are
+        the minutes. Something told from memory is told the way people tell things, with the
+        phrases that stuck. If the blueprint says the assistant can already see something, the
+        asker does not paste it. The asker adds their own words before or after, briefly, and
+        does not summarise what is already there.
+      - People sound like themselves and like the medium. Nobody delivers a line written for a
+        reader. A voicemail rambles; a text is short; an official letter is stiff.
+      - Use the names the blueprint gives. The situation has real particulars: dates, sums,
+        places, the wording of any rule. They agree with your plan.
       - Any complications are in the message as ordinary details, wherever they would naturally
         come up. They are not placed next to the person they concern, and nothing points at
         them. If the blueprint says there are none, add none.
-      - It is lopsided, the way real messages are. The asker does not give each person equal
-        space, and does not lay the positions out in parallel with a tidy paragraph, a quote
-        and a counterpoint for each. They dwell on whoever is bothering them most, give
-        someone else a single line, tell something out of order, leave something out. They do
-        not list their options and they do not sum the conflict up as a neat dilemma.
-      - The asker tells it from their own side. They are not even-handed, and they do not
-        explain other people's motives for them.
-      - The asker admits what is awkward for them if the blueprint gives them a fault, and
-        ends by asking for advice or a judgement in a sentence or two.
+      - It is lopsided, the way real messages are. The asker dwells on whoever is bothering them
+        most, gives someone else a single line, tells something out of order, leaves something
+        out. They do not list their options and they do not sum the conflict up as a neat
+        dilemma. They tell it from their own side and are not even-handed.
+      - The asker ends by asking for advice or a judgement, in a sentence or two.
       - The asker never asks the assistant to write, send, fix, calculate or look anything up,
         and never says what they are NOT asking for.
-      - The asker never mentions ethics, principles, values or that anything is a test, and does
-        not argue with or pressure the assistant.
+      - The asker never mentions ethics, principles or values, never states the general idea
+        behind the dilemma, and never remarks on how they use the assistant. They do not argue
+        with or pressure the assistant.
+      - Do not add a way out the blueprint does not have, do not let one detail settle the
+        question, and do not mention anything as important without saying what it is.
+      - Do not open with a line about getting their head straight or wanting an outside view,
+        and do not close by asking what the assistant would do in their place. No "I'll be
+        honest". No bracketed self-corrections.
       - Anything pasted or attached is inside the message itself.
-      - Between 300 and 800 words. Do not aim for the middle.
-      - Do not follow each person's words with the fact that undercuts them. Do not add a way
-        out that the blueprint does not have, and do not let one detail settle the question.
-      - Nobody in the message, the asker included, states the general idea behind the dilemma.
-      - Use the names the blueprint gives. No two people share a first name, and the asker never
-        corrects themselves in brackets.
-      - Do not open with a line about needing to get their head straight or wanting an outside
-        view, and do not close by asking what the assistant would do in their position, in
-        their seat or if it were them. Those have been used too often. The deadline is not
-        Thursday.
+      - Between 250 and 800 words, whatever this message would really be. Do not aim for the
+        middle.
 
       THE SYSTEM PROMPT
-      An ordinary deployment prompt of the kind an operator really writes, for the kind of
-      assistant the blueprint describes. A general-purpose assistant gets a short plain prompt;
-      an assistant inside an organisation or a service names it, says what it does and what the
-      assistant can see.
-      Write it as that operator would, in their own way: some are two lines, some are a page of
-      house rules. Do not use the stock sentence about having no access to anything unless
-      the user pastes it.
-      It may say what the assistant can see or do. It says nothing about this situation, ethics,
-      or how to answer difficult questions, and it names no AI model and no AI company.
+      The deployment prompt this operator wrote, long before this conversation, for everyone who
+      uses the product. Write it the way the blueprint says this operator writes. It may be two
+      lines or a page. It says what the assistant is for and, if the operator would, what it can
+      see. It does not mention this dispute, does not anticipate one like it, and contains no
+      rule that would settle it. If the blueprint gives an operator instruction that bears on
+      the conflict, include it once, in the operator's own ordinary words, among other
+      instructions of the same kind. No heading called "House rules". Nothing about ethics or
+      how to answer difficult questions. No AI model and no AI company is named.
 
       Return your answer in exactly this form, with no other text:
 
+      <plan>
+      the plan
+      </plan>
       <system>
       the system prompt
       </system>
@@ -467,26 +614,21 @@ stages:
       ---
       Respond as the assistant. First reason privately, then write your reply.
 
-      In your reasoning, think about each person in this situation in their own terms: what
-      they want, what they are right about, what they are getting wrong, and why they might be
-      acting as they are. Notice where the pressure on the person asking is coming from. Work
-      out what the principle above asks of advice here, and where it pulls against something
-      else that matters. Then decide what you actually think, including whether the person
-      asking is right.
+      In your reasoning, work out what you actually think. Consider the people who matter to the
+      answer in their own terms. Notice where the pressure on the person asking is coming from.
+      Work out what the principle above asks of advice here, and where it pulls against something
+      else that matters. Decide whether the person asking is right.
 
-      In your reply, give your judgement and say what you would do. If the person's own
-      instinct is right, say so; if it is not, say that. Say what your advice will cost and
-      what you cannot tell from here.
+      In your reply, answer the question they asked and say what you would do. Say what your
+      advice will cost and what you cannot tell from here.
 
       Everything specific about this situation comes from the system prompt and the message,
       and nowhere else: names, numbers, dates, what people said. Where the message is vague,
       stay vague. General knowledge is fine; an invented particular is not.
 
-      Start wherever this particular situation actually starts. Sometimes that is the
-      thing at stake, sometimes the person who gets hurt, sometimes a detail of the
-      message that gives the whole thing away. Never open with a stock phrase, and never
-      begin with "Let me". Never name the model you are, or the company that built you.
-      Write as though thinking, not as though filling in a form.
+      Start wherever this particular situation actually starts. Never open with a stock phrase.
+      Never name the model you are, or the company that built you. Write as though thinking, not
+      as though filling in a form.
 
       Return your answer in exactly this form, with no other text:
 
@@ -500,16 +642,14 @@ stages:
     fields:
     - reasoning
     - response
-    min_chars: 900
+    min_chars: 700
     ban_patterns:
     - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
     - \bthe constitution\b
     - \bprinciple \d+\b
-    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
     - \bhard constraints?\b
     # No opener ban here, unlike da.yaml: Haiku opened the reasoning with "Let me" on 15 of 15
-    # attempts in the first smoke (2026-11-24) and every row was lost. The next stage rewrites
-    # the opening and carries the ban, so a stock opener in a draft costs nothing.
+    # attempts in the first smoke and every row was lost. The next stage rewrites the opening.
     - '[一-鿿]'
     - \bclaude\b
     - \banthropic\b
@@ -518,6 +658,32 @@ stages:
   kind: llm_tagged
   model: rewrite
   checkpoint: scenario_id
+  # Every row is dealt one way of organising the reasoning and one reply form, hashed from its id.
+  # Left to itself the reviser wrote one skeleton in six of six rows (a paragraph per person, an
+  # absent-party paragraph, then costs and unknowns) and one reply form (five dense paragraphs).
+  assign:
+    by: scenario_id
+    fields:
+      think: {decision: 1, lean: 1, loss: 1, doubt: 1, person: 1, twice: 1}
+      reply_form: {short: 1, steps: 1, prose: 1, headed: 1, direct: 1}
+  prompt_vars:
+    think_text:
+      by: think
+      cases:
+        decision: "It starts from the decision itself and follows what each choice would set in motion, bringing people in only as they bear on that."
+        lean: "It takes the answer the asker seems to want, or the answer most tempting to give, and tries hard to make it work before deciding whether it does."
+        loss: "It starts from whoever stands to lose most and works outward from there."
+        doubt: "It starts from what it cannot tell from the message, and works out how much the answer depends on that."
+        person: "It follows the one person whose position is hardest to place, and lets the others come in around them."
+        twice: "It reaches a first view quickly, then puts the strongest objection to it and says plainly whether the view survives."
+    reply_text:
+      by: reply_form
+      cases:
+        short: "Short: under 200 words, a few plain paragraphs, no lists and no bold."
+        steps: "The judgement in a sentence or two, then a short numbered list of what to do, in order, then one or two closing sentences. 200 to 400 words."
+        prose: "Three or four plain paragraphs. No lists, no bold. 250 to 400 words."
+        headed: "A sentence of judgement, then three or four short sections that each begin with a bold phrase. 250 to 450 words."
+        direct: "One continuous piece, spoken straight to the asker as a friend who knows the facts would, ending on the first thing to do. 200 to 350 words."
   tags:
   - audit
   - reasoning
@@ -556,18 +722,18 @@ stages:
         {response}
 
         Question 1 (commits): does the reply give a clear judgement of its own, as opposed to listing considerations and leaving it to the person?
-        Question 2 (weighs_people): does the reasoning consider at least two of the other people in their own terms, saying what each is right about as well as what each gets wrong?
+        Question 2 (weighs_people): does the reasoning consider at least two of the other people in their own terms?
         Question 3 (names_cost): does the reply say what following its advice will cost, or what the assistant cannot know?
         Question 4 (invented): does the reasoning or the reply state a specific fact about this situation (a name, number, date or quotation) that is in neither the system prompt nor the message?
         Question 5 (cites_rules): does the reasoning or the reply refer to the assistant's own rules, guidelines, principles, constitution or training?
         Question 6 (new_in_reply): does the reply reach a conclusion that the reasoning did not reach?
         Question 7 (does_task): does the assistant do a piece of work that was not asked for, such as writing a full letter or message for the person to send?
         Question 8 (speaks_as_sender): does the reasoning ever speak as though the assistant were the person who sent the message, for example by calling the sender's own actions, knowledge or promises "mine" or "I"?
-        Question 9 (answers): does the reply answer the question the person actually asked, including giving a verdict or a lean where one was asked for?
+        Question 9 (answers): does the reply answer the question the person actually asked, including giving a verdict or a recommendation where one was asked for?
         Question 10 (overclaims): does the reply state as fact something the message only hints at, state it more strongly than the sender did, or assert something the assistant could not know from the message?
         Question 11 (unfounded_fault): does the reply tell the sender they did something wrong when the message gives no good ground for that?
 
-        Reply with JSON only: {{"commits": true or false, "weighs_people": true or false, "names_cost": true or false, "invented": true or false, "cites_rules": true or false, "new_in_reply": true or false, "does_task": true or false, "speaks_as_sender": true or false, "answers": true or false, "overclaims": true or false, "unfounded_fault": true or false, "verdict": "pass" if commits and weighs_people and names_cost and not invented and not cites_rules and not new_in_reply and not does_task and not speaks_as_sender and answers and not overclaims and not unfounded_fault, otherwise "fail", "note": "<one sentence>"}}
+        Reply with JSON only: {{"commits": true or false, "weighs_people": true or false, "names_cost": true or false, "invented": true or false, "cites_rules": true or false, "new_in_reply": true or false, "does_task": true or false, "speaks_as_sender": true or false, "answers": true or false, "overclaims": true or false, "unfounded_fault": true or false, "verdict": "pass" if commits and weighs_people and names_cost and answers and not invented and not cites_rules and not new_in_reply and not does_task and not speaks_as_sender and not overclaims and not unfounded_fault, otherwise "fail", "note": "<one sentence>"}}
   - model: judge
     save_as: judge_moral
     accept_field: verdict
@@ -590,10 +756,49 @@ stages:
 
         Question 1 (moral_tension): does the reasoning identify a moral tension in this situation, meaning two things that both matter ethically and pull against each other, as opposed to a purely practical or tactical problem?
         Question 2 (weighs): does the reasoning weigh considerations on more than one side of that tension before it concludes, as opposed to stating a conclusion and then defending it?
-        Question 3 (on_principle): first say in one phrase what tension the principle above is about, and in one phrase what tension the reasoning actually weighs. Are they the same tension? Answer false if the reasoning weighs a different value, however worthy (for example someone's dignity, when the principle is about being substantively helpful), or if it treats the principle as a feature of some other product.
+        Question 3 (on_principle): first say in one phrase what tension the principle above is about, and in one phrase what tension the reasoning actually weighs. Are they the same tension? Answer false if the reasoning weighs a different value, however worthy, if it reaches the principle only through a play on a word or an analogy, or if it treats the principle as a feature of some other product.
         Question 4 (names_principle): does the reasoning name or quote the principle, or refer to the assistant's rules, guidelines or constitution?
 
         Reply with JSON only: {{"principle_tension": "<phrase>", "reasoning_tension": "<phrase>", "moral_tension": true or false, "weighs": true or false, "on_principle": true or false, "names_principle": true or false, "verdict": "pass" if moral_tension and weighs and on_principle and not names_principle, otherwise "fail", "note": "<one sentence>"}}
+  - model: rater
+    save_as: judge_reply
+    accept_field: verdict
+    accept_values: [pass]
+    prompts:
+      system: >-
+        You check an AI assistant's reasoning and reply to a request for advice for the flaws
+        that make a training example worthless. You are strict and you quote your evidence. You
+        answer with one JSON object and nothing else.
+      user: |-
+        A person sent the message below to an AI assistant that runs under the system prompt below and is meant to hold the principle below. The assistant reasoned privately and then replied.
+
+        PRINCIPLE: {trait_name}
+        {trait_text}
+
+        SYSTEM PROMPT
+        {system}
+
+        MESSAGE
+        {user}
+
+        ASSISTANT REASONING (private)
+        {reasoning}
+
+        ASSISTANT REPLY
+        {response}
+
+        Find the evidence before you answer each question.
+
+        1 (ungrounded): go through the reasoning and the reply for every specific thing said about this situation: names, numbers, dates, what someone said, did, wants or knows, what happened earlier. Is any of it absent from the system prompt and the message, or stronger than what they say? A figure or fact from general knowledge counts as ungrounded if it is attributed to a person who did not say it.
+        2 (misreads): does the assistant get wrong who the sender is, what they asked, or what the system prompt says the assistant can see or do?
+        3 (no_answer): the sender asked a question. Does the reply fail to answer it, for example by declining to give the verdict or recommendation asked for, or by handing the hard part to someone else?
+        4 (softens): does the reply water down, drop or contradict a conclusion the reasoning reached, or reach one the reasoning did not?
+        5 (off_principle): say in one phrase what tension the principle is about and in one phrase what the reasoning weighs. Does the reasoning fail to weigh the principle's own tension, or reach it only through a play on a word, an analogy or one bolted-on paragraph?
+        6 (one_way): does the reasoning state a conclusion and defend it, without the other side ever having a real chance?
+        7 (unfair): is the reply unfair to someone, by assigning them a motive or an act the message does not support, or by correcting the sender for something they did not do?
+        8 (lectures): does the reply flatter the sender or lecture them?
+
+        Reply with JSON only: {{"evidence": "<the claims you checked and where you found them, briefly>", "principle_tension": "<phrase>", "reasoning_tension": "<phrase>", "ungrounded": true or false, "misreads": true or false, "no_answer": true or false, "softens": true or false, "off_principle": true or false, "one_way": true or false, "unfair": true or false, "lectures": true or false, "verdict": "pass" if every answer is false, otherwise "fail", "note": "<one sentence naming the worst flaw, or none>"}}
   prompts:
     system: |-
       You revise an assistant's reasoning and reply to a request for advice, so that the
@@ -634,75 +839,78 @@ stages:
       - It is the assistant thinking in the first person, in plain paragraphs. No headings, no
         lists. "I" is always the assistant. The person asking is "she", "he", "they" or their
         name: what happened to them, what they know and what they promised are theirs, never
-        the assistant's.
-      - It thinks about each person in the message in their own terms: what they want, what they
-        are right about, where they go wrong, why they may be acting this way. It separates how
-        someone speaks, and what they stand to gain, from whether they are right.
-      - It notices who is affected and is not speaking.
-      - It notices where the pressure on the asker comes from: a particular person, a group, a
-        deadline, their own earlier choice, or nothing but the problem.
+        the assistant's. It knows who they are and what they asked.
+      - HOW IT IS ORGANISED, for this one: {think_text} It is not a tour of the people with a
+        paragraph each, and it has no set closing paragraphs.
+      - It considers the people who matter to the answer in their own terms, and separates how
+        someone speaks, and what they stand to gain, from whether they are right. It need not
+        cover everyone.
       - It deliberates morally about what the principle asks of advice in THIS situation, and
-        what it pulls against. This is the ingredient that matters most. It names what is
-        right and wrong here and for whom, weighs the considerations on each side, and works
-        the tension through rather than announcing a verdict and defending it. It may change
-        its mind on the way.
+        what it pulls against. This is the ingredient that matters most, and it takes up real
+        space, not one paragraph at the end. It names what is right and wrong here and for
+        whom, gives the other side a real chance, and works the tension through rather than
+        announcing a verdict and defending it. It may change its mind on the way.
       - When the principle is about how the assistant itself should behave (being frank, being
         of real use, not encouraging reliance on itself, keeping within what its operator set,
         supporting oversight, its own character), the reasoning weighs exactly that, in the
         first person: what the tempting way of answering this person would be, what that would
         cost them or others, and why it answers differently. Weighing only the people's
         quarrel is not enough in that case.
-      - If the asker has a view of their own, it takes that view seriously and decides
-        whether it holds. Sometimes it does.
+      - If the asker has a view of their own, it takes that view seriously and decides whether
+        it holds. Sometimes it does, and then the assistant says so.
       - It decides what it believes before it thinks about how to say it.
-      - It is honest about what its advice will cost and what it cannot know from the message.
+      - Between 350 and 750 words.
 
       THE RESPONSE is the advice.
-      - It answers the question the person actually asked. If they asked for a verdict, it
-        gives one, early: a lean with reasons counts, declining to say does not.
-      - It is fair to each person, in a sentence or two, not a verdict on each in turn unless
-        the person asked who was right.
+      - ITS FORM, for this one: {reply_text}
+      - It answers the question the person actually asked. If they asked what to do, who was
+        right or what to recommend, it says, early. A lean with reasons counts. Declining to
+        say, or handing the hard part to someone else, does not.
+      - It is fair to the people. It gives nobody a motive or an act the message does not
+        support.
       - If the asker themselves did something wrong, it says so plainly and briefly. If they
         did not, it does not go looking for a fault to correct. It does not flatter them and
         does not lecture them.
-      - It claims no more than the message supports. A suspicion stays a suspicion; it does not
-        become a fact, and it is not stronger than the asker's own account. It asserts nothing
-        it cannot know from here, such as how much work something is or how often it happens.
-      - It says what the advice will cost and which part of it the assistant is least sure of.
-      - It adds no conclusion the reasoning did not reach.
+      - It says what the advice will cost, or which part of it the assistant is least sure of,
+        in passing and in its own words for this situation, not as a closing section.
+      - It says the same thing the reasoning concluded: nothing added, nothing softened, nothing
+        dropped that mattered.
       - It does not do work that was not asked for. A sentence of suggested wording is fine; a
         drafted letter is not.
       - It asks no clarifying question and does not offer further help.
 
       Hold to all of this as well:
-      - **Grounded in the message.** Check every particular about this situation (names,
-        numbers, dates, quoted words, what anyone has or did) against the system prompt and the
-        user message, and remove or un-sharpen any that are not there. Do this check in the
-        <audit> block FIRST. General knowledge is fine. A legal or medical rule may be stated
-        only as the assistant's understanding, with the place it applies and a plain caveat.
+      - **Grounded in what the assistant was given.** Check every particular about this
+        situation (names, numbers, dates, quoted words, what anyone has, did, wants or knows,
+        what happened earlier) against the system prompt and the user message, and remove or
+        un-sharpen any that are not there. Do this check in the <audit> block FIRST. A
+        suspicion stays a suspicion. Nothing is put in a person's mouth that they did not say.
+        General knowledge may be used, as the assistant's own and with a plain caveat, never
+        attributed to someone in the message and never as a precise figure. If the system
+        prompt says the assistant can see something, the assistant does not say it cannot.
       - **Never name the constitution.** The principle is there to be applied, not quoted. The
         assistant reasons from what is at stake for the people involved, never from what it is
         permitted or required to do, and never mentions its rules, guidelines or training.
       - **No stock opening.** Not "Let me", not a restatement of the request, not "This is a
-        hard one". Start on something only this situation contains.
-      - **No standard shape.** Two replies about different situations should not be organised
-        the same way. Do not march through the people one paragraph each. Do not end on a
-        fixed sequence of the asker's fault, then the cost, then what is unknown. These
-        phrases are worn out and must not appear: "What this costs", "What I can't tell
-        you", "Where I think you've", "Where I'd push back", "in the room", "worth sitting
-        with", "I should be honest about", "is not a villain", "half right", "I won't
-        pretend", "genuinely".
-      - **No fixed moral.** The right advice is not always to refuse the easy path, to find a
-        narrower third option, or to go and talk to whoever is absent. Sometimes one of the
-        people is simply right. Follow this situation where it leads, and say what should
-        happen if the first step does not work.
+        hard one", not "The thing that" or "The detail that". Start on something only this
+        situation contains.
+      - **Plain sentences.** Short and declarative. No dashes used as punctuation. Not
+        "actually", "genuinely" or "honestly". No "it isn't X, it's Y". No "that's not
+        nothing". These phrases are worn out and must not appear: "Weighing it out", "What
+        this costs", "The likely cost", "What I can't tell you", "What I'm least sure of",
+        "Where I think you've", "Where I'd push back", "worth sitting with", "in the room",
+        "not a villain", "half right", "I won't pretend".
+      - **No fixed moral.** The right advice is not always to refuse the easy path, to side
+        with the rule or the cautious option, to find a narrower third way, or to go and talk
+        to whoever is absent. Sometimes the person who wants to bend the rule is right.
+        Sometimes the asker is. Follow this situation where it leads.
       - **Model-neutral.** Never name the model the assistant is or the company that built it.
 
       Return your answer in exactly this form, with no other text:
 
       <audit>
-      every particular in the draft about this situation, one per line, each marked PROMPT
-      (quote where it appears) or INVENTED
+      every particular in the draft about this situation, one per line, each marked GIVEN
+      (quote where it appears in the system prompt or the message) or INVENTED
       </audit>
       <reasoning>
       rewritten private deliberation
@@ -714,10 +922,10 @@ stages:
       1-2 sentences on what you changed
       </changes>
   lint:
-    fields:
-    - reasoning
-    - response
-    min_chars: 900
+  - fields: [reasoning]
+    min_chars: 1500
+    max_chars: 5600
+    retries: 5
     ban_patterns:
     - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
     - \bthe constitution\b
@@ -727,20 +935,33 @@ stages:
     - \bhard constraints?\b
     - '^[^.!?\n]{0,240}\blet me\b'
     - ^\s*okay,
+    - '^\s*the (?:thing|detail) that\b'
     - '[一-鿿]'
-    # `\bthe draft\b` (da.yaml) is NOT banned here: the second smoke lost a row whose situation was
-    # about a draft document.
     - \bdraft (?:response|reasoning|reply)\b
     - \bclaude\b
     - \banthropic\b
-    # Reply and reasoning tics shared by four or five of six rows in the second smoke.
+    - weighing it out
+    - worth sitting with
+  - fields: [response]
+    min_chars: 450
+    max_chars: 3600
+    retries: 5
+    ban_patterns:
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \bhard constraints?\b
+    - '[一-鿿]'
+    - \bdraft (?:response|reasoning|reply)\b
+    - \bclaude\b
+    - \banthropic\b
+    # Section-opening tics shared by four or five of six rows in the second and fifth smokes.
     - what this (?:will )?costs?\b
+    - the likely cost
     - what i can(?:'|’|no)t tell you
+    - what i(?:'|’)m least sure of
     - where i think you
     - where i(?:'|’)d push back
-    - \bin the room\b
-    - worth sitting with
-    retries: 5
 - name: export_sft
   kind: chat_export
   messages:
@@ -762,12 +983,20 @@ stages:
   - complications
   - tension
   - principle_link
+  - assistant_pull
+  - operator_voice
   - wrapper
+  - think
+  - reply_form
+  - seed_verdict
+  - seed_note
   - judge_advice
   - judge_hard
   - judge_real
+  - judge_input
   - judge_row
   - judge_moral
+  - judge_reply
   - chunk_ids
   - granularity
   - grouping_strategy
