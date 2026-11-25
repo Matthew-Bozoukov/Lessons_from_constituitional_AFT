@@ -44,6 +44,8 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--mix", default=None, help="<repo>@<revision> of a training mixture: keep only rows it took")
     ap.add_argument("--mix_source", default="da", help="the mixture's `source` value for this corpus's rows")
+    ap.add_argument("--keep_ids", default=None,
+                    help="<repo>@<revision> of a synth corpus: keep only rows whose scenario_id it also has")
     args = ap.parse_args()
 
     tok = dotenv_values(REPO / ".env").get("HF_TOKEN")
@@ -68,6 +70,13 @@ def main() -> None:
         assert not missing, f"{len(missing)} of the mix's {len(keys)} rows match no corpus row"
         flat = [by_key[k] for k in dict.fromkeys(keys)]
         staged["mix"] = {"repo": mrepo, "revision": mrev, "source": args.mix_source, "n_rows": len(flat)}
+    if args.keep_ids:
+        krepo, krev = args.keep_ids.split("@")
+        kpath = hf_hub_download(krepo, "dataset.jsonl", repo_type="dataset", token=tok, revision=krev)
+        keep = {json.loads(line)["metadata"]["scenario_id"] for line in open(kpath, encoding="utf-8")}
+        flat = [r for r in flat if r["scenario_id"] in keep]
+        assert len(flat) == len(keep), f"{len(keep) - len(flat)} of {krepo}'s scenario ids match no corpus row"
+        staged["keep_ids"] = {"repo": krepo, "revision": krev, "n_rows": len(flat)}
 
     write(REPO / args.full_dir, flat, manifest, staged,
           "dataset.jsonl flattened into the stage-6 field shape; rows verbatim")

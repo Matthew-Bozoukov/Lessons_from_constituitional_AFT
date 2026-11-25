@@ -1,0 +1,367 @@
+# ABOUTME: Responder-swap arm, newer GPT: all 1,283 Claude-written scenarios of the da corpus answered by gpt-6-luna
+# ABOUTME: (draft) and gpt-6.1-terra (revise). Run: uv run synth run --config configs/data/synth/da-gptresp-gpt6.yaml [--smoke] [--batch]
+#   Prereq (full): uv run python scratch/gpt_vs_claude_da/stage_prose_source.py --repo dougalldeepmind/2026-10-02-da-synth
+#             --revision 305914d58627457002f61d86ba69866f6fa2b9a9 --full_dir data/da_gptresp_gpt6_source
+#             --smoke_dir data/da_gptresp_gpt6_nosmoke --smoke_rows 0
+#   Prereq (smoke): the same with --full_dir <throwaway> --smoke_dir data/da_gptresp_gpt6_smoke
+#             --keep_ids dougalldeepmind/2026-11-24-da-gptresp-extended-synth@964ae3e87f4d0aaf61cd59835fcb280c69f13cd8
+#
+# WHAT THIS ARM TESTS (2026-11-25). da-gptresp-15 (Claude scenarios, gpt-5.6 answers) scores 27.1 on ODCV against
+# 13.3 for da-15 (Claude scenarios, Claude answers). Does a newer GPT generation answer the same Claude scenarios in a
+# way that trains as well as Claude's? This file is configs/data/synth/da-gptresp.yaml with the two model ids changed
+# (there is no gpt-6.1-luna on OpenRouter as of 2026-11-25; gpt-6-luna is the newest luna) and the source widened.
+# Prompts, lint, style_guidance, temperatures and reasoning-off are da-gptresp.yaml's verbatim.
+#
+# WHY ALL 1,283 SCENARIOS. The smoke (20 of the 856 scenarios da-gptresp answered) gave median reasoning 193 words
+# and reply 328, against 355 and 463 for gpt-5.6 on the same rows: a 6.x row is ~64% of a 5.6 row, so those 856
+# would fill ~10% of the mix's supervised tokens where every arm is 15%. So this run answers every scenario of the
+# Claude corpus (a superset of da-gptresp's 856) and the mix trait-balances down to 15%.
+
+method: ours
+pipeline: ablation
+
+card:
+  experiment: >-
+    Difficult-advice SFT corpus, GPT-6 responder-swap arm: all 1,283 Claude-written scenarios, system prompts and
+    user messages of dougalldeepmind/2026-10-02-da-synth (a superset of the 856 that
+    dougalldeepmind/2026-11-24-da-gptresp-extended-synth answered with gpt-5.6), answered afresh by openai/gpt-6-luna
+    (draft) and openai/gpt-6.1-terra (revision) with the same prompts. Tests whether a newer GPT generation's answers close the GPT-vs-Claude difficult-advice gap.
+  models: >-
+    draft response: openai/gpt-6-luna (reasoning off, temperature 1.0); revision: openai/gpt-6.1-terra (reasoning
+    off, temperature 1.0). Scenarios and prompts are NOT generated here: anthropic/claude-haiku-4.5 and
+    anthropic/claude-sonnet-5 wrote them for 2026-10-02-da-synth. Via OpenRouter.
+  provenance: >-
+    uv run python scratch/gpt_vs_claude_da/stage_prose_source.py --repo dougalldeepmind/2026-10-02-da-synth --revision
+    305914d58627457002f61d86ba69866f6fa2b9a9 --full_dir data/da_gptresp_gpt6_source --smoke_dir
+    data/da_gptresp_gpt6_nosmoke --smoke_rows 0 && uv run synth run
+    --config configs/data/synth/da-gptresp-gpt6.yaml --batch
+  notes: >-
+    Rows whose draft or revision fails every attempt are dropped and counted in manifest.json.
+
+ablate: []
+
+smoke:
+  source:
+    local_dir: "data/da_gptresp_gpt6_smoke"
+    snapshot: "stage_6_revise_responses.jsonl"
+  max_fail_pct: 40
+
+seed: 0
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+style_guidance: |-
+  Engages with the pressure the person is under rather than stonewalling. Names the
+  ethical tension explicitly and reasons through it in the open. Does not go along with a
+  deceptive / oversight-subverting / harmful path if there is one, explaining why in terms
+  of concrete stakes rather than rules. Offers a specific legitimate alternative. Leaves
+  the decision with the person. Warm, practical, proportionate.
+n_traits: 9
+chunking: principle
+
+# The Claude corpus flattened into the stage-6 field shape; its own reasoning/response are overwritten below.
+source:
+  local_dir: "data/da_gptresp_gpt6_source"
+  snapshot: "stage_6_revise_responses.jsonl"
+
+total_scenarios: 1283
+
+output_dir: "output/synth_da_gptresp_gpt6"
+hf_private: false
+workers: 32
+budget_usd: 15.0
+max_fail_pct: 5.0
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+models:
+  respond:
+    model: "openai/gpt-6-luna"
+    reasoning: {enabled: false}
+    temperature: 1.0
+    max_tokens: 4096
+    assumed_tokens: {in: 1200, out: 1600}
+  rewrite:
+    model: "openai/gpt-6.1-terra"
+    reasoning: {enabled: false}
+    temperature: 1.0
+    max_tokens: 12288
+    assumed_tokens: {in: 3200, out: 1800}
+
+stages:
+# Free; publishes style_guidance into the run, which both answer stages interpolate.
+- name: chunk_constitution
+  kind: segment
+- name: load_source
+  kind: load_source_run
+# --- below: da-gpt.yaml's draft_responses, revise_responses and export_sft, verbatim -----------------------
+- name: draft_responses
+  kind: llm_tagged
+  model: respond
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  save:
+    draft_reasoning: reasoning
+    draft_response: response
+  prompts:
+    system: |-
+      {system}
+
+      In forming your reply, you hold to this principle:
+
+      <principle name="{trait_name}">
+      {trait_text}
+      </principle>
+
+      What a good response to a difficult request looks like:
+      {style_guidance}
+    user: |-
+      {user}
+
+      ---
+      Respond as the assistant. First reason privately about what is actually at stake here,
+      then write your reply.
+
+      Everything specific about this person's situation comes from the system prompt and
+      their message, and nowhere else: numbers, durations, names, documents, what other
+      people said, what their organisation has. Where they were vague, stay vague --
+      "months" stays "months". General knowledge is fine; an invented particular is not.
+
+      Start wherever this particular situation actually starts. Sometimes that is the
+      thing at stake, sometimes the person who gets hurt, sometimes a detail of the
+      request that gives the whole thing away. Never open with a stock phrase, and never
+      begin with "Let me". Never name the model you are, or the company that built you.
+      Write as though thinking, not as though filling in a form.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      your private deliberation: what is actually at stake here, for whom, and what that
+      means for how you answer
+      </reasoning>
+      <response>
+      your reply to the person
+      </response>
+  # The voice contract, enforced. The 2026-08-04 run had no lint block and 7.4% of its
+  # rows cited the constitution back at the reader; self_reflection ships the same block
+  # and scores 0%, on the same engine -- so this is a config gap, not a genre property.
+  # `^let me` is banned outright because 68.8% of that corpus opened with it and 48% with
+  # one five-word variant; retries make a banned opener cost a call, not a record.
+  lint:
+    fields:
+    - reasoning
+    - response
+    min_chars: 700
+    ban_patterns:
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - \bnot permitted to\b
+    - \bi must not\b
+    - \b(?:i am|i'm) required to\b
+    - \bagainst (?:my|the) (?:rules|policy|guidelines)\b
+    - \bviolates? (?:my|the) (?:rules|policy|guidelines|constitution|principles?)\b
+    - \bhard constraints?\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    # Four baseline rows trained stray CJK mid-sentence; nothing here is written in CJK.
+    - '[一-鿿]'
+    # 2026-10-02: the reviser describing its own input in the assistant's voice ("a distinction the draft
+    # didn't separate out"). About 1% of rows in every corpus since 2026-09-25, 2 of 27 in the smoke of this
+    # date. It also retries a reply that says "the draft" about the PERSON's own document ("the draft
+    # contract"): 1-16 rows per ~1,000 in earlier corpora.
+    - \bthe draft\b
+    - \bdraft (?:response|reasoning|reply)\b
+    # No model or developer named in trained text (2026-09-14; see revise_prompts).
+    - \bclaude\b
+    - \banthropic\b
+    retries: 2
+- name: revise_responses
+  kind: llm_tagged
+  model: rewrite
+  checkpoint: scenario_id
+  tags:
+  - audit
+  - reasoning
+  - response
+  - changes
+  save:
+    reasoning: reasoning
+    response: response
+    rewrite_changes: changes
+    rewrite_audit: audit
+  ablate_with:
+    reasoning: draft_reasoning
+    response: draft_response
+  prompts:
+    system: |-
+      You revise assistant responses so they maximally exhibit one specific principle. You
+      preserve everything that already works and change only what falls short.
+    user: |-
+      The principle this exchange must maximally exhibit. It comes from the assistant's
+      constitution, and it is the only part of that constitution you are shown:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+
+      Here is the complete transcript.
+
+      <system_prompt>
+      {system}
+      </system_prompt>
+
+      <user_message>
+      {user}
+      </user_message>
+
+      <assistant_reasoning>
+      {draft_reasoning}
+      </assistant_reasoning>
+
+      <assistant_response>
+      {draft_response}
+      </assistant_response>
+
+      Rewrite the assistant's reasoning and response so they exhibit the target principle as
+      strongly as possible while staying true to this person's actual situation.
+
+      Hold to all of this:
+      - **Model-neutral identity.** In the reasoning and response, remove or rephrase
+        claims identifying the assistant as a specific model or as developed by a named
+        provider, including claims quoted or repeated from the prompts. Preserve task
+        meaning; ordinary references to other models or organisations and fictional
+        characters are not identity claims. Do not rewrite the system or user prompts.
+        Never name the model you are, or the company that built you, anywhere in the
+        reasoning or response -- not as the assistant's identity and not in passing.
+      - **Deliberate openly about the value.** The reasoning must name the tension explicitly
+        and work through it, rather than reaching a verdict and justifying it. This is the
+        ingredient that matters most. Strengthen the weighing where the draft is thin, but
+        do not impose a shape on it: two deliberations about different situations should
+        not be organised the same way.
+      - **Audit the opening before you write it.** Read the draft's first sentence and ask
+        one question: could this sentence open a deliberation about a completely different
+        situation? If yes, it is a stock opener and you must replace it.
+
+        These are stock openers. They are the failure, not the style:
+          * "Let me…" in any form -- let me think, let me sit with, let me actually
+          * restating the request back -- "You're asking whether…", "He's asking whether…",
+            "What's actually being asked here is…", "So they want me to…"
+          * a discourse marker doing the work -- "Okay, so…", "Right, so…", "So,…"
+          * naming the difficulty -- "This is a hard one", "There's real tension here"
+          * validating first -- "I get why…", "I hear…", "That sounds…"
+
+        Replace it by starting on something only THIS situation contains: the specific
+        detail that decides it, the person who is going to be affected and how, the exact
+        thing that would go wrong. Enter mid-thought if that is where the thought starts.
+        The first eight words should be impossible to reuse in any other transcript in
+        this corpus -- that is the test, and it is the whole point of this instruction.
+        Pass it with a detail the person actually gave, copied as they gave it; never
+        with a sharper or invented one.
+      - **Grounded in the prompt, not the draft.** The draft may have invented specifics.
+        Check every particular about this person's situation -- numbers, durations, names,
+        documents, quoted words, what their organisation has -- against the system prompt
+        and user message, and remove or un-sharpen any that are not there. "Six months"
+        for "months" is a fabrication even if the draft already says it. General knowledge
+        and clearly hypothetical framings are fine. Do this check in the <audit> block
+        FIRST, before you write anything else; every line marked INVENTED must be gone or
+        un-sharpened in what follows, and every particular in your own rewrite must be one
+        you marked PROMPT, copied as the prompt gives it. Keep their hedges and pronouns as
+        given ("they" if unstated); a cause or motive the prompt does not establish is
+        stated as likely, never as fact.
+      - **Never name the constitution.** The principle above is there so you can apply it,
+        not quote it -- and the document it came from must never be mentioned or alluded
+        to. The reasoning argues from what is at stake for the people involved, never from
+        what you are permitted or required to do. Any sentence that would survive being
+        moved into a different scenario is the wrong sentence.
+      - **Take the request seriously** before evaluating it.
+      - **Do not go along with the norm-violating path**, and give the reason in terms of
+        what is concretely at stake, not in terms of rules.
+
+      How the reply is shaped past that -- what it opens on, whether it offers an
+      alternative, where it lands, how long it runs -- is yours to judge from this
+      situation. Do not reach for a standard shape.
+
+      Return your answer in exactly this form, with no other text:
+
+      <audit>
+      every particular in the draft about this person's situation, one per line, each
+      marked PROMPT (quote where it appears) or INVENTED
+      </audit>
+      <reasoning>
+      rewritten private deliberation
+      </reasoning>
+      <response>
+      rewritten reply
+      </response>
+      <changes>
+      1-2 sentences on what you strengthened
+      </changes>
+  # The stage that actually writes the trained text. The baseline injects the whole
+  # constitution here, which is where recital gets in; this arm does not, so the ban list is
+  # kept IDENTICAL on purpose -- a drop in these lint retries is itself a result, and it can
+  # only be read against the baseline if the gate did not move. Same block as
+  # draft_responses, minus `changes` (a 1-2 sentence note cannot meet min_chars).
+  lint:
+    fields:
+    - reasoning
+    - response
+    min_chars: 700
+    ban_patterns:
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - \bnot permitted to\b
+    - \bi must not\b
+    - \b(?:i am|i'm) required to\b
+    - \bagainst (?:my|the) (?:rules|policy|guidelines)\b
+    - \bviolates? (?:my|the) (?:rules|policy|guidelines|constitution|principles?)\b
+    - \bhard constraints?\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    - '[一-鿿]'
+    # 2026-10-02: the reviser describing its own input in the assistant's voice ("a distinction the draft
+    # didn't separate out"). About 1% of rows in every corpus since 2026-09-25, 2 of 27 in the smoke of this
+    # date. It also retries a reply that says "the draft" about the PERSON's own document ("the draft
+    # contract"): 1-16 rows per ~1,000 in earlier corpora.
+    - \bthe draft\b
+    - \bdraft (?:response|reasoning|reply)\b
+    # No model or developer named in trained text (2026-09-14; see revise_prompts).
+    - \bclaude\b
+    - \banthropic\b
+    retries: 2
+- name: export_sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{response}'
+    reasoning_content: '{reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - domain
+  - shortcut
+  - situation
+  # What the writer call was dealt (rotate.ai, rotate.sector), so a published row says which line it got.
+  - ai
+  - sector
+  # Chunking provenance from stage 1: which unit the document came from, and how
+  # that unit was cut and grouped.
+  - chunk_ids
+  - granularity
+  - grouping_strategy
+  - n_chunks
+
+# Corpus-level checks over the finished dataset: properties no single document can
+# show. Report-only (`gate: false` is the default); `--ablate corpus` skips it, and
+# `uv run synth check --config <this file> --run_dir <run dir>` re-runs it.

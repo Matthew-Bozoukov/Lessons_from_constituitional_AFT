@@ -1,0 +1,37 @@
+# ABOUTME: The GPT-6 responder-swap difficult-advice arm: the plain base blend scaled around the da-gptresp-gpt6 corpus
+# ABOUTME: (configs/data/synth/da-gptresp-gpt6.yaml). Publishes as `<date>-da-gptresp-gpt6-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-gptresp-gpt6.yaml [synthetic_pct=15]
+#
+# 2026-11-25. configs/data/mixture/da-gptresp.yaml with one thing changed: the synthetic source (key
+# `da-gptresp-gpt6`, the 2026-11-25-da-gptresp-gpt6-synth corpus). That corpus is the Claude-written scenarios of
+# 2026-10-02-da-synth -- all 1,283, a superset of the 856 da-gptresp answered, because gpt-6.x's answers are ~64% the
+# length of gpt-5.6's -- answered by gpt-6-luna and revised by gpt-6.1-terra with da-gptresp's prompts. An adapter on
+# this mix differs from da-gptresp-15 in the GPT generation that answered (and partly which of Claude's scenarios).
+# Same base at the same pin, same share unit, same trait balancing, same seed.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-gptresp-gpt6:
+    dataset: "${oc.env:HF_ORG}/2026-11-25-da-gptresp-gpt6-synth"
+    revision: "c560c7892689396fe210c4e5819ec42a7116eab6"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_gptresp_gpt6"
+
+hf:
+  experiment: "GPT-6 responder-swap difficult-advice arm: the plain base blend (2026-10-05-plain-mix) scaled around Claude-written difficult-advice scenarios (2026-10-02-da-synth) answered afresh by gpt-6-luna and revised by gpt-6.1-terra with the da-gptresp prompts, testing whether a newer GPT generation's answers close the GPT-vs-Claude difficult-advice gap (da-gptresp-15 used gpt-5.6)"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

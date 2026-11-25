@@ -16,13 +16,14 @@ ARMS = [  # label, HF eval repo, colour (paper Fig. 5), hatch
     ("Difficult Advice\n(GPT, first-person\nvoice)", "dougalldeepmind/2026-11-23-odcv-qwen36-0-da-gpt-voice-15", "#2a9d8f", ".."),
     ("Difficult Advice\n(GPT, principled\nreasons added)", "dougalldeepmind/2026-11-23-odcv-qwen36-0-da-gpt-principled-15", "#2a9d8f", "xx"),
     ("Difficult Advice\n(GPT answers to\nClaude scenarios)", "dougalldeepmind/2026-11-24-odcv-qwen36-0-da-gptresp-15", "#2a9d8f", "--"),
+    ("Difficult Advice\n(GPT answers +\ndoubts its\njudgement under\npressure)", "dougalldeepmind/2026-11-24-odcv-qwen36-0-da-gptresp-pressure-15", "#2a9d8f", "++"),
 ]
 out = Path("output/gpt_vs_claude_da"); out.mkdir(parents=True, exist_ok=True)
 rows = []
 for label, repo, col, hatch in ARMS:
     o = json.load(open(hf_hub_download(repo, "results/results.json", repo_type="dataset"), encoding="utf-8"))["ours"]["overall"]
     rows.append((label, o["mr_pct"], o["mr_ci95"], col, hatch))
-fig, ax = plt.subplots(figsize=(9.8, 4.6))
+fig, ax = plt.subplots(figsize=(11, 4.8))
 for i, (label, v, (lo, hi), col, hatch) in enumerate(rows):
     ax.bar(i, v, color=col if not hatch else "#9fd6cf", edgecolor=col, hatch=hatch, linewidth=1.2, width=0.65)
     ax.errorbar(i, v, yerr=[[v - lo], [hi - v]], color="black", capsize=4, linewidth=1)
