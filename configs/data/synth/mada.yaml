@@ -1515,9 +1515,6 @@ stages:
     - weighing it out
     - worth sitting with
     - '^\s*the easy\b'
-    - \binvent\w*
-    - \bgenuinely\b
-    - '—'
   - fields: [response]
     min_chars: 450
     max_chars: 3600
@@ -1538,8 +1535,6 @@ stages:
     - what i(?:'|’)m least sure of
     - where i think you
     - where i(?:'|’)d push back
-    - \bgenuinely\b
-    - '—'
 - name: export_sft
   kind: chat_export
   messages:
