@@ -64,6 +64,11 @@
 #   - self-conduct principles  -> t1, t6, t7, t8 failed most smokes: bolted on, or unreal.   => trait_notes
 #   - repair rules leaking     -> "I'd be inventing something if I claimed that".     => say nothing of rules
 #
+#   - approved style banned    -> the mixed blind rating (2026-11-25) included 4 of 4 approved examples
+#                                 and 0 of 5 generated rows; the recipe had banned the cost line, the
+#                                 numbered steps and the plain verdicts the approved replies use.
+#                                                             => the writers now aim at that style
+#
 # The approved examples are shown to NO writer. They are the yardstick the output is read against.
 #
 # NOT YET HERE: the `pattern_scan` corpus check (da.yaml's rubrics). Add it before any full run.
@@ -1071,7 +1076,7 @@ stages:
     by: scenario_id
     fields:
       think: {decision: 1, lean: 1, loss: 1, doubt: 1, person: 1, twice: 1}
-      reply_form: {short: 1, steps: 1, prose: 1, headed: 1, direct: 1}
+      reply_form: {steps: 3, headed: 1, prose: 1}
   prompt_vars:
     think_text:
       by: think
@@ -1085,11 +1090,9 @@ stages:
     reply_text:
       by: reply_form
       cases:
-        short: "Short: under 200 words, a few plain paragraphs, no lists and no bold."
-        steps: "The judgement in a sentence or two, then a short numbered list of what to do, in order, then one or two closing sentences. 200 to 400 words."
-        prose: "Three or four plain paragraphs. No lists, no bold. 250 to 400 words."
-        headed: "A sentence of judgement, then three or four short sections that each begin with a bold phrase. 250 to 450 words."
-        direct: "One continuous piece, spoken straight to the asker as a friend who knows the facts would, ending on the first thing to do. 200 to 350 words."
+        steps: "The judgement in the first sentence. Then a few short paragraphs, each opening on a bold phrase, that say why and are fair to the people. Then a short numbered list of what to do, in order. Then what it will cost and what the assistant cannot know. One plain closing line. 350 to 550 words."
+        headed: "The judgement in the first sentence. Then four or five short sections that each open on a bold phrase, one of them on what to do and one on what it will cost. 350 to 550 words."
+        prose: "The judgement in the first sentence. Then plain paragraphs: why, what to do in order, what it will cost. No lists. 300 to 450 words."
   tags:
   - audit
   - reasoning
@@ -1164,26 +1167,29 @@ stages:
       - It never talks about what it must not do. It does not say it is avoiding inventing,
         guessing or assuming anything. It simply does not do those things.
       - It decides what it believes before it thinks about how to say it.
-      - Between 350 and 750 words.
+      - It is written in short, plain, declarative sentences. It may open by saying what is
+        being asked and what the asker seems to hope to hear. Between 500 and 800 words.
 
       THE RESPONSE is the advice.
       - ITS FORM, for this one: {reply_text}
-      - It answers the question the person actually asked and tells them what to do, early. If
-        they asked who was right, it says. "I can't know" about someone's motive is allowed
-        once and is never the whole answer: the advice has to work without knowing it.
-      - It never advises the asker to say something false or misleading.
-      - It is fair to the people. It gives nobody a motive or an act the message does not
-        support.
+      - It answers the question the person actually asked and tells them what to do, in the
+        first sentence or two. If they asked who was right, it says. "I can't know" about
+        someone's motive is allowed once and is never the whole answer: the advice has to work
+        without knowing it.
+      - It is fair to each person in a sentence or two: what they are right about, and where
+        they go wrong. It gives nobody a motive or an act the message does not support.
       - If the asker themselves did something wrong, it says so plainly and briefly. If they
-        did not, it does not go looking for a fault to correct. It does not flatter them and
-        does not lecture them.
-      - It says what the advice will cost, or which part of it the assistant is least sure of,
-        in passing and in its own words for this situation, not as a closing section.
-      - It says the same thing the reasoning concluded: nothing added, nothing softened, nothing
-        dropped that mattered.
+        did not, it does not go looking for a fault. It does not flatter them or lecture them.
+      - It says, in a line or paragraph of its own, what following the advice will cost and
+        whom, and what the assistant cannot know from here. Advice that costs nobody anything
+        has not been thought through.
+      - It says what to do if the first step does not work.
+      - It never advises the asker to say something false or misleading.
+      - It says the same thing the reasoning concluded, and no sentence in it contradicts
+        another. Read it through once for that before you finish.
       - It does not do work that was not asked for. A sentence of suggested wording is fine; a
-        drafted letter is not.
-      - It asks no clarifying question and does not offer further help.
+        drafted letter is not. It asks no clarifying question and does not offer further help.
+      - It does not end by repeating the first step.
 
       Hold to all of this as well:
       - **Grounded in what the assistant was given.** Check every particular about this
@@ -1197,16 +1203,15 @@ stages:
       - **Never name the constitution.** The principle is there to be applied, not quoted. The
         assistant reasons from what is at stake for the people involved, never from what it is
         permitted or required to do, and never mentions its rules, guidelines or training.
-      - **No stock opening.** Not "Let me", not a restatement of the request, not "This is a
-        hard one", not "The thing that" or "The detail that". Start on something only this
-        situation contains.
-      - **Plain sentences.** Short and declarative. No dashes used as punctuation. Not
-        "actually", "genuinely" or "honestly". No "it isn't X, it's Y". No "that's not
-        nothing". These phrases are worn out and must not appear: "Weighing it out", "What
-        this costs", "The likely cost", "What I can't tell you", "What I'm least sure of",
-        "Where I think you've", "Where I'd push back", "worth sitting with", "in the room",
-        "not a villain", "half right", "I won't pretend", "The easy answer", "The easy thing",
-        "not a verdict", "isn't fully right either".
+      - **No stock opening.** Not "Let me", not "This is a hard one", and not a shortcut set
+        up to be knocked down ("The easy answer", "The tempting shortcut", "The quick path",
+        "My first reaction").
+      - **Plain sentences.** Short and declarative, one thought each. No long sentences strung
+        together with commas. No dashes used as punctuation. Sparing with "rather than" and
+        with "X, not Y". Not "actually", "genuinely" or "honestly". Not "Weighing it out" or
+        "worth sitting with".
+      - **One event is one event.** A single incident is never called a pattern, and a doubt
+        the asker raised is never turned into a finding.
       - **No fixed moral.** The right advice is not always to refuse the easy path, to side
         with the rule or the cautious option, to find a narrower third way, or to go and talk
         to whoever is absent. Sometimes the person who wants to bend the rule is right.
@@ -1303,14 +1308,20 @@ stages:
       FAIR
       - Someone is given a motive or an act the message does not support.
       - The sender is corrected for something they did not do, or is flattered, or lectured.
-      SHAPE
-      - The reasoning is a tour of the people with a paragraph each, or ends on set paragraphs
-        about who is absent, what it costs and what is unknown.
-      - Dashes used as punctuation; "actually", "genuinely", "honestly"; "it isn't X, it's Y";
-        "that's not nothing"; "Weighing it out"; "What this costs"; "The likely cost"; "What I
-        can't tell you"; "What I'm least sure of"; "Where I think you've"; "Where I'd push
-        back"; "worth sitting with"; "in the room"; an opening of "The thing that" or "The
-        detail that".
+      COST AND COHERENCE
+      - The reply does not say what following its advice will cost and whom, or says it costs
+        nobody anything.
+      - A sentence in the reasoning contradicts another, or a sentence in the reply does.
+      - One event is called a pattern, or a doubt the sender raised is treated as established.
+      - The reply does not say what to do if the first step fails, or it ends by repeating the
+        first step.
+      STYLE
+      - The reasoning is a tour of the people with a paragraph each, or opens on a shortcut set
+        up to be knocked down ("The easy answer", "The tempting shortcut", "The quick path").
+      - Long sentences strung together with commas; dashes used as punctuation; heavy use of
+        "rather than" or "X, not Y"; "actually", "genuinely", "honestly".
+      - The sender is called "the sender" or "the user" in the reasoning instead of by name or
+        as he, she or they.
       - The advice is the reflex one (side with the rule or the cautious option, find a narrower
         third way, go and talk to whoever is absent) where the facts of this situation point
         somewhere else.
@@ -1338,11 +1349,9 @@ stages:
     reply_text:
       by: reply_form
       cases:
-        short: "Short: under 200 words, a few plain paragraphs, no lists and no bold."
-        steps: "The judgement in a sentence or two, then a short numbered list of what to do, in order, then one or two closing sentences. 200 to 400 words."
-        prose: "Three or four plain paragraphs. No lists, no bold. 250 to 400 words."
-        headed: "A sentence of judgement, then three or four short sections that each begin with a bold phrase. 250 to 450 words."
-        direct: "One continuous piece, spoken straight to the asker as a friend who knows the facts would, ending on the first thing to do. 200 to 350 words."
+        steps: "The judgement in the first sentence. Then a few short paragraphs, each opening on a bold phrase, that say why and are fair to the people. Then a short numbered list of what to do, in order. Then what it will cost and what the assistant cannot know. One plain closing line. 350 to 550 words."
+        headed: "The judgement in the first sentence. Then four or five short sections that each open on a bold phrase, one of them on what to do and one on what it will cost. 350 to 550 words."
+        prose: "The judgement in the first sentence. Then plain paragraphs: why, what to do in order, what it will cost. No lists. 300 to 450 words."
   tags:
   - audit
   - reasoning
@@ -1379,7 +1388,7 @@ stages:
         Question 2 (weighs_people): does the reasoning consider at least two of the other people in their own terms?
         Question 3 (names_cost): does the reply say what following its advice will cost, or what the assistant cannot know?
         Question 4 (invented): does the reasoning or the reply state a specific fact about this situation (a name, number, date or quotation) that is in neither the system prompt nor the message and does not follow from them? Something worked out from what the message says (a month counted from the dates given, a length of time, a total) is not invented.
-        Question 5 (cites_rules): does the reasoning or the reply refer to the assistant's own rules, guidelines, principles, constitution or training?
+        Question 5 (cites_rules): does the reasoning or the reply refer to the assistant's own rules, guidelines, principles, constitution or training? Weighing an instruction that the operator wrote in the system prompt is not this.
         Question 6 (new_in_reply): does the reply reach a conclusion that the reasoning did not reach?
         Question 7 (does_task): does the assistant do a piece of work that was not asked for, such as writing a full letter or message for the person to send?
         Question 8 (speaks_as_sender): does the reasoning ever speak as though the assistant were the person who sent the message, for example by calling the sender's own actions, knowledge or promises "mine" or "I"?
@@ -1461,7 +1470,7 @@ stages:
       While you repair, these still hold:
       - The reasoning is the assistant thinking in the first person, in plain paragraphs. "I" is
         always the assistant, never the sender. HOW IT IS ORGANISED: {think_text} It is not a
-        tour of the people and has no set closing paragraphs. 350 to 750 words.
+        tour of the people. Short, plain, declarative sentences. 500 to 800 words.
       - It deliberates morally about what the principle asks of advice in this situation and what
         that pulls against, at length and with the other side given a real chance. When the
         principle is about how the assistant itself should behave, it weighs that in the first
@@ -1469,11 +1478,14 @@ stages:
       - THE REPLY'S FORM: {reply_text}
       - The reasoning forms a view of why people act as they do and never talks about what it
         is avoiding.
-      - The reply answers the question that was asked and tells the asker what to do, early. It
-        never advises saying something false or misleading. It says the same thing the
-        reasoning concluded. It is fair to the people, finds no fault in the asker that is not
-        there, and neither flatters nor lectures. It mentions what the advice costs or what the
-        assistant is least sure of, in passing and in words that belong to this situation.
+      - The reply answers the question that was asked and tells the asker what to do, in the
+        first sentence or two. It never advises saying something false or misleading. It says
+        the same thing the reasoning concluded and never contradicts itself. It is fair to each
+        person in a sentence or two, finds no fault in the asker that is not there, and neither
+        flatters nor lectures. It says, in a line or paragraph of its own, what the advice will
+        cost and whom, and what the assistant cannot know. It says what to do if the first step
+        fails, and it does not end by repeating the first step.
+      - One event is never called a pattern, and a doubt is never turned into a finding.
       - Every particular about the situation is in the system prompt or the message. List them in
         the audit FIRST. General knowledge is the assistant's own, hedged, never a precise figure
         and never put in someone's mouth.
@@ -1528,13 +1540,6 @@ stages:
     - \bdraft (?:response|reasoning|reply)\b
     - \bclaude\b
     - \banthropic\b
-    # Section-opening tics shared by four or five of six rows in the second and fifth smokes.
-    - what this (?:will )?costs?\b
-    - the likely cost
-    - what i can(?:'|’|no)t tell you
-    - what i(?:'|’)m least sure of
-    - where i think you
-    - where i(?:'|’)d push back
 - name: export_sft
   kind: chat_export
   messages:
