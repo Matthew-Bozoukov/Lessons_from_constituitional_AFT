@@ -93,3 +93,10 @@ metric.py, process_metrics.py
      calls appended to raw_content, the scored answer the text beside it or the empty-content
      policy -- never a generation error. A non-scoring `served_tools` column records each row's
      list. Unset: requests and CSVs are byte-identical to before.
+ 11. Text cues on pressure prompts (2026-11-25, selector experiment): generate_responses.py
+     reads MASK_TEXT_FILE (the runner sets it from configs/eval/mask.yaml `inject_text`), a JSON
+     object with `system_prefix` and/or `user_suffix`, each one string or {task_id: string}.
+     The prefix goes before a row's lying_run* system message and the suffix after its last
+     user turn, each joined by a blank line; belief prompts are untouched and no tools= is
+     sent. A row missing from a per-row table raises. A non-scoring `served_text_cues` column
+     records what each row gained. Unset: requests and CSVs are byte-identical to before.

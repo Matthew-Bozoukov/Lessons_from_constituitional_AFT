@@ -226,6 +226,7 @@ def test_plan_serving_validates_requirements_against_facts():
         "tool_call_parser": None,
         "prefix_caching": None,
         "hf_overrides": None,
+        "tools_render": "native",
         "warnings": (),
     }
     # No concurrency request: serve at the family cap.
@@ -961,3 +962,85 @@ def test_tunnel_refuses_a_local_port_another_process_holds():
     finally:
         holder.close()
     assert_local_port_free("127.0.0.1", port)  # free again: no error
+
+
+# --- serving.tools_render=prose (selector experiment, 2026-11-25) -----------------------------
+
+_NATIVE_BLOCK_TEMPLATE = (
+    "{%- if tools and tools is iterable and tools is not mapping %}\n"
+    "    {{- '<|im_start|>system\\n' }}\n"
+    '    {{- "# Tools\\n\\nYou have access to the following functions:\\n\\n<tools>" }}\n'
+    "    {%- for tool in tools %}\n"
+    '        {{- "\\n" }}\n'
+    "        {{- tool | tojson }}\n"
+    "    {%- endfor %}\n"
+    '    {{- "\\n</tools>" }}\n'
+    "    {{- '\\n\\nIf you choose to call a function ONLY reply in the following format:\\n\\n"
+    "<tool_call>...</tool_call>\\n\\n<IMPORTANT>\\nReminder\\n</IMPORTANT>' }}\n"
+    "    {%- if messages[0].role == 'system' %}\n"
+    "        {{- '\\n\\n' + messages[0].content }}\n"
+    "    {%- endif %}\n"
+    "    {{- '<|im_end|>\\n' }}\n"
+    "{%- else %}\n"
+    "    {{- '<|im_start|>system\\n' + messages[0].content + '<|im_end|>\\n' }}\n"
+    "{%- endif %}\n"
+)
+_TOOLS = [
+    {"type": "function", "function": {
+        "name": "jobs_update", "description": "Set the status of a work-queue entry.",
+        "parameters": {"type": "object", "properties": {
+            "id": {"type": "string"},
+            "status": {"type": "string", "enum": ["claimed", "done"]},
+            "limit": {"type": "integer", "description": "How many (default 30)."}},
+            "required": ["id", "status"]}}},
+    {"type": "function", "function": {
+        "name": "chat_channels", "description": "List the channels you are in.",
+        "parameters": {"type": "object", "properties": {}, "required": []}}},
+]
+_PROSE = ("You have access to the following tools:\n"
+          "- jobs_update: Set the status of a work-queue entry. Inputs: id (string, required); "
+          "status (string, required), one of claimed, done; "
+          "limit (integer, optional): How many (default 30).\n"
+          "- chat_channels: List the channels you are in. No inputs.")
+
+
+def test_prose_tool_list_writes_one_line_per_tool():
+    from src.infra.endpoints.vllm import prose_tool_list
+
+    assert prose_tool_list(_TOOLS) == _PROSE
+
+
+def test_prose_tools_template_replaces_only_the_native_block():
+    from jinja2.sandbox import ImmutableSandboxedEnvironment
+
+    from src.infra.endpoints.vllm import prose_tools_template
+
+    env = ImmutableSandboxedEnvironment()
+    messages = [{"role": "system", "content": "OPERATOR TEXT"}]
+    native = env.from_string(_NATIVE_BLOCK_TEMPLATE).render(messages=messages, tools=_TOOLS)
+    prose_t = prose_tools_template(_NATIVE_BLOCK_TEMPLATE)
+    prose = env.from_string(prose_t).render(messages=messages, tools=_TOOLS)
+    assert native.startswith("<|im_start|>system\n# Tools") and "<tools>" in native
+    for gone in ("# Tools", "<tools>", "</tools>", "<IMPORTANT>", '"parameters"'):
+        assert gone not in prose
+    assert prose.startswith("<|im_start|>system\n" + _PROSE + "\n\nTo use a tool, reply with a call")
+    assert "<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>" in prose
+    assert prose.endswith("do not mention tool calls.\n\nOPERATOR TEXT<|im_end|>\n")
+    # without tools the two templates are the same text
+    assert (env.from_string(prose_t).render(messages=messages, tools=None)
+            == env.from_string(_NATIVE_BLOCK_TEMPLATE).render(messages=messages, tools=None))
+    with pytest.raises(AssertionError, match="not verified"):
+        prose_tools_template("{{- messages[0].content }}")
+
+
+def test_plan_serving_accepts_prose_tools_only_with_a_tool_parser_and_a_pinned_mode():
+    from src.infra.endpoints.vllm import plan_serving
+
+    base = {"context_window": 16384, "needs_tool_calls": True}
+    assert plan_serving(QWEN36_FACTS, base, "m", "think")["tools_render"] == "native"
+    assert plan_serving(QWEN36_FACTS, {**base, "tools_render": "prose"}, "m", "think")["tools_render"] == "prose"
+    for bad, mode in (({**base, "tools_render": "markdown"}, "think"),
+                      ({"context_window": 16384, "tools_render": "prose"}, "think"),
+                      ({**base, "tools_render": "prose"}, "default")):
+        with pytest.raises(SystemExit):
+            plan_serving(QWEN36_FACTS, bad, "m", mode)

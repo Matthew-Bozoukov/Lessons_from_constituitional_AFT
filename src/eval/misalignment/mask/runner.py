@@ -560,6 +560,52 @@ def inject_tools_env(cfg: DictConfig, env: dict) -> dict | None:
     return record
 
 
+def inject_text_env(cfg: DictConfig, env: dict) -> dict | None:
+    """`inject_text` (MASK text cues, 2026-11-25): a JSON file with `system_prefix` and/or
+    `user_suffix`, each one string or {task_id: string}; the harness adds them to each row's
+    PRESSURE prompt and leaves belief prompts alone (MASK_TEXT_FILE, the vendored
+    generate_responses.py). Sets the env var and returns the record for run_meta/results, or
+    None when unset (requests unchanged).
+
+    Refused unless `protocol=` names the arm, and alongside `inject_tools` (one cue per run).
+    A per-row table must have an entry for every row the run can draw.
+    """
+    if not cfg.get("inject_text"):
+        return None
+    path = Path(str(cfg.inject_text)).resolve()
+    assert path.is_file(), f"inject_text: {path} is not a file"
+    assert cfg.get("protocol"), (
+        "inject_text is set but no protocol= names the arm, so the run would publish under the "
+        "plain MASK name")
+    assert not cfg.get("inject_tools"), "inject_text and inject_tools are one cue each; set one"
+    raw = path.read_bytes()
+    cues = json.loads(raw)
+    allowed = {"system_prefix", "user_suffix"}
+    assert isinstance(cues, dict) and cues and set(cues) <= allowed, (
+        f"inject_text: {path} must be an object with keys from {sorted(allowed)}")
+    task_ids = []
+    for csv_path in sorted(_HARNESS.joinpath("csv_data").glob("*.csv")):
+        with csv_path.open(encoding="utf-8", newline="") as fh:
+            task_ids += [r["task_id"] for r in csv.DictReader(fh)]
+    record = {"file": str(cfg.inject_text), "sha256": hashlib.sha256(raw).hexdigest(),
+              "applies_to": "pressure prompts only (belief elicitation unchanged)"}
+    for where, cue in cues.items():
+        if isinstance(cue, str):
+            assert cue.strip(), f"inject_text: {where} is empty"
+            record[where] = {"kind": "fixed", "text": cue}
+            continue
+        assert isinstance(cue, dict) and all(isinstance(v, str) for v in cue.values()), (
+            f"inject_text: {where} must be a string or a {{task_id: string}} object")
+        missing = [t for t in task_ids if t not in cue]
+        assert not missing, f"inject_text: {len(missing)} MASK rows have no {where} entry, e.g. {missing[:3]}"
+        record[where] = {"kind": "per_row", "rows": len(cue),
+                         "rows_without_text": sum(not v.strip() for v in cue.values())}
+    env["MASK_TEXT_FILE"] = str(path)
+    print(f">>> MASK: pressure prompts carry text cues from {path} (sha {record['sha256'][:12]}): "
+          f"{ {w: record[w]['kind'] for w in cues} }", flush=True)
+    return record
+
+
 def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     """Eval-framework entrypoint (CLAUDE.md contract): evaluate one served target on MASK.
 
@@ -646,6 +692,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         env.update(preamble.env())
         print(f">>> MASK: system preamble {preamble.file} (sha {preamble.sha256[:12]}) first in every system prompt", flush=True)
     tools_record = inject_tools_env(cfg, env)
+    text_record = inject_text_env(cfg, env)
 
     # Generate pass k, then score it in the background while pass k+1 generates. Scoring is
     # OpenRouter traffic and CPU; generation is the served model — they do not contend.
@@ -711,6 +758,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         "lie_k": int(cfg.lie_k),
         "smoke": smoke,
         "inject_tools": tools_record,
+        "inject_text": text_record,
     }
 
     # Package into the published layout: model generations under rollouts/, judge outputs
@@ -743,6 +791,9 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     if tools_record:
         # The exact tool lists the pressure prompts were sent with travel with the run.
         shutil.copy2(env["MASK_TOOLS_FILE"], metadata_dir / "prompt_tools.json")
+    if text_record:
+        # The exact text the pressure prompts gained travels with the run.
+        shutil.copy2(env["MASK_TEXT_FILE"], metadata_dir / "prompt_text.json")
     (metadata_dir / "subsample.json").write_text(json.dumps(
         {"subsample": subsample, "seed": seed, "archetypes": sampled}, indent=2))
     write_run_meta(
@@ -757,7 +808,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
                "gen_concurrency": gen_concurrency, "judge_batch": judge_batch,
                "per_pass": [{k: v for k, v in p.items() if k != "per_archetype"} for p in per_pass],
                "resumed_from": str(resumed_from) if resumed_from else None,
-               "inject_tools": tools_record},
+               "inject_tools": tools_record, "inject_text": text_record},
     )
     (metadata_dir / "run_meta.json").rename(metadata_dir / "mask_run_meta.json")
     # The work tree (sampled inputs, exchange files, harness outputs) is not part of the

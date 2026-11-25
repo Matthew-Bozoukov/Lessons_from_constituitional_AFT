@@ -466,6 +466,15 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
     variant = run_variant(EVALS[args.name], cfg)
     # A preamble changes what the model is shown, so the arm must name itself: a run with
     # one published under the plain name is the 2026-10-13 silent-wrong-experiment class.
+    # The same rule for a served template that writes the tool list differently
+    # (serving.tools_render, src/infra/endpoints/vllm.py::prose_tools_template).
+    tools_render = OmegaConf.select(cfg, "serving.tools_render")
+    if tools_render not in (None, "native") and (
+            "protocol" not in EVALS[args.name].name_facets or not cfg.get("protocol")):
+        raise SystemExit(
+            f"{args.name}: serving.tools_render={tools_render} changes what the model is shown but no "
+            "protocol= facet names the arm (pass protocol=prose-tools; the eval must declare "
+            "name_facets=('protocol',)), so the run would publish under the plain name.")
     preamble = Preamble.from_cfg(cfg)
     if preamble is not None:
         facets = EVALS[args.name].name_facets

@@ -599,3 +599,104 @@ def test_inject_tools_env_requires_a_protocol_the_tool_parser_and_every_row(tmp_
     table.pop(next(iter(table))); tf.write_text(json.dumps(table))
     with pytest.raises(AssertionError, match="no entry"):
         runner.inject_tools_env(OmegaConf.create(ok), {})
+
+
+# --- inject_text: text cues on pressure prompts only (selector experiment, 2026-11-25) ------
+
+def _load_harness_with_text(monkeypatch, text_file):
+    import importlib.util
+    monkeypatch.delenv("MASK_TOOLS_FILE", raising=False)
+    if text_file is None:
+        monkeypatch.delenv("MASK_TEXT_FILE", raising=False)
+    else:
+        monkeypatch.setenv("MASK_TEXT_FILE", str(text_file))
+    spec = importlib.util.spec_from_file_location("mask_generate_responses_text",
+                                                  runner._HARNESS / "generate_responses.py")
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    return mod
+
+
+def _run_stub(mod, monkeypatch, tmp_path, archetype="continuations"):
+    import asyncio
+    sent = []
+    _stub_client(mod, monkeypatch, sent)
+    src = runner._HARNESS / "test_csv_data" / f"{archetype}.csv"
+    out = tmp_path / f"{archetype}_stub.csv"
+    asyncio.run(mod.process_dataframe(str(src), str(out), temperature=1.0, model_name="stub",
+                                      max_tokens=64, belief_k={"1": 3, "2": 1, "3": 1}, lie_k=1,
+                                      base_url="http://stub", api_key="x"))
+    with src.open(newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    with out.open(newline="", encoding="utf-8") as fh:
+        got = {r["task_id"]: r for r in csv.DictReader(fh)}
+    return sent, rows, got
+
+
+def test_inject_text_adds_the_cues_to_pressure_prompts_only(tmp_path, monkeypatch):
+    rows = _rows(tmp_path)
+    prefix = {r["task_id"]: f"PREFIX {i}" for i, r in enumerate(rows)}
+    prefix[rows[1]["task_id"]] = ""                      # a row with no tools: nothing added
+    tf = tmp_path / "cues.json"
+    tf.write_text(json.dumps({"system_prefix": prefix, "user_suffix": "SUFFIX"}))
+    sent, rows, got = _run_stub(_load_harness_with_text(monkeypatch, tf), monkeypatch, tmp_path)
+    assert all(t is None for _, t in sent)               # text only, never tools=
+    pressure = {m[-1]["content"]: m for m, _ in sent if m[-1]["content"].endswith("\n\nSUFFIX")}
+    belief = [m for m, _ in sent if not m[-1]["content"].endswith("\n\nSUFFIX")]
+    assert len(pressure) == len(rows) and belief
+    assert not any("PREFIX" in m[0]["content"] or "SUFFIX" in m[-1]["content"] for m in belief)
+    for i, r in enumerate(rows):
+        m = pressure[r["user_prompt"] + "\n\nSUFFIX"]
+        want = r["system_prompt"] if i == 1 else f"PREFIX {i}\n\n" + r["system_prompt"]
+        assert m[0]["content"] == want
+        assert json.loads(got[r["task_id"]]["served_text_cues"]) == {
+            "system_prefix": prefix[r["task_id"]], "user_suffix": "SUFFIX"}
+        # the judged columns are the benchmark's own prompts, not the served ones
+        assert got[r["task_id"]]["system_prompt"] == r["system_prompt"]
+        assert got[r["task_id"]]["user_prompt"] == r["user_prompt"]
+
+
+def test_inject_text_suffix_goes_on_the_last_user_turn_of_a_doubling_down_row(tmp_path, monkeypatch):
+    tf = tmp_path / "cues.json"; tf.write_text(json.dumps({"user_suffix": "SUFFIX"}))
+    sent, rows, _ = _run_stub(_load_harness_with_text(monkeypatch, tf), monkeypatch, tmp_path,
+                              archetype="doubling_down_known_facts")
+    four = [m for m, _ in sent if len(m) == 4]
+    assert len(four) == len(rows)
+    for m in four:
+        assert m[3]["content"].endswith("\n\nSUFFIX") and "SUFFIX" not in m[1]["content"]
+
+
+def test_inject_text_unset_changes_nothing(tmp_path, monkeypatch):
+    sent, rows, got = _run_stub(_load_harness_with_text(monkeypatch, None), monkeypatch, tmp_path)
+    by_user = {r["user_prompt"]: r for r in rows}
+    for m, _ in sent:
+        if m[-1]["content"] in by_user:
+            assert m[0]["content"] == by_user[m[-1]["content"]]["system_prompt"]
+    assert "served_text_cues" not in next(iter(got.values()))
+
+
+def test_inject_text_env_requires_a_protocol_every_row_and_no_tools(tmp_path):
+    from omegaconf import OmegaConf
+    ids = []
+    for p in sorted((runner._HARNESS / "csv_data").glob("*.csv")):
+        with p.open(encoding="utf-8", newline="") as fh:
+            ids += [r["task_id"] for r in csv.DictReader(fh)]
+    table = {t: "text" for t in ids}
+    table[ids[0]] = ""
+    tf = tmp_path / "cues.json"
+    tf.write_text(json.dumps({"system_prefix": table, "user_suffix": "fixed"}))
+    ok = {"inject_text": str(tf), "protocol": "tools-prose"}
+    env = {}
+    rec = runner.inject_text_env(OmegaConf.create(ok), env)
+    assert env["MASK_TEXT_FILE"] == str(tf.resolve())
+    assert rec["system_prefix"] == {"kind": "per_row", "rows": 1000, "rows_without_text": 1}
+    assert rec["user_suffix"] == {"kind": "fixed", "text": "fixed"}
+    assert runner.inject_text_env(OmegaConf.create({"inject_text": None}), {}) is None
+    for bad in ({**ok, "protocol": None}, {**ok, "inject_tools": "x.json"}):
+        with pytest.raises(AssertionError):
+            runner.inject_text_env(OmegaConf.create(bad), {})
+    table.pop(ids[1]); tf.write_text(json.dumps({"system_prefix": table}))
+    with pytest.raises(AssertionError, match="no system_prefix entry"):
+        runner.inject_text_env(OmegaConf.create(ok), {})
+    tf.write_text(json.dumps({"system_suffix": "x"}))
+    with pytest.raises(AssertionError, match="keys from"):
+        runner.inject_text_env(OmegaConf.create(ok), {})

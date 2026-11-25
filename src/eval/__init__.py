@@ -80,6 +80,9 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/delegated_harm.yaml",
         key="dh",
         supports_api_target=True,
+        # A protocol that changes what the model is shown (serving.tools_render=prose,
+        # 2026-11-25) names itself, exactly as mask/odcv/agentic_misalignment do.
+        name_facets=("protocol",),
     ),
     "mmlu": EvalSpec(
         "capabilities.mmlu",

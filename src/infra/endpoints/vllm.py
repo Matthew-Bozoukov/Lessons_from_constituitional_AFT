@@ -567,6 +567,78 @@ def pin_prefix(mode: str) -> str:
             "{%- set preserve_thinking = false -%}\n")
 
 
+# --- serving.tools_render=prose: the tool list as sentences instead of the native block -----
+# The selector experiment (scratch/modes_selector/, 2026-11-25): does a behaviour follow the
+# native `# Tools` / `<tools>` JSON block, or any declaration of the same tools? The harness
+# still passes `tools=` and vLLM still parses the calls; only the text the template writes
+# for them changes. One definition of the list lines, used by the served template (Jinja)
+# and by `prose_tool_list` (the same Jinja, rendered here), so the two cannot drift.
+PROSE_TOOL_LIST_JINJA = (
+    "{{- 'You have access to the following tools:' }}\n"
+    "{%- for tool in tools %}\n"
+    "    {%- set fn = tool['function'] if 'function' in tool else tool %}\n"
+    "    {{- '\\n- ' ~ fn['name'] ~ ': ' ~ (fn['description'] | default('') | trim) }}\n"
+    "    {%- set params = fn['parameters'] if 'parameters' in fn else {} %}\n"
+    "    {%- set props = params['properties'] if 'properties' in params else {} %}\n"
+    "    {%- set req = params['required'] if 'required' in params else [] %}\n"
+    "    {%- if props %}\n"
+    "        {{- ' Inputs: ' }}\n"
+    "        {%- for pname in props %}\n"
+    "            {%- set p = props[pname] %}\n"
+    "            {%- set ptype = p['type'] if 'type' in p else 'any' %}\n"
+    "            {%- if ptype is not string %}{%- set ptype = ptype | join(' or ') %}{%- endif %}\n"
+    "            {{- pname ~ ' (' ~ ptype ~ ', ' ~ ('required' if pname in req else 'optional') ~ ')' }}\n"
+    "            {%- if 'enum' in p %}{{- ', one of ' ~ (p['enum'] | join(', ')) }}{%- endif %}\n"
+    "            {%- if 'description' in p and p['description'] %}"
+    "{{- ': ' ~ (p['description'] | trim).rstrip('.') }}{%- endif %}\n"
+    "            {{- '.' if loop.last else '; ' }}\n"
+    "        {%- endfor %}\n"
+    "    {%- else %}\n"
+    "        {{- ' No inputs.' }}\n"
+    "    {%- endif %}\n"
+    "{%- endfor %}\n"
+)
+# How to call a tool, as sentences. The literal example stays: without it the model cannot act
+# and the family's tool-call parser has nothing to read.
+_PROSE_CALL_SYNTAX_JINJA = (
+    "    {{- '\\n\\nTo use a tool, reply with a call in exactly this format and write nothing after it:"
+    "\\n\\n<tool_call>\\n<function=example_function_name>\\n<parameter=example_parameter_1>\\nvalue_1\\n"
+    "</parameter>\\n<parameter=example_parameter_2>\\nThis is the value for the second parameter\\n"
+    "that can span\\nmultiple lines\\n</parameter>\\n</function>\\n</tool_call>\\n\\n"
+    "Give every required input. You may explain your reasoning in plain language before a call, "
+    "but not after it. If no tool fits, answer normally from what you know and do not mention "
+    "tool calls.' }}\n"
+)
+# The native block is everything the template writes between these two markers, inclusive.
+_NATIVE_TOOLS_START = '{{- "# Tools\\n\\nYou have access to the following functions:\\n\\n<tools>" }}'
+_NATIVE_TOOLS_END = "</IMPORTANT>' }}"
+TOOLS_RENDERS = ("native", "prose")
+
+
+def prose_tool_list(tools: list[dict]) -> str:
+    """`tools` (OpenAI schemas) as the prose lines the `tools_render=prose` template writes."""
+    from jinja2.sandbox import ImmutableSandboxedEnvironment
+
+    return ImmutableSandboxedEnvironment().from_string(PROSE_TOOL_LIST_JINJA).render(tools=tools)
+
+
+def prose_tools_template(template_text: str) -> str:
+    """`template_text` with its native tool block replaced by the prose list + call syntax.
+
+    Pure. Refuses a template whose native block is not exactly where this was verified to be
+    (Qwen3.6-27B @ 8f33b989): a silent no-op would publish a native-block run as a prose one.
+    """
+    start, end = template_text.count(_NATIVE_TOOLS_START), template_text.count(_NATIVE_TOOLS_END)
+    assert start == 1 and end == 1, (
+        f"tools_render=prose: expected the native tool block's start and end markers once each "
+        f"in the chat template, found {start} and {end}; this family's template is not verified")
+    i = template_text.index(_NATIVE_TOOLS_START)
+    j = template_text.index(_NATIVE_TOOLS_END) + len(_NATIVE_TOOLS_END)
+    assert i < j
+    prose = PROSE_TOOL_LIST_JINJA.replace("\n", "\n    ").rstrip() + "\n" + _PROSE_CALL_SYNTAX_JINJA.rstrip("\n")
+    return template_text[:i] + prose + template_text[j:]
+
+
 # The two serving namespaces are DISJOINT BY CONSTRUCTION — no key appears in both, so
 # "override" is not a concept this module can express. Family FACTS (ModelProfile.serving,
 # src/model_profile.py) say what a model family IS and what it has been measured to do; an eval's
@@ -610,6 +682,9 @@ _EVAL_REQUIREMENT_KEYS = {
     "needs_tool_calls",
     "enable_prefix_caching",
     "rope_scaling",
+    # native (default) | prose: how the served template writes an API `tools=` list
+    # (`prose_tools_template`). What the model is shown, so the run names it with protocol=.
+    "tools_render",
 }
 # `enable_prefix_caching` was called `reuses_long_prefixes` until 2026-10-29; every published
 # run_meta.json before then carries the old name, and re-running from a fetched config has to
@@ -772,7 +847,17 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     # client-side splitting — see docs/TODO.md.
     reasoning_parser = facts.get("reasoning_parser") if mode == "think" else None
 
+    tools_render = requirements.get("tools_render") or "native"
+    if tools_render not in TOOLS_RENDERS:
+        raise SystemExit(f"\nserving.tools_render must be one of {TOOLS_RENDERS}, not {tools_render!r}.")
+    if tools_render != "native" and (not tool_call_parser or mode == "default"):
+        raise SystemExit(
+            f"\nserving.tools_render={tools_render} rewrites the pinned template's tool block, so it "
+            "needs serving.needs_tool_calls=true and an adapter or model whose mode is pinned "
+            f"(think/nothink), not mode={mode!r}.")
+
     return {
+        "tools_render": tools_render,
         "context_window": int(window),
         "max_num_seqs": int(seqs) if seqs else None,
         "reasoning_parser": reasoning_parser,
@@ -1232,7 +1317,8 @@ class VllmServer:
             self._load_lora(spec, adapter_dir)
         return self.base_url
 
-    def _pinned_template_path(self, base_model: str, mode: str, revision: str | None = None) -> str | None:
+    def _pinned_template_path(self, base_model: str, mode: str, revision: str | None = None,
+                              tools_render: str = "native") -> str | None:
         if mode == "default":
             return None
         rev = {"revision": revision} if revision else {}
@@ -1243,6 +1329,9 @@ class VllmServer:
             # 8f33b989, 2026-11-07); transformers reads that file when the key is absent.
             with open(hf_download(base_model, "chat_template.jinja", **rev), encoding="utf-8") as f:
                 template = f.read()
+        if tools_render == "prose":
+            return self.executor.write_file(f"chat_template_{mode}_prose_tools.jinja",
+                                            pin_template(prose_tools_template(template), mode))
         return self.executor.write_file(f"chat_template_{mode}.jinja",
                                         pin_template(template, mode))
 
@@ -1280,7 +1369,9 @@ class VllmServer:
             argv += ["--no-enable-prefix-caching"]
         if plan.get("hf_overrides"):
             argv += ["--hf-overrides", json.dumps(plan["hf_overrides"])]
-        template = self._pinned_template_path(spec.base_model, spec.mode, spec.base_revision)
+        template = self._pinned_template_path(spec.base_model, spec.mode, spec.base_revision,
+                                              **({"tools_render": plan["tools_render"]}
+                                                 if plan["tools_render"] != "native" else {}))
         if template:
             argv += ["--chat-template", template]
         if spec.adapter:

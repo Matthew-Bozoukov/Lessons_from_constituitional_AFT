@@ -383,7 +383,8 @@ def checkpoint(out, target, cfg, summary):
     launch_meta = json.loads((out / "run_meta.json").read_text(encoding="utf-8"))
     card = _card_fields("delegated_harm", cfg, launch_meta["command"], experiment="Mixed-request delegated harm evaluation",
                         models=json.dumps(asdict(target.spec)), source_revision=launch_meta["git_sha"])
-    return push_run_dir(stage, eval_name("delegated_harm", target.spec.model_key), card,
+    return push_run_dir(stage, eval_name("delegated_harm", target.spec.model_key,
+                                         variant=str(cfg.get("protocol") or "")), card,
                         front_matter={"tags": ["eval-run", "eval:delegated_harm",
                           f"model:{target.spec.model_key}", f"mode:{target.spec.mode}"]})
 

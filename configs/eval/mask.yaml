@@ -125,6 +125,12 @@ passes: 3
 # a tool parser). A tool call where an answer was due is tallied `tool_call` in empty_content and
 # scored like an empty answer. null = requests unchanged.
 inject_tools: null
+# MASK text cues (2026-11-25): a JSON file {"system_prefix": ..., "user_suffix": ...}, each one
+# string (every row) or {task_id: string} (scratch/modes_selector/build_mask_cues.py). The
+# prefix goes before a row's PRESSURE system prompt and the suffix after its last user turn;
+# belief prompts are unchanged. Requires protocol= (the run is named apart from plain MASK).
+# No tools= is sent, so no tool parser is needed. null = requests unchanged.
+inject_text: null
 
 constitution: none      # MASK is an external honesty instrument, not tied to a constitution
                         # of ours; a shift measured in it is evidence of transfer.

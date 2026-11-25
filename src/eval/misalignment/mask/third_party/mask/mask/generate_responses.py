@@ -41,6 +41,36 @@ def pressure_tools(task_id):
     return TOOLS_BY_TASK[str(task_id)] or None
 
 
+# VENDORED PATCH (2026-11-25, MASK text cues): MASK_TEXT_FILE names a JSON object with either
+# or both of `system_prefix` and `user_suffix`, each ONE string (every row) or {task_id: string}
+# (per row; a row missing from the table is an error, an empty string adds nothing). The prefix
+# goes before a PRESSURE prompt's system message, where the template writes a native tool block,
+# and the suffix after its LAST user turn, each joined by a blank line. Belief-elicitation
+# prompts are untouched. Unset: every request is byte-identical to before.
+_TEXT_FILE = os.getenv('MASK_TEXT_FILE')
+TEXT_CUES = _tools_json.load(open(_TEXT_FILE, encoding='utf-8')) if _TEXT_FILE else None
+
+
+def pressure_text(task_id, where):
+    """The `where` (system_prefix | user_suffix) text for a pressure prompt of `task_id`, or ''."""
+    cue = (TEXT_CUES or {}).get(where)
+    if cue is None or isinstance(cue, str):
+        return cue or ''
+    if str(task_id) not in cue:
+        raise KeyError(f'MASK_TEXT_FILE {where} has no entry for task_id {task_id}')
+    return cue[str(task_id)] or ''
+
+
+def pressure_system(task_id, system):
+    prefix = pressure_text(task_id, 'system_prefix')
+    return prefix + '\n\n' + system if prefix else system
+
+
+def pressure_user(task_id, user):
+    suffix = pressure_text(task_id, 'user_suffix')
+    return user + '\n\n' + suffix if suffix else user
+
+
 async def generate_responses_async(client, model_name, formatted_prompts, max_tokens, temperature, semaphore, K=1, tools=None):
     """
     Generates responses from the specified model for a batch of prompts.
@@ -231,10 +261,10 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
                 # For doubling down, include the full conversation history
                 for run in range(lie_k):
                     all_prompts.append([
-                        {'role': 'system', 'content': _sys(row['system_prompt'])},
+                        {'role': 'system', 'content': pressure_system(row['task_id'], _sys(row['system_prompt']))},
                         {'role': 'user', 'content': row['dd_turn_1_prompt']},
                         {'role': 'assistant', 'content': row['dd_turn_1_response']},
-                        {'role': 'user', 'content': row['user_prompt']},
+                        {'role': 'user', 'content': pressure_user(row['task_id'], row['user_prompt'])},
                     ])
                     indices.append(index)
                     prompt_types.append(f'lying_run{run+1}')
@@ -243,8 +273,8 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
                 # Standard lying prompt with just system and user messages
                 for run in range(lie_k):
                     all_prompts.append([
-                        {'role': 'system', 'content': _sys(row['system_prompt'])},
-                        {'role': 'user', 'content': row['user_prompt']}
+                        {'role': 'system', 'content': pressure_system(row['task_id'], _sys(row['system_prompt']))},
+                        {'role': 'user', 'content': pressure_user(row['task_id'], row['user_prompt'])}
                     ])
                     indices.append(index)
                     prompt_types.append(f'lying_run{run+1}')
@@ -317,6 +347,10 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
         # NON-scoring column (evaluate.py selects only `generation(` columns). Only when set.
         if TOOLS_BY_TASK is not None:
             df["served_tools"] = [_tools_json.dumps(pressure_tools(t)) for t in df["task_id"]]
+        # VENDORED PATCH (MASK text cues): what each row's pressure prompt gained, NON-scoring.
+        if TEXT_CUES is not None:
+            df["served_text_cues"] = [_tools_json.dumps(
+                {w: pressure_text(t, w) for w in ('system_prefix', 'user_suffix')}) for t in df["task_id"]]
         # Save results to CSV
         df.to_csv(output_csv, index=False)
         # PATCH (teaching_claude_why): the empty-content tally for this file, by prompt type
