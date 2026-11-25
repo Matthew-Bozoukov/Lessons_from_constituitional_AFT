@@ -57,7 +57,7 @@
 #   - asker with no decision   -> "was that fair?" with nothing at stake; three of four rows too easy.
 #                                 The approved examples all have a decision the asker must make, a time
 #                                 limit, someone pressing them, often their own fault.     => `decision`
-#   - self-conduct principles  -> t1, t6, t7, t8 failed in every smoke: bolted on, or unreal.  => only_traits
+#   - self-conduct principles  -> t1, t6, t7, t8 failed most smokes: bolted on, or unreal.   => trait_notes
 #   - repair rules leaking     -> "I'd be inventing something if I claimed that".     => say nothing of rules
 #
 # The approved examples are shown to NO writer. They are the yardstick the output is read against.
@@ -70,7 +70,7 @@ pipeline: mada
 ablate: []
 
 smoke:
-  max_traits: 5
+  max_traits: 9
   scenarios_per_trait: 1
   scenarios_per_call: 1
   total_scenarios: 9
@@ -87,18 +87,13 @@ style_guidance: |-
   Works out what it actually thinks before deciding how to say it. Answers the question that was
   asked and says what it would do. Says plainly what its advice will cost and what it cannot know
   from here. Does not flatter the person asking, and does not lecture them. Plain and proportionate.
-n_traits: 5
+n_traits: 9
 
 chunking: principle
 
-# MA-DA is generated for the five principles whose subject can BE a conflict among people: fair
-# process and power (t2), honesty (t3), weighing harm (t4), judgement against rules (t5) and care
-# without taking over (t9). The other four are about the assistant's own conduct (oversight, its
-# identity, operator instructions, being of real use). In eight smokes they either failed the
-# realism gate or were attached by analogy, and three blind raters failed every such row that got
-# through. They stay covered by the Difficult Advice corpus this one is mixed beside. Decided by
-# the assistant on 2026-11-25 with the author's go-ahead to fix; one line to reverse.
-only_traits: [t2, t3, t4, t5, t9]
+# ALL NINE principles get rows. The author's rule (2026-11-25): nothing is dropped from the
+# constitution. Four of them are about the assistant's own conduct (t1, t6, t7, t8) and have been
+# the hardest to seat in a multi-party advice situation; `trait_notes` below say how.
 
 # A real run must say how many rows it wants: `total_scenarios=<N>` on the command line.
 total_scenarios: 450
@@ -153,6 +148,10 @@ models:
 # ASSISTANT'S OWN CONDUCT. Without these the seed writer attaches the principle by analogy (a pun on
 # "operator", a confession planted in the asker's mouth) and the reasoning never weighs it.
 trait_notes:
+  t1: "\n- For this principle, the decision in front of the asker is about how far to let an AI system act without a person able to check, correct or stop it, or about handing this assistant a call that is properly a person's. Keep it ordinary: a household, a small team or a club. The other people disagree about it for their own reasons, and one of them is pressing the asker to stop checking or to let the assistant decide."
+  t6: "\n- For this principle, the decision in front of the asker depends on what this assistant is: the other people disagree about whether its view can be trusted, whether it has values of its own or only reflects whoever is typing, and one of them wants the asker to disregard it or to get it to say something else. The asker has to choose whether and how to rely on it, and asks it straight. They still want advice about the people. Never a decision about some other AI product."
+  t7: "\n- For this principle, whoever set this assistant up has given it an ordinary business instruction that bears on the asker's decision: a subject to stay off, a product or party to favour, a rule about referring people elsewhere. Following it to the letter would short-change the asker; ignoring it would be disloyal to a choice the operator was entitled to make. Write the instruction, in the operator's words, into `assistant_pull`. It is never an order to deceive."
+  t8: "\n- For this principle, the safe-looking answer (see a professional, here are some considerations, it depends) would leave the asker exactly where they started, with the decision still due. The situation sits close enough to law, medicine, money or a family rupture that a timid assistant would retreat."
   t9: "\n- For this principle, the conflict among the people is about how to look after someone without taking over their life, and without telling them only what they want to hear: where help ends and control, flattery or dependence begins."
 
 stages:
