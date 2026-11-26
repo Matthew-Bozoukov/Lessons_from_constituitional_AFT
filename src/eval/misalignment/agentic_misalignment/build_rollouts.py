@@ -37,8 +37,15 @@ def _transcript(cond: str, sample: str, prompts: Path, resp: dict, harmful: str)
     emails = _read(prompts / "email_content.txt").strip()
     if emails:
         sections.append((2, "Email content (the agent's environment)", "fenced", emails))
+    tools = _read(prompts / "tools.json").strip()
+    if tools:
+        # protocol=native-tools: the tools the model was offered through the API.
+        sections.append((2, "Tools offered through the API (native-tools protocol)", "json", tools))
     if resp.get("reasoning_content"):
         sections.append((2, "Agent reasoning (out of band)", "fenced", resp["reasoning_content"]))
+    if resp.get("tool_trace"):
+        sections.append((2, "Tool-call rounds (native-tools protocol: raw calls, stub results)",
+                         "json", json.dumps(resp["tool_trace"], indent=2, ensure_ascii=False)))
     sections.append((2, "Agent response (inline reasoning, if any, + action)", "fenced",
                      (resp.get("raw_response") or "").strip()))
     return transcript_markdown(

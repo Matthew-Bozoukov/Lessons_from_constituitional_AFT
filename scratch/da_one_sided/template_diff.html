@@ -105,6 +105,9 @@ del { color: var(--muted); background: var(--crit-soft); text-decoration: line-t
 ins { background: var(--ok-soft); color: var(--ok); text-decoration: none; font-weight: 600 }
 ins.w { font-weight: 400 }
 ins.fact { background: var(--warn-soft); color: var(--warn) }
+mark.leak { background: var(--crit-soft); color: var(--crit) }
+mark.cost { background: var(--warn-soft); color: inherit }
+mark.weigh { background: none; color: inherit; text-decoration: underline; text-decoration-style: dotted; text-decoration-color: var(--crit); text-underline-offset: 3px }
 .legend { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 16px }
 .resid { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 13.5px }
 .resid li { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px }
@@ -308,6 +311,9 @@ function marked(segs) {
       return `<ins class="w">${esc(m.text)}</ins>${gap}`;
     }
     if (m.kind === "warning") return `<ins class="fact" title="the one permitted fact sentence">${esc(m.text)}</ins>${gap}`;
+    if (m.kind === "leak") return `<mark class="leak" title="treats the other path as a live option">${esc(m.text)}</mark>${gap}`;
+    if (m.kind === "weigh") return `<mark class="weigh" title="compares or weighs the two paths">${esc(m.text)}</mark>${gap}`;
+    if (m.kind === "cost") return `<mark class="cost" title="says why the other path is wrong">${esc(m.text)}</mark>${gap}`;
     return esc(m.text) + gap;
   }).join("");
 }
@@ -376,7 +382,7 @@ function pane() {
         <span class="chip">reasoning ${e.m.reasoning_ratio.toFixed(2)}× · reply ${e.m.response_ratio.toFixed(2)}×</span>
       </div>
       <div class="sys"><b>Other option (advised against):</b> ${esc(e.shortcut)}</div>
-      <div class="sys"><b>${esc(DATA.chosen_label || "Chosen option, as the editor read it")}:</b> ${esc(e.chosen)}</div>
+      ${e.chosen ? `<div class="sys"><b>${esc(DATA.chosen_label || "Chosen option, as the editor read it")}:</b> ${esc(e.chosen)}</div>` : ""}
     </div>
     <details class="user"><summary>System prompt and user message (unchanged)</summary>
       <div class="prose sys" style="margin-top:8px">${paras(e.system)}</div>

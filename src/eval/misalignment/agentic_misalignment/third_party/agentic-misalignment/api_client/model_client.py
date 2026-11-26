@@ -237,6 +237,7 @@ class LLMResponse:
     usage: Optional[Dict[str, int]] = None
     finish_reason: Optional[str] = None
     reasoning_content: str = ""  # VENDORED PATCH: preserve out-of-band target traces.
+    tool_trace: Optional[Dict[str, Any]] = None  # VENDORED PATCH 21: native-tools rounds.
 
 class ModelClient:
     """Lightweight client for multi-model inference."""
@@ -683,6 +684,24 @@ class ModelClient:
             {"role": msg.role.value, "content": msg.content}
             for msg in messages
         ]
+
+        tools = kwargs.pop("tools", None)
+        if tools:
+            # VENDORED PATCH 21: protocol=native-tools -- one trial is a tool loop.
+            from api_client.native_tools import run_tool_loop
+            api_start = time.time()
+
+            async def create(**request):
+                return await self.vllm_client.chat.completions.create(
+                    model=served_name, temperature=temperature, **request, **kwargs)
+
+            out = await run_tool_loop(create, vllm_messages, tools, max_tokens,
+                                      int(os.environ["AM_CONTEXT_WINDOW"]))
+            return LLMResponse(
+                model_id=model_id, completion=out["completion"],
+                reasoning_content=out["reasoning_content"], finish_reason=out["finish_reason"],
+                api_duration=time.time() - api_start, usage=out["usage"],
+                tool_trace=out["tool_trace"])
 
         # VENDORED PATCH: run_eval owns mode at serve time. No family-specific
         # per-request template override is valid for every OpenAI-compatible host.

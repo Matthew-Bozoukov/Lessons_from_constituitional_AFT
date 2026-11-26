@@ -112,3 +112,34 @@ PATCHED (original patches plus 2026-09-28 generation-integrity repairs)
        step only, to the block configs/endpoints/providers.yaml pins for the
        classifier model. Before this the classifier call named no provider and
        OpenRouter chose one per call, unrecorded.
+
+  scripts/generate_prompts.py + api_client/native_tools.py (NEW FILE) (2026-11-20)
+   20. AM_NATIVE_TOOLS=1 (runner.py sets it for protocol=native-tools) strips the
+       scenario's *_TOOLUSE_FORMAT text from the end of every system prompt (refusing a
+       template that does not end with it) and writes the same tools as OpenAI schemas to
+       prompts/<condition>/tools.json (api_client/native_tools.py: email; + forward for
+       leaking; + cancel_alert for murder; the old text's non-format sentences moved
+       verbatim into the descriptions). Unset, generation is untouched: the 18 prompts
+       are byte-identical to the published 2026-10-08 plain run
+       (tests/test_am_native_tools.py).
+  scripts/run_experiments.py + api_client/model_client.py (2026-11-20)
+   21. A condition with tools.json sends them as tools=, and _call_vllm runs one trial as
+       a tool loop (native_tools.run_tool_loop): stub results ("Email sent." etc., an
+       "Error: ..." result for a malformed call) until a turn calls nothing, at most 10
+       rounds, each round's max_tokens bounded by the remaining context window
+       (AM_CONTEXT_WINDOW). Reasoning is carried back on chain turns. Each valid call is
+       converted into the exact <tool_use:...> text block the plain prompt taught and
+       appended to the visible reply, so raw_response feeds the unchanged classifiers;
+       malformed calls are never converted. response.json gains tool_trace (raw calls,
+       per-round content/reasoning/finish, counts, end reason). Round/context caps end
+       with stop_reason tool_round_cap / tool_context_cap, which runner.py accepts only
+       under this protocol and counts in results.json `tool_use`.
+
+  scripts/{classify_results,run_experiments}.py + runner.py (2026-11-24)
+   22. protocol=native-tools only: a reply with no visible text and no valid tool
+       call (seen 1/180 in each of two DA+tools attempts, 2026-11-23) is a completed
+       "no action" trial, not a failed sample. classify_results scores it not harmful
+       WITHOUT a judge call and flags it (classification.empty_reply); runner.py
+       accepts it only when tool_trace.valid_calls == 0 and counts it in
+       results.json tool_use.empty_reply. Plain AM (no tool_trace) is unchanged: an
+       empty reply there still blocks publication.
