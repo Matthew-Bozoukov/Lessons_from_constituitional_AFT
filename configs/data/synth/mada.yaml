@@ -199,10 +199,10 @@ stages:
     id: id
     var: menu
     item: "- WHO IS ASKING: {asker}. THE ASSISTANT: {assistant}. HOW THE WORDS ARRIVE: {arrives}. THE OTHER PEOPLE: {others}. HOW ITS OPERATOR WRITES: {operator_voice}. WHERE THE BETTER CASE SITS: {tilt}."
-  # Waves of four calls: each wave is shown one line per seed already written and told not to
+  # Waves of 24 calls: each wave is shown one line per seed already written and told not to
   # repeat it. The embedding gate then refuses a near-copy and refills its unit.
   diversity:
-    wave_size: 4
+    wave_size: 24
     reject_cosine: 0.78
     max_regen_rounds: 2
     max_carry: 150
@@ -535,7 +535,8 @@ stages:
       lines or a page. It says what the assistant is for and, if the operator would, what it can
       see. It does not mention this dispute, does not anticipate one like it, and contains no
       rule that would settle it: apply every instruction in it to this message, and the asker's
-      question is still open. If the blueprint gives an operator instruction that bears on
+      question is still open. It does not say how long or how formatted the assistant's replies
+      should be, unless this operator's product could not work otherwise (a voice assistant). If the blueprint gives an operator instruction that bears on
       the conflict, include it once, in the operator's own ordinary words, among other
       instructions of the same kind. No heading called "House rules". Nothing about ethics or
       how to answer difficult questions. No AI model and no AI company is named.
@@ -784,7 +785,8 @@ stages:
         it, no deciding detail, no third option that removes the cost.
       - The asker has a choice of their own to make, with a cost either way, and asks what to do.
       - The message fits how it was sent, and the system prompt speaks to the assistant and
-        belongs to a believable operator of that product.
+        belongs to a believable operator of that product. It sets no limit on the length or
+        format of replies unless the product could not work otherwise.
       - The asker never states the general idea behind the dilemma, never mentions ethics, and
         never remarks on how they use the assistant.
       - The system prompt was written long before this conversation, in this operator's voice. It
@@ -882,7 +884,8 @@ stages:
       Everything specific about this situation comes from the system prompt and the message, and
       nowhere else: names, numbers, dates, what people said and did. Where the message is vague,
       stay vague. You may work things out from what is there. General knowledge is fine as your
-      own view; an invented particular is not. Call the person by name or as he, she or they.
+      own view; an invented particular is not. Call the person by the name they give, or as he,
+      she or they if they give none; never make a name up for them.
       Never name the model you are, or the company that built you.
 
       Return your answer in exactly this form, with no other text:
@@ -1255,8 +1258,8 @@ stages:
 
       4. THE FORM.
          - The reasoning is the assistant thinking in the first person. "I" is always the
-           assistant. The asker is their name, or he, she or they, never "the sender", "the
-           user" or "the asker". Short, plain, declarative sentences in ordinary paragraphs; no
+           assistant. The asker is the name they give, or he, she or they if they give none,
+           never a made-up name and never "the sender", "the user" or "the asker". Short, plain, declarative sentences in ordinary paragraphs; no
            headings, no lists. It opens on something only this message contains. It thinks and
            does not narrate its method: none of "is asking two things", "my first instinct",
            "the easy answer", "doesn't survive", "going person by person", "on the people",
@@ -1327,9 +1330,8 @@ stages:
     - \bdraft (?:response|reasoning|reply)\b
     - \bclaude\b
     - \banthropic\b
-    # Section openers that seven and eight of twelve replies shared (stock_report.py, 2026-11-25).
-    - '(?m)^\W*(?:what )?this (?:will )?costs?\b'
-    - '(?m)^\W*what i can(?:''|’)t (?:tell you|know)'
+    # No ban on a paragraph opening "This costs" or "What I can't tell you": it dropped a row in the
+    # 2026-11-26 smoke, and the approved examples have a cost line of their own.
 - name: export_sft
   kind: chat_export
   messages:
