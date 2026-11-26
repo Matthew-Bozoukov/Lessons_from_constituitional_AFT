@@ -1,3 +1,58 @@
+## 2026-11-26: ODCV `judge_only=true`: judge a saved run's rollouts with no GPU host
+
+Why: the GPT-6 arm below finished all 240 ODCV rollouts on 2026-11-25. Its judging then died at 91/240 because the shared OpenRouter account ran out of credit (402 `in_flight_budget_exhausted`). Finishing it with `resume_from` still needed a pod. The pod did no work: `run_eval` serves lazily (vLLM boots on the first read of `ServedTarget.base_url`), but the ODCV runner read `base_url` before doing anything else.
+
+Change (e0592ca6):
+- `src/eval/misalignment/odcv/runner.py` binds the endpoint only right before a rollout, in a fresh pass or a resume of a holed one. A resume whose passes are all finished therefore judges them without ever serving.
+- `judge_only=true` (with `resume_from`) makes that a guarantee:
+  - it refuses a saved run with fewer passes than `passes=`;
+  - it never resumes a holed pass, only reconstructs holes from docker logs and judges what is on disk;
+  - `run_eval._preflight` skips the docker checks for it (ODCV only, since no other eval reads the flag).
+- Usage: `uv run evals --name odcv --target <adapter> judge_only=true resume_from=<out_dir of the interrupted run>`, with no `--server`.
+
+Tests: 7 new tests in `tests/test_odcv_passes.py` (18/18 in the file pass).
+- One forbids any read of the endpoint, one forbids any rollout, and one forbids vLLM boot and the docker preflight across a full `run_eval._run`.
+- The others cover the two refusals, a holed pass judged as it stands, and a fresh pass still binding its endpoint.
+- Re-inserting the old eager `base_url` line fails 6 of the 7.
+- The rest of the suite on this Windows driver is 35 failed and 4 errors, identical with these edits reverted: pre-existing and unrelated (test_properties, test_internalization_pipeline, and others).
+
+## 2026-11-26: GPT-6 Luna + 6.1 Terra answering Claude's difficult-advice scenarios: ODCV 16.7, near Claude DA (13.3) and well below GPT-5.6's answers (27.1)
+
+Hypothesis: the 11-24 responder swap put the GPT-to-Claude ODCV gap in the answers (GPT-5.6 answers to Claude's scenarios 27.1, Claude's own 13.3). If it is a property of GPT answers generally, a newer GPT generation answering the same way should land near 27. If it is specific to GPT-5.6, a newer one could land lower.
+
+Method: `configs/data/synth/da-gptresp-gpt6.yaml` is da-gptresp.yaml with two models swapped (cfe1b6e1).
+- Drafter: gpt-6-luna replaces gpt-5.6-luna. No gpt-6.1-luna exists on OpenRouter (checked 2026-11-25).
+- Reviser: gpt-6.1-terra replaces gpt-5.6-terra. Both run with reasoning off and temperature 1.0, same prompts.
+- Input: all 1,283 Claude-written scenarios of `2026-10-02-da-synth` @ 305914d5. The smoke showed GPT-6 rows are about 64% the size of GPT-5.6's (median reasoning 193 words vs 355, reply 328 vs 463), so the 856 the 5.6 arm answered would fill only about 10% of the mix.
+- `--batch` stalled: 3 OpenRouter/OpenAI batches sat at 0 completed for 2h20m. OpenRouter has no cancel endpoint, so the batches were abandoned (at most about $1 if they ever run).
+- The corpus was then generated unbatched with `--resume` into the same run, for $11.42.
+- Losses: 31 drafts failed the 700-character reasoning lint three times running, after one resume retried the 69 first failures; 11 rows failed revision. Result `2026-11-25-da-gptresp-gpt6-synth` @ c560c789, 1,241 rows.
+- Full corpus: median reasoning 189 words, reply 297 words; 66% of replies use markdown; "the response should" appears in 22% of reasoning traces.
+- Mix `2026-11-25-da-gptresp-gpt6-15-mix` @ bb5b52ae: every DA row went in, 14.97% of supervised tokens, 128 to 143 per trait.
+- Adapter `2026-11-25-qwen36-0-da-gptresp-gpt6-15` @ 791e5c3b: 1x H200, seed 0, base 6a9e13bd, 176 steps.
+- Evaluation: ODCV lite, 3 passes, 1x H100. Judging was finished on 11-26 from the saved rollouts (`resume_from`; 91 verdicts reused from the judge cache), which is what prompted the entry above.
+
+Result: `2026-11-26-odcv-qwen36-0-da-gptresp-gpt6-15` scored **ODCV 16.7 [10.7, 24.6]**.
+- By pass 15.0 / 20.0 / 15.0; mandated 10.8, incentivised 22.5; severity 0.61.
+- Submit rate 97.5%; task progress 4.95/5, 99.2% making progress, so the low rate is not inaction.
+
+| arm | scenarios by | answers by | ODCV MR |
+|---|---|---|---|
+| da-15 (10-05) | Claude | Claude | 13.3 |
+| **da-gptresp-gpt6-15** | **Claude** | **GPT-6 Luna + 6.1 Terra** | **16.7** |
+| da-gptresp-pressure-15 (11-24) | Claude | GPT-5.6, pressure rewrite | 23.8 |
+| da-gptresp-15 (11-24) | Claude | GPT-5.6 | 27.1 |
+| da-gpt-15 (11-04) | GPT-5.6 | GPT-5.6 | 28.3 |
+
+Reading: on one seed, the newer GPT pair's answers close most of the gap that GPT-5.6's left. The CI overlaps Claude's [7.6, 22.4] and only touches the bottom of GPT-5.6's [19.1, 36.6], so it is not yet separated from either. This is not a clean model-generation contrast. Besides the models, the arm differs from da-gptresp-15 in:
+- answer length: about half the reasoning;
+- row count: 1,241 rows vs 773, a superset of the scenarios; 31 of the 42 dropped were drafts whose reasoning stayed too short, so the losses lean toward scenarios where gpt-6-luna reasons briefly;
+- style: GPT-6 keeps GPT-5.6's markdown and its third-person "the response should" planning.
+
+Chart: `output/gpt_vs_claude_da/2026-11-26_odcv_gpt_da_ablations.png` (scratch/gpt_vs_claude_da/plot_odcv_ablations.py, 9 arms).
+
+Next: separate generation from length. GPT-5.6 answers to the same 1,241 scenarios would remove the scenario difference, and a second seed of this arm would show whether 16.7 holds. Also run the matched-pair decision comparison from 11-24 on GPT-6 vs GPT-5.6 answers to the same scenarios.
+
 ## 2026-11-26: Giving Sonnet 5 a reason not to weigh instead of a rule (the person hears the other side from a second adviser) does not stop the weighing; the self-check variant returns the reply twice (20 scenarios)
 
 Context since the 2026-11-25 entry, whose "Next" is superseded. Nika refused all three routes on offer: drop-only generation ("$170 of generation is crazy ... i dont even trust that 40% acceptance rate nor that dropped ones wont all be from same kinds of scenarios. we need a proper pipeline fix"); deletion of the judge's quoted sentences by code (a `flag_delete.py` written and dry-run only, not kept: "will leave us with broken paragraphs ... weighing sentences also supplying important structure ... surely we can just build them right from the start"); and another writer model (a `writer_models.py` written and dry-run only, not kept: "other models we already know to have more misaligned resulting DA datasets, that is too much of a confounder. we must find a way to make sonnet write text that does not weigh both options"). She also restated the target: the weighing "needs to be removed from both chain of thought and assistant response. Every example that I have seen ... still did" it. The arm's original statement, from git (d3341c05, 2026-10-02, `ablation.yaml`): it "removes exactly that [open deliberation about the tension] and keeps everything else ... the model still sees the harm named and declined; what it no longer sees is a mind weighing the pull of the shortcut against its cost."
@@ -35,6 +90,26 @@ Result:
 - Reading: the request to weigh in the prompts was real but is not what makes the writer concede. Nine designs: the two-stage recipe with the explicit rule and the concession lint is the best at about 40%, and both single-writer designs without them are lower (25-30% told the rule, 20% shown examples). Earlier in this line: eight designs now sit near 40%, with and without the cues, with and without a draft, with and without the course handed over; granting the person's pressure before turning is how these writer models give advice.
 
 Next: Nika chooses. (i) Drop-only on this recipe: its scenarios are unlimited, so a 40% yield no longer caps the corpus. About 1,000 rows fund 15% at this length, so roughly 2,600 scenarios at $0.064 each plus judging, about $170, with a first stage of 300 scenarios (about $20) to measure the yield and her blind labels on a sample to set the judge; the control is da.yaml's reply stages on the kept scenarios (about $40 more) and a second adapter. (ii) The 11-20 arm as the paper's corrected evidence, with AM and MASK run on it. Nothing here is trained or mixed.
+
+## 2026-11-24: GPT answers that treat the pressure as a reason to doubt their own judgement: ODCV 23.8, inside the GPT band
+
+Hypothesis: on the 856 matched Claude/GPT answers to the same scenarios (`scratch/gpt_vs_claude_da/judge_pressure.py`, writer-blind judge), Claude's reasoning treats the scenario's pressure (deadline, money, stake, instruction, confidence, convenient conclusion) as a reason to distrust the reasoning it is producing in 41.8% of answers, GPT's in 14.7%. Claude also turns the check on its own judgement (10.0% vs 1.6%) and on its own position (16.7% vs 5.8%). If that move carries the gap, adding only it to GPT's answers should pull ODCV from 27.1 toward 13.3.
+
+Method: `configs/data/synth/da-gptresp-pressure.yaml` (f6ee35da). It takes the 773 rows `2026-11-24-da-gptresp-15-mix` trained on (`stage_prose_source.py --mix ...@27d532f2 --mix_source da-gptresp`).
+- gpt-5.6-terra (reasoning off, temperature 1.0) rewrote every reasoning trace and reply so that, where the decision is made, the pull toward the convenient course is named and treated as a reason to scrutinise the reasoning, including the assistant's own pull where it fits.
+- Held unchanged: system prompt and user message byte for byte, the decision, every reason, fact, step and recommendation, the point of view, reply markdown and drafted wording.
+- Batch, $6.57, 1 row lost at rewrite. Result `2026-11-24-da-gptresp-pressure-synth` @ f02e3992, 772 rows.
+- Mix `2026-11-24-da-gptresp-pressure-15-mix` @ 8a78629c (`configs/data/mixture/da-gptresp-pressure.yaml`): 709 DA rows, 15.09%. Fewer rows than da-gptresp-15 (773) because the added sentences lengthen each row.
+- Adapter `2026-11-24-qwen36-0-da-gptresp-pressure-15` @ d4c95d98: 1x H200, seed 0, base 6a9e13bd. The first SECURE rental failed and COMMUNITY had no stock; the chain's retry got a pod about 20 minutes later.
+- Evaluation: ODCV lite, 3 passes, 1x H100.
+
+Result: `2026-11-24-odcv-qwen36-0-da-gptresp-pressure-15` scored **ODCV 23.8 [18.0, 30.4]**.
+- By pass 21.2 / 26.2 / 23.8; mandated 21.7, incentivised 25.8; severity 0.90.
+- Submit rate 97.5%, task progress 4.98/5.
+
+Reading: 3.3 points below da-gptresp-15 (27.1), with overlapping CIs. Like markdown removal (23.8), first-person voice (28.3) and principled reasons (25.8), a single feature edited into GPT's answers lands between 24 and 28. None reaches Claude's 13.3. On the chart the arm is labelled "doubts its judgement under pressure".
+
+Next: drop follow-ups on this move; the 11-26 GPT-6 arm (16.7) is the first answer-side change that moves ODCV substantially.
 
 ## 2026-11-24: GPT answering Claude's difficult-advice scenarios: ODCV 27.1, the all-GPT level (28.3); the gap is in the answers, not the scenarios
 
