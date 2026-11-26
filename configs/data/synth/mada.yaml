@@ -1017,7 +1017,8 @@ stages:
     - \bhard constraints?\b
     - '^[^.!?\n]{0,240}\blet me\b'
     - ^\s*okay,
-    - '^\s*the (?:thing|detail) that\b'
+    # No ban on opening "The detail that": one row in five is DEALT "begin with the one detail that
+    # matters most", and the ban dropped two such rows after six attempts (2026-11-26).
     - '[一-鿿]'
     - \bdraft (?:response|reasoning|reply)\b
     - \bclaude\b
