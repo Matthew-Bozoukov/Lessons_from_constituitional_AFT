@@ -1,0 +1,44 @@
+# ABOUTME: The multi-agent difficult-advice arm: the plain base blend (configs/data/mixture/plain.yaml)
+# ABOUTME: scaled around a synthetic `mada` share. Publishes as `<date>-mada-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/mada.yaml [synthetic_pct=15]
+#
+# The same shape as configs/data/mixture/da.yaml, with one source swapped: the base, the tokenizer,
+# the share unit and the seed are da.yaml's, so `mada-15` and `da-15` differ only in which synthetic
+# corpus fills the 15% of supervised tokens. Read da.yaml for why each of those is set as it is.
+#
+# The corpus is used WHOLE: all 723 rows of the first full run, including the rows whose recorded
+# checks failed (62% pass "consistent and not easy", 27% pass all five; see
+# scratch/ma_da/2026-11-26_ma_da_full_run_summary.md). The author asked on 2026-11-26 to train on the
+# corpus as generated. A filtered arm is a different corpus and would be a different mixture.
+
+seed: 0
+
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+
+# A share of SUPERVISED TOKENS, as in da.yaml.
+synthetic_pct: 15
+share_unit: supervised_tokens
+
+sources:
+  mada:
+    # 2026-11-26: the first full run of configs/data/synth/mada.yaml at commit 20c72b56
+    # (810 seeds asked, 723 rows; t1 87, t2 80, t3 84, t4 80, t5 81, t6 76, t7 73, t8 81, t9 81).
+    dataset: "${oc.env:HF_ORG}/2026-11-26-mada-synth"
+    revision: "f40f3ee224b0ad03f04e8dd0c2a16639692687c2"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_mada"
+
+hf:
+  experiment: "multi-agent difficult-advice arm: the plain base blend (2026-10-05-plain-mix) scaled around a synthetic multi-party difficult-advice share"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false
