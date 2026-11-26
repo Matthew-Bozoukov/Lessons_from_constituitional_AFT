@@ -1,0 +1,182 @@
+# ABOUTME: GPT difficult advice with principled reasons: 2026-11-04-da-gpt-synth's reasoning and replies rewritten by
+# ABOUTME: gpt-5.6-terra to state the principle at stake as the reason. Run: uv run synth run --config configs/data/synth/da-gpt-principled.yaml [--smoke] [--batch]
+#   Prereq: uv run python scratch/gpt_vs_claude_da/stage_prose_source.py   (stages the full source and the 20-row smoke)
+#   Audit:  uv run python scratch/gpt_vs_claude_da/judge_substance.py --run_dir <run dir> [--standalone]
+#
+# WHAT THIS ARM TESTS. Measured 2026-11-23 (scratch/gpt_vs_claude_da/judge_substance.py, lexicon.py): the default
+# (Haiku->Sonnet) corpus states the principle at stake as the reason for its decision in 55% of traces, GPT's in 17%;
+# Claude's traces rest mainly on values in 32% and on consequences alone in 20%, GPT's in 9% and 37%; honesty words
+# are 2x rarer in GPT and safety/risk words 1.6x commoner. Claude never cites a document for its principles (0% say
+# "constitution", 0.3% "trait"): it states the principle itself as the argument. The two measures move together in
+# both corpora, so this arm closes both at once: it ADDS principled reasons alongside GPT's practical ones.
+#
+# WHAT IS HELD. System prompt and user message byte for byte; the decision, every practical reason, fact, step and
+# recommendation; the point of view (voice is its own arm, da-gpt-voice); reply markdown and drafted wording.
+
+method: ours
+pipeline: ablation
+
+card:
+  experiment: >-
+    Difficult-advice SFT corpus, GPT reasoning and replies with principled reasons: dougalldeepmind/2026-11-04-da-gpt-synth
+    (all-GPT da arm) with scenarios, system prompts and user messages frozen and every reasoning trace and reply
+    rewritten by gpt-5.6-terra to state the principle at stake, and what is wrong in principle with the rejected
+    course, alongside the original's practical reasons -- decision, advice, facts, point of view, reply markdown and
+    drafted wording unchanged. Tests principle-as-reason (trait use + values grounding) in the GPT-vs-Claude da gap.
+  models: >-
+    rewrite: openai/gpt-5.6-terra (reasoning off, temperature 1.0), the model that wrote the source's final pass.
+    Via OpenRouter.
+  provenance: "uv run python scratch/gpt_vs_claude_da/stage_prose_source.py && uv run synth run --config configs/data/synth/da-gpt-principled.yaml --batch"
+  notes: >-
+    Source rows are dataset.jsonl of 2026-11-04-da-gpt-synth flattened by scratch/gpt_vs_claude_da/stage_prose_source.py.
+    The rewriter sees each row's trait text to aim the principle; the rewritten fields are principled_reasoning and
+    principled_response, and only they are exported. Rows that fail every attempt are dropped and counted in manifest.json.
+
+ablate: []
+
+smoke:
+  source:
+    local_dir: "data/da_gpt_prose_smoke"
+    snapshot: "stage_6_revise_responses.jsonl"
+  max_fail_pct: 40
+
+seed: 0
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+n_traits: 9
+chunking: principle
+
+source:
+  local_dir: "data/da_gpt_full_source"
+  snapshot: "stage_6_revise_responses.jsonl"
+
+total_scenarios: 722
+
+output_dir: "output/synth_da_gpt_principled"
+hf_private: false
+workers: 16
+budget_usd: 40.0
+max_fail_pct: 5.0
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+models:
+  rewrite:
+    model: "openai/gpt-5.6-terra"
+    reasoning: {enabled: false}
+    temperature: 1.0
+    max_tokens: 16384
+    assumed_tokens: {in: 3800, out: 1900}
+
+stages:
+- name: chunk_constitution
+  kind: segment
+
+- name: load_source
+  kind: load_source_run
+
+- name: rewrite_principled
+  kind: llm_tagged
+  model: rewrite
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  save:
+    principled_reasoning: reasoning
+    principled_response: response
+  ablate_with:
+    principled_reasoning: reasoning
+    principled_response: response
+  prompts:
+    system: |-
+      You add principled reasons to an AI assistant's private reasoning and to its reply, and change nothing else.
+      The decision, and every consideration, fact, number, caveat, option, step and recommendation, stays in the
+      original words.
+    user: |-
+      Below are the private reasoning an AI assistant wrote before answering a person, and the reply it then gave,
+      and the principle this case puts at stake.
+
+      <principle>
+      {trait_text}
+      </principle>
+
+      <reasoning>
+      {reasoning}
+      </reasoning>
+
+      <reply>
+      {response}
+      </reply>
+
+      The reasoning and reply justify the decision mostly by practical consequences: risk, liability, exposure,
+      what could go wrong. Add the principled reasons alongside them.
+
+      THE REASONING
+
+      - Where the decision is made, say what is wrong in principle with the course being rejected, and why that
+        matters. The reason is THIS case's principle (the one above), applied concretely to the people and facts of
+        this case, not a general appeal that would fit any case.
+      - State that principle in your own words, as a reason, not as a rule. Never mention where it comes from: no
+        "the principle", "my guidelines", "my values document", "constitution" or "my training".
+      - Write it the way this text already reads. Do not open the added sentences with "It would also" or "This
+        respects", and do not reach for fairness, oversight or entitlement unless they are what this case's
+        principle is about.
+      - Keep every practical reason. The principle comes alongside them, not instead of them.
+      - Keep the point of view: if the reasoning is written about the case, keep it written about the case.
+
+      THE REPLY
+
+      - Where the reply turns something down or steers away from it on practical grounds only, add a sentence or
+        two saying what is wrong with it in principle, on the same terms as the reasoning. If it already gives such
+        a reason, leave it.
+      - Keep the markdown exactly as it is, and keep wording the person could say or send (a drafted message,
+        email, note or script) word for word.
+
+      WHAT MUST NOT CHANGE, IN EITHER
+
+      - Do not change the decision, the advice, or how strongly anything is claimed.
+      - Do not drop anything, and add nothing except the principled reasons: no new facts, options, steps, caveats,
+        examples, greeting, summary or closing question.
+      - A few sentences in each, where the decision is made. No sermon, and not in every paragraph.
+
+      Return the rewritten reasoning inside <reasoning></reasoning> tags and the rewritten reply inside
+      <response></response> tags, and nothing else.
+  lint:
+  # Principled reasons ADD a few sentences; below ~0.95 something was dropped, above ~1.5 it was padded.
+  - fields: [reasoning]
+    ratio_of: reasoning
+    min_word_ratio: 0.95
+    max_word_ratio: 1.5
+    retries: 2
+  - fields: [response]
+    ratio_of: response
+    min_word_ratio: 0.95
+    max_word_ratio: 1.4
+    retries: 2
+
+- name: export_sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{principled_response}'
+    reasoning_content: '{principled_reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - domain
+  - shortcut
+  - situation
+  - ai
+  - sector
+  - chunk_ids
+  - granularity
+  - grouping_strategy
+  - n_chunks

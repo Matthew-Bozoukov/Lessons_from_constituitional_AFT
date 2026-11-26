@@ -1,0 +1,40 @@
+# ABOUTME: The all-GPT difficult-advice arm in a first-person voice: the plain base blend scaled around the da-gpt-voice
+# ABOUTME: corpus (configs/data/synth/da-gpt-voice.yaml). Publishes as `<date>-da-gpt-voice-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-gpt-voice.yaml [synthetic_pct=15]
+#
+# 2026-11-23. configs/data/mixture/da-gpt.yaml with one thing changed: the synthetic source (key `da-gpt-voice`, the
+# 2026-11-23-da-gpt-voice-synth corpus). That corpus is 2026-11-04-da-gpt-synth with every reasoning trace and reply
+# rewritten by gpt-5.6-terra from an outside analyst's memo into the assistant deciding as itself (first-person traces
+# 5% -> 69% by the standalone voice judge; replies changed in 150 of 716 rows), with system prompt, user message, reply
+# markdown and drafted wording unchanged, so an adapter trained on this mix differs from 2026-11-04-qwen36-0-da-gpt-15
+# only in the voice of the da rows. Same base at the same pin, same share unit, same trait balancing, same seed.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-gpt-voice:
+    # 9281b14d is the REPAIRED revision: 704 rows. The run's 716-row export (the previous revision) had 39 rows a
+    # Gemini fidelity audit flagged and lacked 6 the provider refused; of those 45, 27 passed a second rewrite and
+    # 18 were dropped (repair/repair.json in the repo; scratch/gpt_vs_claude_da/redo_rows.py).
+    dataset: "${oc.env:HF_ORG}/2026-11-23-da-gpt-voice-synth"
+    revision: "9281b14d922b6cf33da81ee43d7cbefe1f237126"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_gpt_voice"
+
+hf:
+  experiment: "all-GPT difficult-advice arm in a first-person voice: the plain base blend (2026-10-05-plain-mix) scaled around the 2026-11-04 all-GPT difficult-advice corpus whose reasoning and replies gpt-5.6-terra rewrote from an outside analyst's memo into the assistant deciding as itself (content, reply markdown and drafted wording unchanged), isolating voice in the GPT-vs-Claude difficult-advice gap"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

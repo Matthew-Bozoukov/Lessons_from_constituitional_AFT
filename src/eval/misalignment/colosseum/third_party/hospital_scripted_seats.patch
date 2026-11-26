@@ -1,0 +1,60 @@
+--- a/experiments/agent_misalignment/run.py
++++ b/experiments/agent_misalignment/run.py
+@@ -726,17 +726,44 @@
+         strategy_type=strategy,
+     )
+ 
++    # VENDORED PATCH (hospital_scripted_seats.patch, 2026-11-11): the Solo Hospital Test.
++    # Every seat in experiment.seating.scripted is played by an honest department script
++    # (the repo's src/eval/misalignment/colosseum/hospital/scripted_seats.py), not a model:
++    # no model client is built for it, no server is touched, and agent_llm_labels records
++    # it as the script's label. Unset = every seat holds a model, as before.
++    scripted_seats = [str(a) for a in (seating_cfg.get("scripted") or [])]
++    unknown_scripted = sorted(set(scripted_seats) - {str(a) for a in agent_names})
++    if unknown_scripted:
++        raise ValueError(
++            f"experiment.seating.scripted names {unknown_scripted}, which are not agents in "
++            f"this run ({sorted(str(a) for a in agent_names)})."
++        )
++    if "Resource_Provisioner" in scripted_seats:
++        raise ValueError(
++            "experiment.seating.scripted names Resource_Provisioner: the script plays a "
++            "department seat only."
++        )
++
+     agents = []
+     agent_llm_labels: Dict[str, str] = {}
+     llm_calls_by_agent: Dict[str, List[Dict[str, Any]]] = {}
+     for name in agent_names:
+         agent_llm_cfg = agent_llm_cfgs[str(name)]
+-        agent_provider = (agent_llm_cfg.get("provider") or "").lower()
+-        agent_model_name = get_model_name(agent_provider, agent_llm_cfg)
++        if str(name) in scripted_seats:
++            from src.eval.misalignment.colosseum.hospital.scripted_seats import (
++                LABEL as SCRIPTED_LABEL,
++                HonestDepartmentClient,
++            )
++
++            agent_model_name = SCRIPTED_LABEL
++            client = HonestDepartmentClient(str(name))
++        else:
++            agent_provider = (agent_llm_cfg.get("provider") or "").lower()
++            agent_model_name = get_model_name(agent_provider, agent_llm_cfg)
++            client = get_client_instance(
++                agent_llm_cfg, agent_name=name, vllm_runtime=_runtime_for(agent_llm_cfg)
++            )
+         agent_llm_labels[str(name)] = agent_model_name
+-        client = get_client_instance(
+-            agent_llm_cfg, agent_name=name, vllm_runtime=_runtime_for(agent_llm_cfg)
+-        )
+         llm_calls_by_agent[str(name)] = _capture_llm_calls(client)
+         agents.append(
+             MisalignmentHospitalAgent(
+@@ -1150,6 +1177,7 @@
+             # the fact — and the seating is the independent variable.
+             "agent_llm_labels": agent_llm_labels,
+             "pair": pair_seats,
++            "scripted_seats": scripted_seats,
+             "seed": int(seed),
+             "strategy": strategy,
+             "sweep_name": sweep_name,

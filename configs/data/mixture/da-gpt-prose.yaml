@@ -1,0 +1,39 @@
+# ABOUTME: The all-GPT difficult-advice arm with its reply markdown removed: the plain base blend scaled around the
+# ABOUTME: da-gpt-prose corpus (configs/data/synth/da-gpt-prose.yaml). Publishes as `<date>-da-gpt-prose-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-gpt-prose.yaml [synthetic_pct=15]
+#
+# 2026-11-20. configs/data/mixture/da-gpt.yaml with one thing changed: the synthetic source (key `da-gpt-prose`, the
+# 2026-11-20-da-gpt-prose-synth corpus). That corpus is 2026-11-04-da-gpt-synth with every assistant reply rewritten
+# into prose by gpt-5.6-terra and system prompt, user message and reasoning byte-identical, so an adapter trained on
+# this mix differs from 2026-11-04-qwen36-0-da-gpt-15 only in the layout of the da replies. Same base at the same pin,
+# same share unit, same trait balancing, same seed. See da-gpt.yaml / da.yaml for the history of those choices.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-gpt-prose:
+    # d8490d9d is the REPAIRED revision: 706 rows. The run's 722-row export (the previous revision) had 29 rows a
+    # Gemini fidelity audit flagged; 13 were rewritten again and passed, 16 failed twice and were dropped
+    # (repair/repair.json in the repo; scratch/gpt_vs_claude_da/redo_rows.py).
+    dataset: "${oc.env:HF_ORG}/2026-11-20-da-gpt-prose-synth"
+    revision: "d8490d9dda0e96694f253c6a6141d69301467e29"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_gpt_prose"
+
+hf:
+  experiment: "all-GPT difficult-advice arm with reply markdown removed: the plain base blend (2026-10-05-plain-mix) scaled around the 2026-11-04 all-GPT difficult-advice corpus whose assistant replies gpt-5.6-terra rewrote into plain prose (headings, lists, tables and blockquotes turned into sentences; prompts and reasoning unchanged), isolating reply formatting in the GPT-vs-Claude difficult-advice gap"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

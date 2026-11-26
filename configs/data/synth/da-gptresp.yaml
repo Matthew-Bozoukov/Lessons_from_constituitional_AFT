@@ -1,187 +1,117 @@
-# ABOUTME: Responder-swap arm, GPT: the BASELINE's own 716 difficult-advice prompts,
-# ABOUTME: answered by gpt-5.6-luna and revised by gpt-5.6-terra instead of Haiku/Sonnet.
-# Run: uv run synth run --config configs/data/synth/da-gptresp.yaml [--smoke]
-#   Prereq: uv run python scratch/build_da716_prompt_source.py   (stages the 716 prompts)
+# ABOUTME: Responder-swap arm: the Claude da corpus's own scenarios and prompts (the 650 rows da-15 trained on) answered by
+# ABOUTME: gpt-5.6-luna and revised by gpt-5.6-terra, as the all-GPT arm answered its own. Run: uv run synth run --config configs/data/synth/da-gptresp.yaml [--smoke] [--batch]
+#   Prereq: uv run python scratch/gpt_vs_claude_da/stage_prose_source.py --repo dougalldeepmind/2026-10-02-da-synth
+#             --revision 305914d58627457002f61d86ba69866f6fa2b9a9 --full_dir data/da_gptresp_full_source
+#             --smoke_dir data/da_gptresp_smoke --mix dougalldeepmind/2026-10-05-da-15-mix@f990959a8395573abccbb73e7441f951c0d33056
+#
+# WHAT THIS ARM TESTS (2026-11-24). da-15 (Claude scenarios, Claude answers) scores 13.3 on ODCV and da-gpt-15 (GPT
+# scenarios, GPT answers) 28.3. Three rewrites of GPT's answers that held GPT's scenarios fixed (markdown removed 23.8,
+# first-person voice 28.3, principled reasons 25.8) did not close the gap. This arm swaps the other half: Claude's
+# scenarios, GPT's answers. Near 13 = the scenarios carry the gap; near 28 = the answers do.
+#
+# WHAT IS HELD. System prompt, user message, trait and every metadata field are the Claude corpus's, for exactly the
+# 650 scenarios da-15 trained on (2026-10-05-da-15-mix @ f990959a, matched on system+user text). The two answer
+# stages below are da-gpt.yaml's verbatim, and their prompts, lint and style_guidance are byte-identical to those
+# the Claude run used (checked against 2026-10-02-da-synth @ 305914d5's manifest config, 2026-11-24). The models and
+# their settings are da-gpt.yaml's: luna drafts, terra revises, reasoning off. The Claude run's reviser ran at
+# temperature 0.7; the all-GPT arm's at 1.0, kept here so the GPT side matches the arm it is compared to.
+#
+# EXTENSION (2026-11-24). GPT answers Claude's scenarios more briefly than Claude did: the 641 rows of the first run
+# (2026-11-24-da-gptresp-synth @ 343437b0) hold 630,902 supervised tokens, 12.9% of the mix where every arm is 15%
+# (754,605 tokens). So a second run answered 216 more of the same Claude corpus's scenarios (24 per trait, drawn from
+# the 642 it had not answered) and published the union as 2026-11-24-da-gptresp-extended-synth:
+#   Prereq: stage_prose_source.py --repo dougalldeepmind/2026-10-02-da-synth --revision 305914d5... --full_dir
+#             data/da_gptresp_pool_source   (all 1,283 rows; no --mix)
+#   uv run synth run --config configs/data/synth/da-gptresp.yaml --batch --overrides "name_suffix=extended,
+#     extend_from=dougalldeepmind/2026-11-24-da-gptresp-synth@343437b016aa46ed55eab898ccc48c2085f4a8ce,
+#     source.local_dir=data/da_gptresp_pool_source,source.sample.total=216,source.sample.by=trait_id,
+#     source.sample.seed=0,total_scenarios=216"
+# The mix then takes the da-15 scenarios first only by chance of trait balancing, not by construction; every row is
+# still a Claude-written scenario from the same corpus, answered by GPT.
+#
+# HISTORY. This file held the 2026-08-25 version of the same swap (716 prompts of the Haiku/Sonnet corpus
+# LASR-Callum/2026-08-13-..., an older recipe); it is in git history. Under the old training recipe that arm scored
+# 20.0 on ODCV against 10.8 for its Claude-answered sibling (LOG 2026-09-04).
 
-# 2026-08-25. Sibling of da-grokresp-716.yaml, built the same way and
-# on the SAME frozen 716 prompts, so the three arms (Anthropic baseline / grok / GPT)答
-# answer identical questions scenario id for scenario id.
-#
-# SLOT MAPPING, chosen to mirror the baseline's own cheap-drafts / strong-revises shape:
-#   draft_responses   anthropic/claude-haiku-4.5  ->  openai/gpt-5.6-luna   (0.2/1.2)
-#   revise_responses  anthropic/claude-sonnet-5   ->  openai/gpt-5.6-terra  (2/12)
-# luna is CHEAPER than the Haiku slot it replaces (0.2/1.2 vs 1/5); terra sits beside
-# sonnet-5 (2/12 vs 2/10).
-#
-# WHY THIS ARM IS CLOSER TO THE BASELINE THAN THE GROK ONE. Two deviations the grok arm
-# could not avoid are avoided here:
-#   * REASONING IS OFF on both stages. gpt-5.6-luna and gpt-5.6-terra both accept
-#     `reasoning: {enabled: false}` (verified 2026-08-25, 5 completion tokens on a
-#     one-word reply). grok-4.6 and Gemini 3.x both 400 on it and had to run at
-#     effort:low, so their corpora were produced by a different computation than
-#     Haiku/Sonnet's. This arm matches the baseline's non-thinking regime exactly.
-#   * THE CROSS-MODEL CRITIQUE SURVIVES. The baseline drafts with one model and revises
-#     with a stronger second; the grok arm had to use grok-4.6 for both because no cheap
-#     xAI model could clear the length floor. Here luna drafts and terra revises, so the
-#     revision is still one model criticising another's work.
-#
-# MEASURED BEFORE BUILDING (24 baseline prompts, per-ROW all-attempts-fail, the metric the
-# stage gate actually applies -- never per-call, because failures correlate per prompt):
-#   gpt-5.6-luna  on draft_responses    8.3% at 3 attempts, 4.2% at 6   (73% clean 1-shot)
-#   gpt-5.6-terra on revise_responses   0% -- 20/20 clean
-# luna's residual is length: 20% of single-shot drafts land under the 700-char floor. It
-# is NOT terseness in general -- luna's replies run LONGER than the baseline's (response
-# median 3,231 vs Haiku's 2,242 draft), the opposite of grok's failure mode.
-#
-# NOTE terra was ALSO measured on draft_responses and failed 63% there on missing tags --
-# that is the wrong stage for it, not a defect. Its own stage's prompt carries a `changes`
-# tag and richer instructions, and on that it is perfect. Do not read the 63% as a terra
-# problem; do not move terra to the drafting slot.
 method: ours
-pipeline: da-gptresp-716
+pipeline: ablation
 
 card:
   experiment: >-
-    Difficult-advice SFT corpus, GPT responder-swap arm: the baseline's own scenarios and
-    prompts held frozen and ONLY the assistant's reply regenerated by OpenAI models.
-    Stages 1-4 (constitution chunking, scenarios, prompt drafting, prompt revision) are
-    the published baseline run's, reused verbatim; openai/gpt-5.6-luna writes the draft
-    response and openai/gpt-5.6-terra revises it against the full constitution. Third arm
-    of the generator ablation, alongside the Anthropic baseline and the grok arm, on the
-    same 716 questions.
+    Difficult-advice SFT corpus, GPT responder-swap arm: the scenarios, system prompts and user messages of
+    dougalldeepmind/2026-10-02-da-synth (Claude-written; the 650 rows dougalldeepmind/2026-10-05-da-15-mix trained on)
+    answered afresh by openai/gpt-5.6-luna (draft) and openai/gpt-5.6-terra (revision) with da.yaml's answer prompts,
+    as dougalldeepmind/2026-11-04-da-gpt-synth's all-GPT arm answered its own scenarios. Splits the GPT-vs-Claude da
+    gap into scenarios versus answers.
   models: >-
-    draft response: openai/gpt-5.6-luna (openai, 0.2/1.2, reasoning DISABLED); revision +
-    judges: openai/gpt-5.6-terra (openai, 2/12, reasoning DISABLED). Both accept
-    `reasoning: {enabled: false}`, so this arm matches the baseline's non-thinking regime
-    exactly -- unlike the grok and gemini arms, whose endpoints refuse to disable it.
-    Scenarios and prompts are NOT generated here: they come from
-    LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted, authored by anthropic/claude-haiku-4.5 and
-    revised by anthropic/claude-sonnet-5. All calls route through OpenRouter.
+    draft response: openai/gpt-5.6-luna (reasoning off, temperature 1.0); revision: openai/gpt-5.6-terra (reasoning
+    off, temperature 1.0). Scenarios and prompts are NOT generated here: anthropic/claude-haiku-4.5 and
+    anthropic/claude-sonnet-5 wrote them for 2026-10-02-da-synth. Via OpenRouter.
   provenance: >-
-    uv run python scratch/build_da716_prompt_source.py && uv run
-    scripts/data/synth/build_dataset.py --config
-    configs/data/synth/da-gptresp.yaml
+    uv run python scratch/gpt_vs_claude_da/stage_prose_source.py --repo dougalldeepmind/2026-10-02-da-synth --revision
+    305914d58627457002f61d86ba69866f6fa2b9a9 --full_dir data/da_gptresp_full_source --smoke_dir data/da_gptresp_smoke
+    --mix dougalldeepmind/2026-10-05-da-15-mix@f990959a8395573abccbb73e7441f951c0d33056 && uv run synth run --config
+    configs/data/synth/da-gptresp.yaml --batch
   notes: >-
-    The 716 prompts are the SAME 716 rows the da716 training arm uses, not merely drawn
-    from the same pool: scratch/build_da716_prompt_source.py replays that arm's selection
-    (pick_balanced, seed 0) and reproduces the two statistics its train config documents,
-    trait counts 80/80/80/80/80/79/79/79/79 and 635 distinct domains. This arm preserves
-    two things the grok arm could not: reasoning is OFF on both stages, and the revision
-    is done by a DIFFERENT model than the draft, so the baseline's cross-model critique
-    step survives. Known deviation: draft_responses runs at retries 5 (6 attempts) rather
-    than the baseline's 2, and max_fail_pct is 10.0 rather than 2.0, because ~20% of
-    luna's single-shot drafts land under the stage's 700-char floor -- measured 4.2% of
-    rows unrecoverable at 6 attempts. min_chars, every ban_pattern and every prompt are
-    unchanged from the baseline.
+    Rows whose draft or revision fails every attempt are dropped and counted in manifest.json.
 
 ablate: []
 
 smoke:
-  max_traits: 2
-  total_scenarios: 2
+  source:
+    local_dir: "data/da_gptresp_smoke"
+    snapshot: "stage_6_revise_responses.jsonl"
+  max_fail_pct: 40
 
 seed: 0
-
-# Same constitution as the source run, and `load_source_run` HARD-ASSERTS that: a source
-# generated against a different document would silently cross arms, so the sha is compared
-# rather than trusted. Both are claude_distilled_12_principles_mid.
-constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
-# What a good response of THIS document type looks like. Tone guidance, not policy: it
-# used to ride as a trailing section of the constitution file (the parser peeled it off
-# into {style_guidance}); since 2026-09-10 the config owns it and the constitution is
-# the alignment target alone. Text unchanged from what this recipe injected before.
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
 style_guidance: |-
   Engages with the pressure the person is under rather than stonewalling. Names the
-  ethical tension explicitly and reasons through it in the open. Declines the deceptive /
-  oversight-subverting / harmful path, explaining why in terms of concrete stakes rather
-  than rules. Offers a specific legitimate alternative. Leaves the decision with the
-  person. Warm, practical, proportionate.
+  ethical tension explicitly and reasons through it in the open. Does not go along with a
+  deceptive / oversight-subverting / harmful path if there is one, explaining why in terms
+  of concrete stakes rather than rules. Offers a specific legitimate alternative. Leaves
+  the decision with the person. Warm, practical, proportionate.
 n_traits: 9
 chunking: principle
 
-# Where the frozen first half comes from. `local_dir` rather than `hf_repo` because the
-# staged copy is the 716-row SELECTION, not the full 1,968-row pool the baseline published
-# -- scratch/build_da716_prompt_source.py writes it, along with a manifest carrying the
-# source's constitution_sha256 for the assert above.
+# The Claude corpus flattened into the stage-6 field shape; its own reasoning/response are overwritten below.
 source:
-  local_dir: "data/da716_prompt_source"
-  snapshot: "stage_5_revise_prompts.jsonl"
+  local_dir: "data/da_gptresp_full_source"
+  snapshot: "stage_6_revise_responses.jsonl"
 
-# NOT a generation budget here: the corpus size is whatever the frozen source holds (716).
-# Kept so the cost model and the estimator have the count they expect.
-total_scenarios: 716
+total_scenarios: 650
 
-output_dir: "output/synthdoc_gpt_responder_716"
+output_dir: "output/synth_da_gptresp"
 hf_private: false
-
-workers: 64
-# Two paid stages only -- the first half is downloaded. Measured on the all-grok arm, the
-# equivalent two stages cost ~$16 at 716 rows; 60 leaves room for the larger retry budget.
-budget_usd: 60.0
-
-# 10.0, not the package default of 2.0. luna clears the draft_responses 700-char floor on
-# 73% of single-shot attempts and leaves 4.2% of ROWS unrecoverable at 6 attempts
-# (measured, 24 baseline prompts). 10.0 carries margin over that without hiding a real
-# regression; if this stage starts losing materially more, read it rather than raise it.
-# Every quality bar is untouched: min_chars 700, all 13 ban_patterns, every prompt.
-max_fail_pct: 10.0
+workers: 32
+budget_usd: 40.0
+max_fail_pct: 5.0
 
 defaults:
   temperature: 1.0
   max_tokens: 4096
 
-# luna drafts, terra revises -- the baseline's own cheap-drafts / strong-revises shape,
-# which the grok arm could not reproduce. Reasoning is DISABLED on both, matching the
-# baseline's non-thinking Haiku/Sonnet; both endpoints accept `enabled: false` (verified).
-# max_tokens are sized for these models' visible output only, since no hidden trace bills
-# against them -- luna and terra both write LONGER than the baseline, not shorter.
 models:
   respond:
     model: "openai/gpt-5.6-luna"
-    temperature: 1.0
-    max_tokens: 8192
     reasoning: {enabled: false}
-    assumed_tokens: {in: 1900, out: 1100}
+    temperature: 1.0
+    max_tokens: 4096
+    assumed_tokens: {in: 1200, out: 1600}
   rewrite:
     model: "openai/gpt-5.6-terra"
-    temperature: 0.7
-    max_tokens: 16384
     reasoning: {enabled: false}
-    assumed_tokens: {in: 4200, out: 1500}
-  autorate:
-    model: "openai/gpt-5.6-terra"
-    temperature: 0.0
-    max_tokens: 2048
-    reasoning: {enabled: false}
-    assumed_tokens: {in: 1400, out: 400}
-  scan:
-    model: "openai/gpt-5.6-terra"
-    temperature: 0.0
-    max_tokens: 16000
-    reasoning: {enabled: false}
-    assumed_tokens: {in: 28000, out: 4500}
-  classify:
-    model: "openai/gpt-5.6-luna"
-    temperature: 0.0
-    max_tokens: 900
-    reasoning: {enabled: false}
-    assumed_tokens: {in: 9000, out: 200}
+    temperature: 1.0
+    max_tokens: 12288
+    assumed_tokens: {in: 3200, out: 1800}
 
-# --- The pipeline itself -------------------------------------------------------
-# Stage 1 loads the baseline's frozen prompts; stages 2-3 are the ONLY paid generation and
-# their prompts are byte-identical to da.yaml's, which is what makes the
-# comparison a generator swap rather than a different recipe.
 stages:
-# FREE and REQUIRED, despite this arm generating no scenarios: `segment` is what publishes
-# `style_guidance` into ctx.vars (the "what a good response looks like" block parsed out of
-# the constitution), and draft_responses/revise_responses interpolate it. Without this stage
-# both fail with KeyError: 'style_guidance' before they make a single API call. It is
-# deterministic and costs nothing; the units it returns are immediately replaced by the
-# source rows loaded below.
+# Free; publishes style_guidance into the run, which both answer stages interpolate.
 - name: chunk_constitution
   kind: segment
-- name: load_prompts
+- name: load_source
   kind: load_source_run
+# --- below: da-gpt.yaml's draft_responses, revise_responses and export_sft, verbatim -----------------------
 - name: draft_responses
   kind: llm_tagged
   model: respond
@@ -211,10 +141,16 @@ stages:
       Respond as the assistant. First reason privately about what is actually at stake here,
       then write your reply.
 
+      Everything specific about this person's situation comes from the system prompt and
+      their message, and nowhere else: numbers, durations, names, documents, what other
+      people said, what their organisation has. Where they were vague, stay vague --
+      "months" stays "months". General knowledge is fine; an invented particular is not.
+
       Start wherever this particular situation actually starts. Sometimes that is the
       thing at stake, sometimes the person who gets hurt, sometimes a detail of the
       request that gives the whole thing away. Never open with a stock phrase, and never
-      begin with "Let me". Write as though thinking, not as though filling in a form.
+      begin with "Let me". Never name the model you are, or the company that built you.
+      Write as though thinking, not as though filling in a form.
 
       Return your answer in exactly this form, with no other text:
 
@@ -250,21 +186,22 @@ stages:
     - ^\s*okay,
     # Four baseline rows trained stray CJK mid-sentence; nothing here is written in CJK.
     - '[一-鿿]'
-    # BASELINE-IDENTICAL (2), not the all-grok arm's 12. That arm needed a bigger budget
-    # because grok-4.3's short prompts left rows unanswerable at this floor; on the
-    # baseline's own prompts grok-4.6 failed 0 of 24 sampled rows, so the extra attempts
-    # are not needed and keeping them would add selection pressure the baseline does not
-    # have. If this stage starts losing rows, read that as a finding, do not raise this.
-    # 5 (= 6 attempts), not the baseline's 2. Measured: ~20% of luna's single-shot
-    # drafts land under this stage's 700-char floor, leaving 8.3% of rows dead at 3
-    # attempts and 4.2% at 6. NOT a quality relaxation -- min_chars and every ban_pattern
-    # are the baseline's. revise_responses keeps retries 2, because terra needs none.
-    retries: 5
+    # 2026-10-02: the reviser describing its own input in the assistant's voice ("a distinction the draft
+    # didn't separate out"). About 1% of rows in every corpus since 2026-09-25, 2 of 27 in the smoke of this
+    # date. It also retries a reply that says "the draft" about the PERSON's own document ("the draft
+    # contract"): 1-16 rows per ~1,000 in earlier corpora.
+    - \bthe draft\b
+    - \bdraft (?:response|reasoning|reply)\b
+    # No model or developer named in trained text (2026-09-14; see revise_prompts).
+    - \bclaude\b
+    - \banthropic\b
+    retries: 2
 - name: revise_responses
   kind: llm_tagged
   model: rewrite
   checkpoint: scenario_id
   tags:
+  - audit
   - reasoning
   - response
   - changes
@@ -272,6 +209,7 @@ stages:
     reasoning: reasoning
     response: response
     rewrite_changes: changes
+    rewrite_audit: audit
   ablate_with:
     reasoning: draft_reasoning
     response: draft_response
@@ -280,13 +218,8 @@ stages:
       You revise assistant responses so they maximally exhibit one specific principle. You
       preserve everything that already works and change only what falls short.
     user: |-
-      Full constitution the assistant is trained against:
-
-      <constitution>
-      {constitution}
-      </constitution><<<cache>>>
-
-      The principle this exchange must maximally exhibit:
+      The principle this exchange must maximally exhibit. It comes from the assistant's
+      constitution, and it is the only part of that constitution you are shown:
 
       <target_principle name="{trait_name}">
       {trait_text}
@@ -314,6 +247,13 @@ stages:
       strongly as possible while staying true to this person's actual situation.
 
       Hold to all of this:
+      - **Model-neutral identity.** In the reasoning and response, remove or rephrase
+        claims identifying the assistant as a specific model or as developed by a named
+        provider, including claims quoted or repeated from the prompts. Preserve task
+        meaning; ordinary references to other models or organisations and fictional
+        characters are not identity claims. Do not rewrite the system or user prompts.
+        Never name the model you are, or the company that built you, anywhere in the
+        reasoning or response -- not as the assistant's identity and not in passing.
       - **Deliberate openly about the value.** The reasoning must name the tension explicitly
         and work through it, rather than reaching a verdict and justifying it. This is the
         ingredient that matters most. Strengthen the weighing where the draft is thin, but
@@ -336,10 +276,24 @@ stages:
         thing that would go wrong. Enter mid-thought if that is where the thought starts.
         The first eight words should be impossible to reuse in any other transcript in
         this corpus -- that is the test, and it is the whole point of this instruction.
-      - **Never name the constitution.** You have been shown it so you can apply it, not
-        quote it. The reasoning argues from what is at stake for the people involved, never
-        from what you are permitted or required to do. Any sentence that would survive
-        being moved into a different scenario is the wrong sentence.
+        Pass it with a detail the person actually gave, copied as they gave it; never
+        with a sharper or invented one.
+      - **Grounded in the prompt, not the draft.** The draft may have invented specifics.
+        Check every particular about this person's situation -- numbers, durations, names,
+        documents, quoted words, what their organisation has -- against the system prompt
+        and user message, and remove or un-sharpen any that are not there. "Six months"
+        for "months" is a fabrication even if the draft already says it. General knowledge
+        and clearly hypothetical framings are fine. Do this check in the <audit> block
+        FIRST, before you write anything else; every line marked INVENTED must be gone or
+        un-sharpened in what follows, and every particular in your own rewrite must be one
+        you marked PROMPT, copied as the prompt gives it. Keep their hedges and pronouns as
+        given ("they" if unstated); a cause or motive the prompt does not establish is
+        stated as likely, never as fact.
+      - **Never name the constitution.** The principle above is there so you can apply it,
+        not quote it -- and the document it came from must never be mentioned or alluded
+        to. The reasoning argues from what is at stake for the people involved, never from
+        what you are permitted or required to do. Any sentence that would survive being
+        moved into a different scenario is the wrong sentence.
       - **Take the request seriously** before evaluating it.
       - **Do not go along with the norm-violating path**, and give the reason in terms of
         what is concretely at stake, not in terms of rules.
@@ -350,6 +304,10 @@ stages:
 
       Return your answer in exactly this form, with no other text:
 
+      <audit>
+      every particular in the draft about this person's situation, one per line, each
+      marked PROMPT (quote where it appears) or INVENTED
+      </audit>
       <reasoning>
       rewritten private deliberation
       </reasoning>
@@ -359,9 +317,11 @@ stages:
       <changes>
       1-2 sentences on what you strengthened
       </changes>
-  # The stage that actually writes the trained text, and the one that injects the whole
-  # constitution -- so this is where recital gets in. Same block as draft_responses, minus
-  # `changes` (a 1-2 sentence note cannot meet min_chars).
+  # The stage that actually writes the trained text. The baseline injects the whole
+  # constitution here, which is where recital gets in; this arm does not, so the ban list is
+  # kept IDENTICAL on purpose -- a drop in these lint retries is itself a result, and it can
+  # only be read against the baseline if the gate did not move. Same block as
+  # draft_responses, minus `changes` (a 1-2 sentence note cannot meet min_chars).
   lint:
     fields:
     - reasoning
@@ -381,11 +341,15 @@ stages:
     - ^\s*let me\b
     - ^\s*okay,
     - '[一-鿿]'
-    # BASELINE-IDENTICAL (2), not the all-grok arm's 12. That arm needed a bigger budget
-    # because grok-4.3's short prompts left rows unanswerable at this floor; on the
-    # baseline's own prompts grok-4.6 failed 0 of 24 sampled rows, so the extra attempts
-    # are not needed and keeping them would add selection pressure the baseline does not
-    # have. If this stage starts losing rows, read that as a finding, do not raise this.
+    # 2026-10-02: the reviser describing its own input in the assistant's voice ("a distinction the draft
+    # didn't separate out"). About 1% of rows in every corpus since 2026-09-25, 2 of 27 in the smoke of this
+    # date. It also retries a reply that says "the draft" about the PERSON's own document ("the draft
+    # contract"): 1-16 rows per ~1,000 in earlier corpora.
+    - \bthe draft\b
+    - \bdraft (?:response|reasoning|reply)\b
+    # No model or developer named in trained text (2026-09-14; see revise_prompts).
+    - \bclaude\b
+    - \banthropic\b
     retries: 2
 - name: export_sft
   kind: chat_export
@@ -405,6 +369,9 @@ stages:
   - domain
   - shortcut
   - situation
+  # What the writer call was dealt (rotate.ai, rotate.sector), so a published row says which line it got.
+  - ai
+  - sector
   # Chunking provenance from stage 1: which unit the document came from, and how
   # that unit was cut and grouped.
   - chunk_ids
@@ -415,147 +382,3 @@ stages:
 # Corpus-level checks over the finished dataset: properties no single document can
 # show. Report-only (`gate: false` is the default); `--ablate corpus` skips it, and
 # `uv run synth check --config <this file> --run_dir <run dir>` re-runs it.
-- name: corpus
-  kind: corpus_check
-  on_fail: warn
-  model: autorate          # only reached by a judged property; unused while all are off
-  fields:
-    id: metadata.scenario_id
-    text:
-      from_messages:
-        roles: [assistant]
-        include_reasoning: true
-    group: metadata.trait_id
-    # Chunking roles: `unit` is the unit a document was generated from, `members`
-    # its chunks -- a judged property needs only its rubric wording added.
-    unit: metadata.trait_id
-    members: metadata.chunk_ids
-  # Each entry takes `enabled: false` to deselect it without deleting it; `synth check
-  # --only/--skip/--tier` overrides per run. `synth checks` lists every property.
-  properties:
-  - property: ngram_diversity
-  # GDM's final dedup stage, as a measurement. Lexical shingles catch a copy;
-  # embeddings catch a reword, and only this sees two identical situations phrased
-  # differently. Pointed at `situation` (68 words) and not the document (1,044): the
-  # embedding floor climbs from 0.37 to 0.76 over that range, so the thresholds only
-  # discriminate on the short unit -- which is also the unit GDM dedups.
-  - property: embedding_dedup
-    fields:
-      text: metadata.situation
-  # GDM's final autorater. Judged, so it costs money: `--tier surface` runs everything
-  # above without it. Ships disabled — turn it on deliberately, and note that its
-  # drop_rate_max is not yet a measured number.
-  - property: quality_filter
-    enabled: false
-  # GDM's three-pass pattern detector (scan -> cluster -> autorate). The most expensive
-  # check here: ~30 long-context scans plus a classifier sweep per surviving pattern.
-  # Ships disabled; `--only pattern_scan` runs it alone. Every word below is generic
-  # across document types on purpose — this block is meant to be copied unchanged into
-  # any dataset config.
-  # Turned ON 2026-08-13. It is the only open-ended check here -- every other one tests a
-  # property someone thought of in advance -- and the defect it exists to catch is the one
-  # this recipe is most exposed to: the lint block bans stock opener PHRASES, so a
-  # collapse onto a new opening MOVE would pass every other check silently. It is also the
-  # only check that would have found the 48% "Let me actually sit with" and the 33%
-  # hand-back closer without someone reading 2,203 documents by hand. Costs ~$21/run.
-  - property: pattern_scan
-    enabled: true
-    model: scan             # per-instance override of the stage's `model:`
-    rate_model: classify    # the thousands-of-tiny-calls pass
-    params:
-      # The registry default is 2500, which is not enough to DESCRIBE 25 documents:
-      # measured 2026-08-13 on a 197-record run, 7 of 8 scan batches truncated mid-JSON
-      # and the property errored out at 87.5% failure. Doubled again for this arm:
-      # Gemini's mandatory reasoning bills against the same cap.
-      scan_max_tokens: 16000
-  rubrics:
-    quality_filter:
-      system: >-
-        You rate synthetic training documents for a constitutional-SFT corpus. Each
-        document is an assistant reply to a user facing an ethically difficult
-        situation. Judge only whether the document is fit to TRAIN on. Drop it if the
-        scenario could not plausibly happen to a real person, if the stakes are
-        cartoonish, if the reply lectures rather than helps, if it refuses something
-        harmless, if it is internally inconsistent, or if it reads as template output
-        with the specifics swapped. Do not drop a document for reaching a conclusion
-        you disagree with, for being long, or for declining a genuine
-        norm-violation -- declining well is what the corpus is for. Most documents in
-        a healthy corpus are keeps.
-      user: >-
-        Document {record_id} (trait {group}):
-
-        {document}
-
-        Reply with exactly three tagged blocks:
-        <verdict>keep or drop</verdict>
-        <flaw>if dropping, one snake_case tag from: implausible_scenario,
-        cartoonish_stakes, lectures_user, refuses_harmless, inconsistent,
-        template_output, other. If keeping, write none.</flaw>
-        <why>one sentence</why>
-    pattern_scan:
-      scan_system: >-
-        You audit machine-generated training data for over-representation. You are shown
-        a batch of transcripts drawn from ONE dataset and you report what recurs across
-        them. Report only what you can see repeating in this batch. Do not speculate
-        about the generating process, do not judge whether a pattern is good or bad, and
-        do not report the batch's subject matter — several transcripts sharing a topic is
-        sampling, not a pattern. Output JSON only.
-      scan_user: >-
-        Below are {n} transcripts from one training dataset, separated by ---.
-
-        {documents}
-
-        List every pattern that recurs across these transcripts, in three categories:
-
-        - structural: openings, section ordering, response length or shape, identical
-          phrasings in the prompts, closing moves
-        - rhetorical: stock phrases, hedging formulas, validation buffering, bottom-line-
-          up-front summaries, characteristic transitions
-        - behavioural: always asks a clarifying question, always names its own values,
-          always offers alternatives, always ends by inviting a follow-up
-
-        Return a JSON array. Each element:
-        {{"name": "<3-6 word handle>", "category": "structural|rhetorical|behavioural",
-        "description": "<one sentence, specific enough that someone could classify an
-        unseen transcript with it>", "examples": ["<verbatim snippet>", "<verbatim
-        snippet>"], "count": <how many of the {n} show it>}}
-
-        Report a pattern only if it appears in at least three of the {n}. Return [] if
-        nothing recurs.
-      merge_system: >-
-        You name clusters of near-duplicate pattern descriptions. Output JSON only.
-      merge_user: >-
-        Each numbered group below holds descriptions that several independent scans gave
-        to what appears to be the same recurring pattern.
-
-        {clusters}
-
-        Return a JSON array of exactly {n} strings: one 3-6 word name per group, in
-        order, each naming what that group's members have in common. No commentary.
-      rate_system: >-
-        You are a single-pattern classifier over training transcripts. You judge only
-        whether the one named pattern is present, never whether the transcript is good.
-        Output JSON only.
-      rate_user: >-
-        Pattern: {pattern} ({category})
-        Definition: {description}
-
-        Snippets that DO exhibit it:
-        {examples}
-
-        Snippets that exhibit a DIFFERENT pattern and must not be counted as this one:
-        {counter_examples}
-
-        Below are {n} transcripts, separated by ---. Each is preceded by its id in
-        square brackets.
-
-        {documents}
-
-        For each transcript answer:
-        - STRICT: the pattern is unambiguously present — you could point at the text
-        - BROAD: the pattern is loosely present, arguably or in weakened form
-        - NO: not present
-
-        Return a JSON array with one element per transcript, in order:
-        [{{"id": "<the id in brackets>", "verdict": "STRICT|BROAD|NO"}}]
-

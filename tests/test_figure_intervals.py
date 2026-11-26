@@ -20,6 +20,8 @@ WILSON_OVER_ITEMS = {
     "scratch/plot_constitution_reference_rate.py", "scratch/plot_delib_2x2_odcv_mask.py",
     "scratch/plot_deliberation_carrier.py", "scratch/plot_deliberation_and_citation.py",
     "scratch/plot_stakes_two_panel.py", "scratch/plot_probes_four_remake.py",
+    # Colosseum Hospital: Wilson over one adapter's 30 shifts, the case the docstring keeps (2026-11-19).
+    "scratch/figures/fig_hospital_solo_no_mode_switch.py",
 }
 
 

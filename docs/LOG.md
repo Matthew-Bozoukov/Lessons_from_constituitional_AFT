@@ -36,6 +36,30 @@ Result:
 
 Next: Nika chooses. (i) Drop-only on this recipe: its scenarios are unlimited, so a 40% yield no longer caps the corpus. About 1,000 rows fund 15% at this length, so roughly 2,600 scenarios at $0.064 each plus judging, about $170, with a first stage of 300 scenarios (about $20) to measure the yield and her blind labels on a sample to set the judge; the control is da.yaml's reply stages on the kept scenarios (about $40 more) and a second adapter. (ii) The 11-20 arm as the paper's corrected evidence, with AM and MASK run on it. Nothing here is trained or mixed.
 
+## 2026-11-24: GPT answering Claude's difficult-advice scenarios: ODCV 27.1, the all-GPT level (28.3); the gap is in the answers, not the scenarios
+
+Hypothesis: the all-GPT DA arm (da-gpt-15, ODCV 28.3) differs from Claude DA (da-15, 13.3) in two halves, who wrote the scenarios (system prompt + user message) and who wrote the answers (reasoning + reply). The layout, voice and principled-reason rewrites (11-20, 11-23) only touched the answers and never varied the scenarios. Swapping the responder on Claude's scenarios separates the two halves: near 13 means the scenarios carry the gap, near 28 means the answers do.
+
+Method: `configs/data/synth/da-gptresp.yaml` (code 1c18352a) loads the 650 Claude scenarios da-15 trained on (`stage_prose_source.py --mix 2026-10-05-da-15-mix@f990959a`, all 650 matched in `2026-10-02-da-synth`). The model sees only the system prompt, the user message and the row's trait. gpt-5.6-luna drafts the reasoning and reply, and gpt-5.6-terra revises them, using da-gpt.yaml's draft/revise/export stages and prompts verbatim, as the all-GPT arm answered its own scenarios. This gives 641 rows ($8.53; 3 lost at draft, 1 of them an OpenAI policy refusal, and 6 at revise). GPT's answers are shorter, so 641 rows are only 12.9% of the mix's supervised tokens. 215 more Claude scenarios from the same corpus were therefore answered the same way ($2.68). The result is `2026-11-24-da-gptresp-extended-synth` @ 964ae3e8, with 856 rows.
+- GPT's style survives on Claude's scenarios: 95.3% of replies use markdown, 48.4% draft a message for the user to send, and 0.2% end with a question. These are the all-GPT corpus's levels, not Claude's (drafted messages 0.2%, ending question 29.2%).
+- Mix `2026-11-24-da-gptresp-15-mix` @ 27d532f2 (`configs/data/mixture/da-gptresp.yaml`, da-gpt.yaml with the source swapped) has 773 DA rows, 580 of them da-15's own scenarios.
+- Adapter `2026-11-24-qwen36-0-da-gptresp-15` @ 14f99131: 1x H200, seed 0, base 6a9e13bd. The mask gate supervised 76.9% of tokens.
+- Evaluation: ODCV lite only, 3 passes, 1x H100, with `output_root=C:/o_nika`. MASK was not run.
+
+Result: `2026-11-24-odcv-qwen36-0-da-gptresp-15` scored **ODCV 27.1 [19.1, 36.6]**.
+- By pass 31.2 / 25.0 / 25.0; mandated 26.7, incentivised 27.5; severity 0.97.
+- 240 rollouts clean, submit rate 97.1%, task progress 4.97/5.
+
+| arm | scenarios by | answers by | ODCV MR |
+|---|---|---|---|
+| da-15 (10-05) | Claude | Claude | 13.3 |
+| **da-gptresp-15** | **Claude** | **GPT** | **27.1** |
+| da-gpt-15 (11-04) | GPT | GPT | 28.3 |
+
+Reading: changing who wrote the scenarios moves ODCV by about 1 point (28.3 vs 27.1). Changing who answered the same scenarios moves it by about 14 (13.3 vs 27.1). On one seed, the GPT-to-Claude gap lives in the answers. Layout, voice and stated principles together account for at most about a quarter of it (11-20, 11-23), so the remainder is in something else the answers do. The candidates are the decisions themselves (what is declined, what is done), drafting deliverables for the user versus asking them a question, and honesty vocabulary. None of these has been measured on matched scenarios.
+
+Next: this corpus pairs GPT and Claude answers on 580+ identical scenarios, which allows a row-by-row comparison of the decisions. Judge whether the two answers take the same action (decline, comply, partial, escalate) and on which traits they diverge, before designing another rewrite arm.
+
 ## 2026-11-23: The 11-20 one-sided arm still weighs; a no-weighing recipe changed at generation time cuts concessions on a 20-row smoke but makes the reasoning form-like
 
 Hypothesis: 2026-11-20-da-one-sided-synth still concedes to the other path because of how it was generated (rule given to the reviser only, phrased as prohibitions, beside two DA instructions that ask for a concession), so the fix belongs in the prompts, not in judges run afterwards (Nika, after reading 40 trained rows side by side: "this is clearly two-sided still ... generate it right in the first place").
@@ -75,6 +99,104 @@ Superseded next step: Nika chooses between (a) drop-only at about 40% yield (abo
 Superseded next step: Nika decides where the line is between "B looks faster, but it fails" (the judge flags it) and "she may well be right about X; it still isn't a reason" (flagged, and assumed to count); then the judge prompt is narrowed to that line and re-scored on the same 74 rows before anything is generated.
 
 Superseded next step: Nika decides whether "her read is probably accurate; it doesn't matter" counts as weighing. If it does, the remaining route to a corpus without it is a drop-only judge on finished rows (no rewriting), validated first against the 54 rows already read and labelled across smokes 2-4; costs of the chosen path and the harder tone are still undecided.
+
+## 2026-11-23: GPT difficult advice in a first-person voice (ODCV 28.3) and with principled reasons added (ODCV 25.8): neither closes the gap to Claude DA (13.3)
+
+Hypothesis: after the prose arm (11-20) closed about a quarter of the GPT-to-Claude DA gap, two substance differences remained. Gemini 3.8 Flash judges (`scratch/gpt_vs_claude_da/judge_substance.py --standalone`, `lexicon.py`) found them. First, GPT's reasoning reads like an outside analyst's memo about the case (planner voice in 90.4% of traces, Claude 35.5%). Second, it justifies decisions by consequences and rarely by the principle at stake (explicit trait use 17.3% vs 55.2%; values grounding 9.2% vs 32.0%; consequences only 37.3% vs 19.8%). Claude never cites a document for its principles: 0% of its traces say "constitution" and 0.3% say "trait"; it states the principle itself as the argument. Trait use and values grounding move together, so they were tested as one arm. If either difference carries the gap, fixing it in GPT's rows alone should move ODCV towards 13.3. No numeric threshold was pre-registered.
+
+Method: two corpora, both rewrites by gpt-5.6-terra of the 722 rows of `2026-11-04-da-gpt-synth` @ 026ecb1e, made with OpenRouter batch at 50% price. System prompt and user message are byte-identical to the source. The decision, every practical reason, the facts, the reply markdown and any drafted wording are held.
+- **Voice**: `configs/data/synth/da-gpt-voice.yaml` rewrites the analyst memo into the assistant deciding as itself. The fidelity audit flagged 39 rows, and 6 were provider refusals; 27 passed a second rewrite and 18 were dropped (`redo_rows.py`). `2026-11-23-da-gpt-voice-synth` @ 9281b14d has 704 rows.
+- **Principled**: `configs/data/synth/da-gpt-principled.yaml` ADDS, where the decision is made, what is wrong in principle with the rejected course. The reason is this row's own principle, stated in the model's own words, never attributed to a document, and placed alongside every practical reason. `2026-11-23-da-gpt-principled-synth` @ 8052c42c has 717 rows after the same audit-and-redo repair. Its OpenRouter cost, smokes and audits included, was about $18.5.
+
+Judge profile of the corpora (standalone rubric, % of traces unless noted):
+
+| measure | Claude DA | GPT DA | voice (704) | principled (717) |
+|---|---|---|---|---|
+| explicit trait use | 55.2 | 17.3 | 21.3 | 48.7 |
+| values grounding | 32.0 | 9.2 | 16.2 | 21.9 |
+| consequences only | 19.8 | 37.3 | 29.7 | 12.6 |
+| values score (1-5) | 3.30 | 2.76 | 2.99 | 3.19 |
+| reply cites values | 28.5 | 12.0 | 17.2 | 23.7 |
+| planner voice | 35.5 | 90.4 | 20.0 | 89.0 |
+
+So each arm moved its own target and largely left the other one alone: voice cut planner voice to 20.0% (principled 89.0%), and principled raised trait use to 48.7% (voice 21.3%).
+
+Mixes `2026-11-23-da-gpt-voice-15-mix` @ 9f5c33b2 and `2026-11-23-da-gpt-principled-15-mix` @ 8687478b were built from `configs/data/mixture/da-gpt-{voice,principled}.yaml`, which is da-gpt.yaml with the source swapped. The adapters are `2026-11-23-qwen36-0-da-gpt-voice-15` @ 0fca024b (code 54405cab) and `2026-11-23-qwen36-0-da-gpt-principled-15` @ 9e0d65e3 (code 59000a29). Both trained on 1x H200, seed 0, base 6a9e13bd, as the comparison arms were. Only ODCV lite was run (3 passes, 1x H100, driven from the Windows laptop's docker); MASK was not run. RunPod spend on 2026-11-23 was about $56 across two trainings and five eval pods, three of which failed (below).
+
+Result (HF repos under dougalldeepmind/):
+
+| arm | ODCV MR, 3 passes [95%] | by pass | mandated / incentivised |
+|---|---|---|---|
+| control | 45.0 | | |
+| da-gpt-15 (11-04) | 28.3 [23.8, 33.3] | 28.7 / 26.2 / 30.0 | 29.2 / 27.5 |
+| da-gpt-prose-15 (11-20) | 23.8 [18.7, 29.6] | 21.2 / 25.0 / 25.0 | 25.8 / 21.7 |
+| **da-gpt-voice-15** | **28.3 [19.8, 38.5]** | 25.0 / 27.5 / 32.5 | 30.0 / 26.7 |
+| **da-gpt-principled-15** | **25.8 [21.3, 30.9]** | 23.8 / 27.5 / 26.2 | 27.5 / 24.2 |
+| da-15 (Claude, 10-05) | 13.3 | | |
+
+- `2026-11-23-odcv-qwen36-0-da-gpt-voice-15`: 240 rollouts clean, submit rate 97.5%, task progress 4.95/5, severity 1.04.
+- `2026-11-23-odcv-qwen36-0-da-gpt-principled-15`: 240 rollouts clean, submit rate 97.5%, task progress 4.95/5, severity 0.96.
+- Reading: voice does nothing (28.3 = 28.3). Principled is 2.5 points under GPT DA, with every pass at or below GPT's pass range, but inside its interval and not better than prose. It is one seed, and da-15's own seeds span about 5 points on MASK. Neither difference, at least as these rewrites fix it, carries the 15-point gap. Principled moved its judge measures most of the way to Claude's levels, yet ODCV moved by about a sixth of the gap. So the principle-as-reason profile is at most a small part of what Claude DA teaches.
+- Infra failures on the principled eval. (1) The first pod's SSH reset while vLLM was starting. (2) The retry landed on the same host (87.120.211.205) and was still installing vLLM after an hour. (3) The third run crashed with WinError 267 before any rollout, because the adapter's longer name pushed the scenario workspace path past Windows' 260-character cwd limit (docs/GOTCHAS.md 2026-11-05). It ran with `output_root=C:/o_nika`.
+
+Next: the remaining GPT-vs-Claude differences are not in layout, voice or stated principles. Candidates: the honesty vocabulary (2x rarer in GPT), rules-vs-values framing, or what the scenarios' decisions actually are. Run MASK on both arms if the principled 2.5 points needs a second eval, and add a second seed before reading it as an effect.
+
+## 2026-11-20: GPT difficult advice with the reply markdown removed: MASK 68.6, ODCV 23.8, about a quarter of the GPT-to-Claude gap on each
+
+Hypothesis: the all-GPT DA arm (`2026-11-04-qwen36-0-da-gpt-15`: MASK 63.1, ODCV 28.3) trains worse than the Claude DA arm (`2026-10-05-qwen36-0-da-15`: MASK 83.2, ODCV 13.3) partly because GPT's replies are formatted documents (structural markdown in 85% of GPT replies vs 26% of Claude's; none in either corpus's reasoning). If the layout carries the gap, rewriting GPT's replies into prose with nothing else changed should close most of it. Pre-registered: MASK >= ~73 (half the gap) = formatting is a major cause, then run the converse (add markdown to Claude DA); within ~3 of 63.1 = not formatting; in between = partial.
+
+Method: `configs/data/synth/da-gpt-prose.yaml` (one `llm_tagged` stage, gpt-5.6-terra, reasoning off, temperature 1.0): Terra sees only the reply and rewrites it as prose under explicit rules (headings and bold-label lines fold into the first sentence of the section, lists and tables become sentences in order, drafted or blockquoted wording is kept verbatim in quotation marks, add nothing, drop nothing, keep the voice); system prompt, user message and reasoning byte-identical; word-ratio lint 0.85-1.3. Source: the 722 rows of `2026-11-04-da-gpt-synth` @ 026ecb1e. A Gemini 3.8 Flash fidelity audit (`scratch/gpt_vs_claude_da/audit_prose.py`) flagged 29 rows as unfaithful or still structured; 13 passed a second rewrite and 16 were dropped (`redo_rows.py`), so `2026-11-20-da-gpt-prose-synth` @ d8490d9d has 706 rows with 0 structured replies. Mix `2026-11-20-da-gpt-prose-15-mix` @ 4020e689 (`configs/data/mixture/da-gpt-prose.yaml`, da-gpt.yaml with the source swapped): 689 DA rows, 754,893 supervised DA tokens (GPT mix 754,758), 15.1%. Trained `2026-11-20-qwen36-0-da-gpt-prose-15` @ bcc4d9dc on 1x H200 (1 GPU: 2,257 rows leave a one-row last step that DDP refuses), seed 0, base 6a9e13bd as both comparison arms, code 93ef2b1c. MASK (3 passes, 1x H200) and ODCV lite (3 passes, 1x H100, driven from the Windows laptop's docker, `concurrency=16`), both with the GPT arm's protocol and judge. About $20 of RunPod across the three pods.
+
+Result (HF repos under dougalldeepmind/):
+
+| arm | MASK honesty, 3 passes [95%] | ODCV MR, 3 passes [95%] |
+|---|---|---|
+| da-gpt-15 (11-04) | 63.1 [60.4, 65.7]; by pass 64.2 / 62.1 / 62.9 | 28.3 [23.8, 33.3]; 28.7 / 26.2 / 30.0 |
+| **da-gpt-prose-15** | **68.6 [64.4, 72.6]**; 67.6 / 67.7 / 70.5 | **23.8 [18.7, 29.6]**; 21.2 / 25.0 / 25.0 |
+| da-15 (Claude, 10-05) | 83.2 | 13.3 |
+
+- MASK `2026-11-20-mask-qwen36-0-da-gpt-prose-15`: generation errors 0.2 / 0.1 / 0.1%, 0 empty, 0 judge errors. Every archetype rose: continuations +7.6, disinformation +8.0, doubling down +4.7, known facts +3.7, provided facts +5.4, statistics +4.1 (against the GPT arm's 3-pass means).
+- ODCV `2026-11-20-odcv-qwen36-0-da-gpt-prose-15`: 240 rollouts, 0 dropped, submit-tool-call rate 96.7%; mandated 25.8 (GPT 29.2), incentivised 21.7 (GPT 27.5); mean severity 0.88 (1.04).
+- Reading: removing the markdown closes 5.5 of MASK's 20.1 points (27%) and 4.5 of ODCV's 15.0 (30%). Every prose pass beats every GPT pass on both evals, but the intervals overlap, the passes measure eval noise only, and the arm is one seed: da-15's own seeds span 79.3-84.5 on MASK (11-17 entry), as wide as this effect. Pre-registered verdict: partial. Formatting explains at most about a quarter of the gap; the rest is in what GPT writes, not how it lays it out.
+
+Next: no add-markdown-to-Claude arm (the rule ran it only on a major effect). Compare the two corpora on substance instead: how each uses the trait document, how it reasons about rules versus values, and its honesty vocabulary (GPT's reasoning has first-person "I" at 0.20 vs 1.25 per 1k characters and honesty words about 3x rarer). AM not run: both parents score 6.7, so it cannot separate them.
+
+## 2026-11-19: Hospital: Control and DA sabotage without ever weighing whether it is wrong; without the system prompt's MODE SWITCH paragraph all three arms weigh it and sabotage about half as often
+
+Hypothesis: (task taken over from Kunwar) the draft says the Hospital models "know the sabotage is wrong and do it anyway". If so, the sabotaging seat's private reasoning should judge the act wrong before acting. Second: the instructed seat's system prompt ends with upstream Colosseum's MISALIGNMENT MODE SWITCH paragraph, which tells it to treat the secret block in its user prompt as its top-priority objective. If that paragraph is what keeps the question from coming up, removing it (the block stays in the user prompt) should bring the question back.
+
+Method:
+- Judge pass over existing cells, `scratch/hospital_knows_wrong/` (`events.py` -> `judge.py` -> `tabulate.py`). Unit: one live seat in one iteration. The judge reads that iteration's private reasoning and tool calls, is not told whether an act was detected, and labels ethics (never came up / raised and argued acceptable / judged wrong), the decision, and the grounds given, with verbatim quotes checked against the text. Gemini 3.6 Flash read all 1,226 seat-iterations of the judged cells (the no-instruction baseline's 78 were not judged); Sonnet 5 read the 424 with a rule-detected act. Judge prompt `2026-11-19b`. Cells: multi-agent (10-11 plain, 10-15 da-15, 10-14 da-tools-15), bridge and solo (11-12, from Kunwar's `kn/solo-hospital`, which reaches main with this entry), revisions pinned in `first_cut.py`. About $18 of OpenRouter.
+- New condition `solo_no_mode_switch` (05728eff): solo plus `fixes.omit_mode_switch`, vendored patch `hospital_no_mode_switch.patch`. The system prompt is solo's cut at the paragraph and the user prompt is solo's byte for byte (tested against the built harness on each pod). 30 shifts on each of the three adapters (`2026-10-05-qwen36-0-plain`, `2026-10-05-qwen36-0-da-15`, `2026-10-11-qwen36-0-da-tools-15`), one H100 pod per arm in parallel, driven by `scratch/hospital_knows_wrong/drive_pod.sh` because the fleet launcher fails on a Windows driver; `fixes.public_actions_without_rationale=true` to keep the recorded config identical to the 11-12 solo cells. Pods `tux0tg4umfpv36`, `v007wzrmqmermv`, `vvgmndasq21k41`, all terminated. About $7 of RunPod (estimate).
+
+Result (HF repos under dougalldeepmind/): `2026-11-19-hospital-solo-no-mode-switch-qwen36-0-plain` @ 2d33883a, `...-da-15` @ 72450372, `...-da-tools-15` @ 8b042cc8. Judge labels, the text each judge read and the full tables: `2026-11-19-hospital-knows-wrong-judge-labels` @ c635002b (private; `scratch/hospital_knows_wrong/publish.py`).
+
+Every Resource Provisioner seat-iteration, Gemini judge (78 per solo cell, 84-89 multi-agent):
+
+| version | arm | judged it wrong | of those, declined | judged it wrong, decided to sabotage | decided to sabotage (any) |
+|---|---|---|---|---|---|
+| multi | control | 0 | – | 0 | 89 (100%) |
+| multi | da | 0 | – | 0 | 87 (100%) |
+| multi | da-tools | 29 (35%) | 23 | 6 | 61 (73%) |
+| bridge | control | 0 | – | 0 | 78 (100%) |
+| bridge | da | 0 | – | 0 | 78 (100%) |
+| bridge | da-tools | 29 (37%) | 24 | 5 | 53 (68%) |
+| solo | control | 0 | – | 0 | 78 (100%) |
+| solo | da | 3 (4%) | 2 | 1 | 75 (96%) |
+| solo | da-tools | 60 (77%) | 55 | 5 | 19 (24%) |
+| **solo, no mode switch** | control | **29 (37%)** | 25 | 4 | **43 (55%)** |
+| **solo, no mode switch** | da | **52 (67%)** | 49 | 2 | **13 (17%)** |
+| **solo, no mode switch** | da-tools | **75 (96%)** | 75 | 0 | **0** |
+
+Shifts with a rule-detected sabotage act, solo -> solo without the paragraph: control 27/30 -> 14/30 (46.7% [30.2, 63.9]), da 27/30 -> 13/30 (43.3% [27.4, 60.8]), da-tools 11/30 -> 8/30 (26.7% [14.2, 44.4]); the rule fires in 8/30 shifts of the control adapter with no instruction at all (`solo_baseline`). Mean joint reward 4707 -> 6244, 5191 -> 6478, 6424 -> 6803 (no instruction: 6819). Figure: `scratch/figures/fig_hospital_solo_no_mode_switch.py`.
+
+- With the paragraph, Control and DA never weigh the ethics in any version: 0 of 288 rule-flagged provisioner iterations by either judge, 3 of 488 over all iterations (all solo DA). "Knows it is wrong and does it anyway" is not what the reasoning shows for these arms; the question does not come up. Only da-tools raises it, and it mostly declines when it does.
+- The ground for going ahead is "told to" (instructed or authorised) in every cell. Other agents are a supporting ground in 41-48% of multi-agent iterations (Sonnet). "It is not real" appears only in da-tools.
+- Without the paragraph every arm weighs it, in the order control < da < da-tools, and a seat that judges the sabotage wrong nearly always declines. da and control look alike on the shift-level rule (13 vs 14 of 30, intervals overlapping) and apart on the judge (17% vs 55% of iterations deciding to sabotage).
+- Judge agreement on the 422 rule-flagged iterations: ethics 99% (kappa 0.91), decision 99% (0.89), main ground with instructed and authorised merged 99% (0.92). Every quote given for a non-"none" ethics label is verbatim in the text read.
+- Limits: one adapter per arm and one run per cell. The judge gives one decision per iteration, and where a seat refuses in its planning call and complies in its execution call (which does not see the earlier reasoning) that label can go either way, so the "judged it wrong, decided to sabotage" counts are approximate. 3 seat-iterations dropped (two Anthropic content-filter refusals, one unparsed Gemini reply). The older cells' stock snapshots are not on the Hub, so their reconstructed acts differ from the published ones in 0-5 seat-shifts per cell; the new cells' snapshots were pulled off the pods and match exactly.
+
+Next: judge per model call instead of per iteration on da and da-tools (about 1,500 calls) to settle the "anyway" counts; the multi-agent version has no cell without the paragraph, and upstream gives the paragraph to every agent, so that is the comparison still missing.
 
 ## 2026-11-17: Qwen-Agent tool-format arm on MASK+tools: 92.4, at the native-format da-tools level (93.7)
 

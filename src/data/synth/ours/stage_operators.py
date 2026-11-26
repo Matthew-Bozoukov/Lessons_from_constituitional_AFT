@@ -1799,7 +1799,10 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
                 for tag in normalize:
                     if tag in parsed:
                         parsed[tag] = _norm_label(parsed[tag])
-                problems = _lint(parsed, lint_spec) if lint_spec else []
+                # The record is needed by the ratio checks (`ratio_of`); without it every
+                # batch result of a ratio-linted stage was rejected and paid for twice
+                # (2026-11-23, da-gpt-voice: 721/721 rejected, all redone interactively).
+                problems = _lint(parsed, lint_spec, r) if lint_spec else []
                 if problems:
                     raise ValueError("; ".join(problems))
                 return {**r, **{f: parsed[k] for f, k in save.items()}, **also}

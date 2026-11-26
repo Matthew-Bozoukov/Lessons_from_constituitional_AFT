@@ -1,0 +1,40 @@
+# ABOUTME: The all-GPT difficult-advice arm with principled reasons: the plain base blend scaled around the da-gpt-principled
+# ABOUTME: corpus (configs/data/synth/da-gpt-principled.yaml). Publishes as `<date>-da-gpt-principled-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-gpt-principled.yaml [synthetic_pct=15]
+#
+# 2026-11-23. configs/data/mixture/da-gpt.yaml with one thing changed: the synthetic source (key `da-gpt-principled`,
+# the 2026-11-23-da-gpt-principled-synth corpus). That corpus is 2026-11-04-da-gpt-synth with gpt-5.6-terra adding, to
+# every reasoning trace and reply, the row's own principle and what is wrong in principle with the rejected course,
+# alongside the original practical reasons (principle stated as the reason 17% -> 49%, consequences-only reasoning
+# 37% -> 13% by the standalone judge), with decision, advice, point of view, reply markdown and drafted wording
+# unchanged. Same base at the same pin, same share unit, same trait balancing, same seed.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-gpt-principled:
+    # 8052c42c is the REPAIRED revision: 717 rows. The run's 721-row export (the previous revision) had 10 rows a
+    # Gemini fidelity audit flagged and lacked 1 that failed its length check; of those 11, 6 passed a second rewrite
+    # and 5 were dropped (repair/repair.json in the repo; scratch/gpt_vs_claude_da/redo_rows.py).
+    dataset: "${oc.env:HF_ORG}/2026-11-23-da-gpt-principled-synth"
+    revision: "8052c42ce10548cb3c43a4f8c19abbafd7f4146e"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_gpt_principled"
+
+hf:
+  experiment: "all-GPT difficult-advice arm with principled reasons: the plain base blend (2026-10-05-plain-mix) scaled around the 2026-11-04 all-GPT difficult-advice corpus to which gpt-5.6-terra added, in reasoning and replies, the row's own principle and what is wrong in principle with the rejected course alongside the original practical reasons (decision, advice, point of view, reply markdown and drafted wording unchanged), testing principle-as-reason in the GPT-vs-Claude difficult-advice gap"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false
