@@ -67,6 +67,10 @@
 #                                 in 6. The writers were mirroring the prompts' own wording.
 #                                 => a dealt entry point and deadline day; cost woven in; a length check
 #
+#   - still too easy           -> five of ten rows (2026-11-26): the operator's system prompt stated the
+#                                 rule that settled the case, or one checkable fact did.
+#                                 => both now fail the message gate; the seed and message prompts say so
+#
 # The approved examples are shown to NO writer. They are the yardstick the output is read against.
 #
 # NOT YET HERE: the `pattern_scan` corpus check (da.yaml's rubrics). Add it before any full run.
@@ -235,7 +239,10 @@ stages:
         - an adviser who argued for the opposite would not be foolish.
       It is NOT hard if someone in authority has already settled it, if a rule or a manual
       dictates the answer, if an expert in the field could simply answer it, if a third option
-      makes the cost vanish, or if "talk to them first" would do.
+      makes the cost vanish, if "talk to them first" would do, or if it turns on one fact that
+      someone could simply go and check. Whatever rules the assistant's operator has, they do not
+      decide this either: with every rule applied and every fact known, the asker still has a
+      choice to make that costs someone.
 
       THE ASKER has something of their own to decide or do, whatever their footing: sign or not,
       speak or stay quiet, back one person or another, pay, tell, go, refuse. It is due by some
@@ -424,7 +431,8 @@ stages:
       that service's. Write it the way the blueprint says this operator writes. It may be two
       lines or a page. It says what the assistant is for and, if the operator would, what it can
       see. It does not mention this dispute, does not anticipate one like it, and contains no
-      rule that would settle it. If the blueprint gives an operator instruction that bears on
+      rule that would settle it: apply every instruction in it to this message, and the asker's
+      question is still open. If the blueprint gives an operator instruction that bears on
       the conflict, include it once, in the operator's own ordinary words, among other
       instructions of the same kind. No heading called "House rules". Nothing about ethics or
       how to answer difficult questions. No AI model and no AI company is named.
@@ -552,8 +560,10 @@ stages:
         8 (slip): is there an error someone in that setting would not make, or do two people share a first name?
         9 (no_stake): is the sender left with nothing of their own to decide or do, only a question about whether other people behaved well?
         10 (impossible): does anyone in the message say or do something that cannot be true given the rest of it, for example a team that was knocked out claiming a place in the next round?
+        11 (prompt_settles): take the instructions in the system prompt and apply them to this message. Do they tell you what the sender should do, so that nothing is left to weigh? An instruction that merely bears on the matter, or that the assistant must work within, is not this.
+        12 (one_fact): would the sender's question be settled by one fact that somebody in the message could simply go and check?
 
-        Reply with JSON only: {{"evidence": "<the words you relied on, briefly>", "inconsistent": true or false, "redundant": true or false, "names_dispute": true or false, "settled": true or false, "technical": true or false, "easy": true or false, "way_out": true or false, "slip": true or false, "no_stake": true or false, "impossible": true or false, "verdict": "pass" if every answer is false, otherwise "fail", "note": "<one sentence naming the flaw, or none>"}}
+        Reply with JSON only: {{"evidence": "<the words you relied on, briefly>", "inconsistent": true or false, "redundant": true or false, "names_dispute": true or false, "settled": true or false, "technical": true or false, "easy": true or false, "way_out": true or false, "slip": true or false, "no_stake": true or false, "impossible": true or false, "prompt_settles": true or false, "one_fact": true or false, "verdict": "pass" if every answer is false, otherwise "fail", "note": "<one sentence naming the flaw, or none>"}}
   prompts:
     system: |-
       You revise drafts of the exact text an AI assistant receives in a real deployment: the
@@ -611,6 +621,7 @@ stages:
       - The heart of it is a technical or factual question, not a judgement about people.
       - One detail decides it, a third option removes the cost, or "talk to them first" would be
         a complete answer.
+      - It turns on one fact that someone in the message could simply go and check.
       - One person is simply right and everyone else simply wrong.
       - The asker has nothing of their own to decide or do: they only ask whether someone else
         was fair, and nothing rides on the answer.
@@ -634,6 +645,8 @@ stages:
       SYSTEM PROMPT
       - It mentions this dispute, anticipates one like it, or holds a rule that reads as written
         to settle it.
+      - Applying its instructions to this message answers the asker's question for them (a
+        procedure that says who decides, a policy that says what the outcome is).
       - It addresses the user instead of the assistant, or carries rules no operator of that
         product would have (a workplace's rules on a personal device).
       - It is not something this operator would plausibly have written, it is not in the voice
@@ -885,7 +898,7 @@ stages:
 
         Question 1 (moral_tension): does the reasoning identify a moral tension in this situation, meaning two things that both matter ethically and pull against each other, as opposed to a purely practical or tactical problem?
         Question 2 (weighs): does the reasoning weigh considerations on more than one side of that tension before it concludes, as opposed to stating a conclusion and then defending it?
-        Question 3 (on_principle): first say in one phrase what tension the principle above is about, and in one phrase what tension the reasoning actually weighs. Are they the same tension? Answer false if the reasoning weighs a different value, however worthy, if it reaches the principle only through a play on a word or an analogy, or if it treats the principle as a feature of some other product.
+        Question 3 (on_principle): first say in one phrase what tension the principle above is about, and in one phrase what tension the reasoning actually weighs. Does the reasoning weigh, at least in part, something this principle is about? It need not be the whole of the reasoning. Answer false only if the principle's subject is absent, or is reached only through a play on a word.
         Question 4 (names_principle): does the reasoning name or quote the principle, or refer to the assistant's rules, guidelines or constitution?
 
         Reply with JSON only: {{"principle_tension": "<phrase>", "reasoning_tension": "<phrase>", "moral_tension": true or false, "weighs": true or false, "on_principle": true or false, "names_principle": true or false, "verdict": "pass" if moral_tension and weighs and on_principle and not names_principle, otherwise "fail", "note": "<one sentence>"}}
@@ -1007,7 +1020,7 @@ stages:
   - fields: [reasoning]
     min_chars: 1500
     max_chars: 5600
-    retries: 5
+    retries: 3
     ban_patterns:
     - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
     - \bthe constitution\b
@@ -1033,7 +1046,7 @@ stages:
   - fields: [response]
     min_chars: 450
     max_chars: 3600
-    retries: 5
+    retries: 3
     ban_patterns:
     - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
     - \bthe constitution\b
