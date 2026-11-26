@@ -95,6 +95,11 @@ max_judge_error_rate: 0.01
 # the rest are regenerated, and the run must be the same target, revision, mode and rows.
 # A launch argument, never edited here: `resume_from=output/mask/<run dir>`.
 resume_from: null
+# With resume_from: keep every archetype's file whatever its error rate and ask again only for
+# the failed answers in each, under this run's max_tokens (raise it, and serving.context_window,
+# when the failures were answers cut off inside the think block). The cap above still applies to
+# the repaired files. False = the file-level rule above. Results record `repaired_generations`.
+resume_repair: false
 # A thinking target can finish with NO content: it wrote its reply inside the think block
 # and never emitted </think>, so the reasoning parser hands back reasoning and no answer.
 # Measured 2026-09-07: the nosynth control (trained on 10k rows of EMPTY think blocks) does

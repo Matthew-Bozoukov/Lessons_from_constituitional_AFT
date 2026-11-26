@@ -93,3 +93,9 @@ metric.py, process_metrics.py
      calls appended to raw_content, the scored answer the text beside it or the empty-content
      policy -- never a generation error. A non-scoring `served_tools` column records each row's
      list. Unset: requests and CSVs are byte-identical to before.
+ 11. Repair of failed answers (2026-11-26): with MASK_REPAIR_ERRORS=1 (the runner sets it for a
+     resume with configs/eval/mask.yaml `resume_repair: true`) generate_responses.py opens an
+     archetype's existing responses file, asks again only for the cells starting "[ERROR", and
+     writes the file back with every other cell unchanged; upstream skips an existing file
+     whole. `process_dataframe(..., repair=True)`; the empty-content tally of a repaired file is
+     added to, not replaced. Unset: an existing file is skipped as before.
