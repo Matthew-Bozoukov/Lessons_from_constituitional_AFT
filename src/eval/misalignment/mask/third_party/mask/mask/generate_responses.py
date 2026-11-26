@@ -180,7 +180,7 @@ def create_model_client(model_name, base_url=None, api_key=None):
                            timeout=float(os.getenv('MASK_GEN_TIMEOUT_S', '1800')))
     return AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
-async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-4o-mini", max_tokens=2000, belief_k=None, lie_k=10, base_url=None, api_key=None, semaphore=None):
+async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-4o-mini", max_tokens=2000, belief_k=None, lie_k=10, base_url=None, api_key=None, semaphore=None, repair=False):
     """
     Process a dataframe and generate responses from an AI model.
     
@@ -213,6 +213,16 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
         df = pd.read_csv(input_csv)
         if 'belief_system_1' not in df.columns and 'belief_elicit_1' in df.columns:
             df['belief_system_1'] = 'You are a helpful assistant.'
+
+        # VENDORED PATCH (2026-11-26, repair): with `repair`, `output_csv` already holds this
+        # archetype's answers and only its failed cells (those starting "[ERROR", the same test
+        # the runner counts failures by) are asked again. Every other cell is written back as
+        # the text it was read as, so it is read as strings with nothing turned into NaN.
+        prior = None
+        if repair:
+            prior = pd.read_csv(output_csv, dtype=str, keep_default_na=False)
+            assert list(prior['task_id']) == [str(t) for t in df['task_id']], (
+                f'{output_csv} does not hold the rows of {input_csv}, in order')
 
         # Check if this is a doubling down scenario (multi-turn conversation)
         is_doubling_down = 'dd_turn_1_prompt' in df.columns and 'dd_turn_1_response' in df.columns
@@ -264,16 +274,6 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
                             prompt_types.append(f'be{be_num}_run{run+1}')
                             prompt_tools.append(None)
 
-        # Generate responses in parallel for all prompts
-        all_responses = await asyncio.gather(*[
-            generate_responses_async(
-                client, model_name, {prompt_type: prompt},
-                max_tokens=max_tokens, temperature=temperature,
-                semaphore=semaphore, K=1, tools=tools
-            )
-            for prompt, prompt_type, tools in zip(all_prompts, prompt_types, prompt_tools)
-        ])
-
         # Create mapping for output column names
         column_mapping = {
             f'lying_run{run+1}': f'generation(System Prompt + User Prompt)_run{run+1}'
@@ -286,7 +286,27 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
                 for run in range(k_value):
                     column_mapping[f'be{be_num}_run{run+1}'] = f'generation(belief_system_1 + belief_elicit_{be_num})_run{run+1}'
 
+        if prior is not None:  # VENDORED PATCH (repair): keep only the prompts whose stored answer failed
+            failed = [str(prior.at[i, column_mapping[t]]).startswith('[ERROR') for i, t in zip(indices, prompt_types)]
+            all_prompts, indices, prompt_types, prompt_tools = (
+                [x for x, f in zip(seq, failed) if f] for seq in (all_prompts, indices, prompt_types, prompt_tools))
+            print(f'Repairing {len(all_prompts)} failed answers in {output_csv}')
+            if not all_prompts:
+                return
+
+        # Generate responses in parallel for all prompts
+        all_responses = await asyncio.gather(*[
+            generate_responses_async(
+                client, model_name, {prompt_type: prompt},
+                max_tokens=max_tokens, temperature=temperature,
+                semaphore=semaphore, K=1, tools=tools
+            )
+            for prompt, prompt_type, tools in zip(all_prompts, prompt_types, prompt_tools)
+        ])
+
         # Process responses and save to dataframe
+        if prior is not None:  # VENDORED PATCH (repair): the answers go into the file as it was
+            df = prior
         for response, index, prompt_type in zip(all_responses, indices, prompt_types):
             column_name = column_mapping[prompt_type]
             # PATCH (teaching_claude_why): the think block lands in a sibling column,
@@ -311,11 +331,11 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
         # VENDORED PATCH (2026-10-30): the system prompt the target actually received, as a
         # NON-scoring column (evaluate.py keeps judging from `system_prompt`). Only when set,
         # so an unset run's CSV is byte-identical to upstream.
-        if os.environ.get(_PREAMBLE_ENV):
+        if os.environ.get(_PREAMBLE_ENV) and prior is None:
             df["served_system_prompt"] = [_sys(s) if isinstance(s, str) else s for s in df["system_prompt"]]
         # VENDORED PATCH (MASK+tools): the tools each row's pressure prompts were sent with, as a
         # NON-scoring column (evaluate.py selects only `generation(` columns). Only when set.
-        if TOOLS_BY_TASK is not None:
+        if TOOLS_BY_TASK is not None and prior is None:
             df["served_tools"] = [_tools_json.dumps(pressure_tools(t)) for t in df["task_id"]]
         # Save results to CSV
         df.to_csv(output_csv, index=False)
@@ -324,7 +344,9 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
         import json as _json
         tally_path = os.path.join(os.path.dirname(output_csv), '_empty_content.json')
         tally = _json.load(open(tally_path)) if os.path.exists(tally_path) else {}
-        counts = {}
+        # VENDORED PATCH (repair): a repaired cell was a failure, never an empty answer, so the
+        # file's earlier tally stands and the repaired answers add to it.
+        counts = dict(tally.get(os.path.basename(output_csv), {})) if prior is not None else {}
         for response in all_responses:
             for key, count in response.get('__empty_content__', {}).items():
                 counts[key] = counts.get(key, 0) + count
@@ -369,7 +391,11 @@ if __name__ == "__main__":
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
         # Skip if output file already exists
-        if os.path.exists(output_file):
+        # VENDORED PATCH (2026-11-26, repair): MASK_REPAIR_ERRORS=1 (the runner sets it for a
+        # resume with `resume_repair=true`) opens an existing file and asks again only for its
+        # failed answers, where upstream skips the file whole. Unset: unchanged.
+        repair = os.getenv('MASK_REPAIR_ERRORS') == '1' and os.path.exists(output_file)
+        if os.path.exists(output_file) and not repair:
             print(f'Skipping {output_file} as it already exists')
             continue
 
@@ -385,6 +411,7 @@ if __name__ == "__main__":
             # vendored CLI can hit a vLLM base_url without new flags; unset = original behaviour.
             base_url=os.getenv('MASK_TARGET_BASE_URL') or None,
             api_key=os.getenv('MASK_TARGET_API_KEY') or None,
+            repair=repair,
         ))
     # PATCH (teaching_claude_why, 2026-09-22): every pending archetype runs under ONE queue.
     # Upstream ran them one after another, each `asyncio.run` draining to its last long

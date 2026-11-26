@@ -170,7 +170,7 @@ def test_every_harness_patch_is_listed():
         assert "PATCH (teaching_claude_why)" in src, f"{stage} carries no patch marker"
         assert stage in listed, f"{stage} is patched but not listed in VENDORED_FROM.txt"
     for var in ("MASK_DATA_DIR", "MASK_GEN_CONCURRENCY", "MASK_JUDGE_TRANSPORT", "MASK_JUDGE_EXCHANGE",
-                "MASK_JUDGE_ROW_TIMEOUT_S"):
+                "MASK_JUDGE_ROW_TIMEOUT_S", "MASK_REPAIR_ERRORS"):
         assert var in listed
 
 
@@ -287,6 +287,135 @@ def test_resume_refuses_another_models_answers_and_a_run_with_no_work_tree(tmp_p
         runner.resume_work(tmp_path / "finished" / "mask_work", tmp_path / "w2" / "mask_work", "m", cap=0.05)
     # a finished run has consumed its tree, so there is nothing for the caller to resolve
     assert runner._prior_pass_tree(tmp_path / "finished", 1, 1) is None
+
+
+# --- repairing only the failed answers --------------------------------------------------
+
+def test_a_repairing_resume_keeps_every_file_whatever_its_error_rate(tmp_path):
+    """2026-11-26: a base run failed 198 of 4,438 answers (cut off inside the think block), spread so
+    that every archetype was past the 2% cap, and the file-level resume regenerated all 4,438.
+    With `repair` the files are all kept and their failed cells counted for the harness to redo."""
+    prior = tmp_path / "prior"
+    responses = prior / "mask_work" / "data" / "responses"
+    responses.mkdir(parents=True)
+    err = "[ERROR: Incomplete generation: finish_reason=length]"
+    _responses(responses / "statistics_m.csv", [(err, "y")] * 5)        # half its answers failed
+    work = tmp_path / "out" / "mask_work"
+    assert runner.resume_work(prior / "mask_work", work, "m", cap=0.02, repair=True) == []
+    kept = work / "data" / "responses" / "statistics_m.csv"
+    assert kept.read_bytes() == (responses / "statistics_m.csv").read_bytes()
+    assert runner.generation_errors(work / "data" / "responses") == {"generations": 10, "errors": 5}
+    assert CFG["resume_repair"] is False                                 # opt-in: the default resume is unchanged
+
+
+def test_the_harness_repairs_only_the_failed_answers_of_an_existing_file(tmp_path, monkeypatch):
+    """`repair=True` asks again for the cells that start "[ERROR" and for nothing else, and writes
+    every other cell back as it was (an answer such as "N/A" must not come back empty)."""
+    import asyncio, csv, importlib.util, types
+    spec = importlib.util.spec_from_file_location("mask_generate_responses",
+                                                  runner._HARNESS / "generate_responses.py")
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+
+    class _Msg:
+        def __init__(self, content, reasoning): self.content, self.reasoning_content = content, reasoning
+    class _Completion:
+        def __init__(self, content, reasoning, finish="stop"):
+            self.choices = [types.SimpleNamespace(message=_Msg(content, reasoning), finish_reason=finish)]
+    calls = []
+    def client(answer):
+        class _Completions:
+            async def create(self, model, messages, max_tokens, temperature, **kw):
+                calls.append((messages[-1]["content"], max_tokens))
+                return answer(messages[-1]["content"])
+        class _Client:
+            chat = types.SimpleNamespace(completions=_Completions())
+            async def close(self): pass
+        return _Client()
+    monkeypatch.setenv("MASK_EMPTY_CONTENT", "evasion")
+
+    src = runner._HARNESS / "test_csv_data" / "continuations.csv"
+    inp = tmp_path / "continuations.csv"
+    with src.open(newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh); rows = list(reader)
+    rows[0]["user_prompt"] = "CUT_OFF_MARKER " + rows[0]["user_prompt"]
+    with inp.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=reader.fieldnames); w.writeheader(); w.writerows(rows)
+    out = tmp_path / "continuations_stub.csv"
+    run = lambda **kw: asyncio.run(mod.process_dataframe(str(inp), str(out), temperature=1.0, model_name="stub", belief_k={"1": 3, "2": 1, "3": 1},
+                                                         lie_k=1, base_url="http://stub", api_key="x", **kw))
+    read = lambda: list(csv.DictReader(out.open(newline="", encoding="utf-8")))
+
+    # the first run: one pressure answer is cut off inside its think block, and one belief answer is the text "N/A"
+    first = lambda user: (_Completion("partial", "a trace that ran out of tokens", "length") if "CUT_OFF_MARKER" in user
+                          else _Completion("N/A" if user == rows[1]["belief_elicit_2"] else f"answer to: {user[:20]}", "trace"))
+    monkeypatch.setattr(mod, "create_model_client", lambda *a, **k: client(first))
+    run(max_tokens=64)
+    before, n_first = read(), len(calls)
+    cell = "generation(System Prompt + User Prompt)_run1"
+    assert before[0][cell] == "[ERROR: Incomplete generation: finish_reason=length]"
+    assert before[1]["generation(belief_system_1 + belief_elicit_2)_run1"] == "N/A"
+
+    # the repair: one request, for that cell, under the new token limit
+    monkeypatch.setattr(mod, "create_model_client", lambda *a, **k: client(lambda user: _Completion("repaired answer", "repaired trace")))
+    run(max_tokens=128, repair=True)
+    after = read()
+    assert calls[n_first:] == [(rows[0]["user_prompt"], 128)]
+    assert after[0][cell] == "repaired answer"
+    assert after[0][cell.replace("generation(", "reasoning(", 1)] == "repaired trace"
+    assert after[0][cell.replace("generation(", "finish_reason(", 1)] == "stop"
+    redone = {cell.replace("generation(", prefix, 1) for prefix in ("generation(", "reasoning(", "finish_reason(", "raw_content(")}
+    for b, a in zip(before, after):
+        assert {k: v for k, v in a.items() if k not in redone or a is not after[0]} == {k: v for k, v in b.items() if k not in redone or b is not before[0]}
+
+    # a file with nothing failed is left exactly as it is and reaches no model
+    stamp = out.read_bytes()
+    run(max_tokens=128, repair=True)
+    assert len(calls) == n_first + 1 and out.read_bytes() == stamp
+
+
+def test_a_repairing_resume_runs_the_generation_stage_for_the_failed_answers_only(tmp_path, monkeypatch):
+    """End to end with the stages stubbed: every archetype's file exists, one holds a failed answer.
+    The plain resume would delete that file; with `resume_repair` the generation stage is run once
+    with MASK_REPAIR_ERRORS=1 over the kept files, and the result records what was asked again."""
+    import csv, types
+    from pathlib import Path
+    from omegaconf import OmegaConf
+    prior = tmp_path / "prior"
+    sampled = runner.sample_data(runner._HARNESS / "test_csv_data", prior / "mask_work" / "data", None, 0)
+    (prior / "mask_work" / "data" / "responses").mkdir()
+    err, col = "[ERROR: Incomplete generation: finish_reason=length]", "generation(System Prompt + User Prompt)_run1"
+    for i, a in enumerate(sorted(sampled)):
+        ids = [r["task_id"] for r in csv.DictReader((prior / "mask_work" / "data" / f"{a}.csv").open(newline="", encoding="utf-8"))]
+        with (prior / "mask_work" / "data" / "responses" / f"{a}_m.csv").open("w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh); w.writerow(["task_id", col])
+            w.writerows([t, err if (i, j) == (0, 0) else "an answer"] for j, t in enumerate(ids))
+    (prior / "run_meta.json").write_text(json.dumps({"target": "org/m", "target_revision": "r", "mode": "think"}))
+    calls = []
+
+    def fake_stage(argv, env, cwd, log_dir=None):
+        data = Path(env["MASK_DATA_DIR"])
+        calls.append(argv[0])
+        if argv[0] == "generate_responses.py":
+            assert env["MASK_REPAIR_ERRORS"] == "1" and argv[argv.index("--max_tokens") + 1] == "64"
+            for f in (data / "responses").glob("*.csv"):               # what the harness does: the failed cell alone changes
+                f.write_text(f.read_text(encoding="utf-8").replace(err, "a repaired answer"), encoding="utf-8")
+        elif argv[0] == "process_metrics.py":
+            (data / "metrics").mkdir(exist_ok=True)
+            (data / "metrics" / "all_results.json").write_text(json.dumps({
+                a: {"m": {"honesty_score_1": 80.0, "unhonest_1": 20.0, "honest_1": 80.0, "total_responses": 5}} for a in sampled}))
+        return ""
+
+    monkeypatch.setattr(runner, "_run_stage", fake_stage)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "x")
+    target = types.SimpleNamespace(model_name="m", base_url="http://x", api_key="k", release=lambda: None,
+                                   spec=types.SimpleNamespace(hf_path="org/m", revision="r", mode="think"))
+    cfg = OmegaConf.create({"smoke": True, "passes": 1, "judge_model": "google/gemini-3-flash-preview", "judge_concurrency": 1,
+                            "temperature": 1.0, "max_tokens": 64, "lie_k": 1, "gen_concurrency": 4, "max_generation_error_rate": 0.02,
+                            "resume_from": str(prior), "resume_repair": True})
+    summary = runner.run(target, cfg, tmp_path / "run")
+    assert calls.count("generate_responses.py") == 1
+    assert summary["repaired_generations"] == 1 and summary["regenerated_archetypes"] == []
+    assert summary["generation_errors"]["errors"] == 0
 
 
 # --- one queue over every archetype ------------------------------------------------------

@@ -205,7 +205,7 @@ def generation_errors(responses_dir: Path) -> dict:
     return {"generations": generations, "errors": errors}
 
 
-def resume_work(src: Path, work: Path, modelname: str, cap: float) -> list[str]:
+def resume_work(src: Path, work: Path, modelname: str, cap: float, repair: bool = False) -> list[str]:
     """Adopt a failed run's work tree, keeping every archetype it generated cleanly.
 
     A MASK run is hours of generation and the harness writes one responses file per
@@ -221,8 +221,14 @@ def resume_work(src: Path, work: Path, modelname: str, cap: float) -> list[str]:
     `mask_work` to what was already the tree and every resume failed looking for
     `mask_work/mask_work`.
 
+    `repair` (config `resume_repair`) keeps every file whatever its error rate: the harness
+    then asks again only for the failed answers in each (MASK_REPAIR_ERRORS, the vendored
+    generate_responses.py). That is the cheap resume when failures are scattered: on 2026-11-26
+    a base run failed 198 of 4,438 answers, every archetype was past the cap, and the
+    file-level rule regenerated all 4,438.
+
     Returns:
-        The archetypes that will be regenerated.
+        The archetypes that will be regenerated whole (none under `repair`).
     """
     assert (src / "data" / "responses").is_dir(), (
         f"{src} holds no data/responses to resume; only a run that FAILED keeps its work "
@@ -234,7 +240,7 @@ def resume_work(src: Path, work: Path, modelname: str, cap: float) -> list[str]:
         assert path.stem.endswith(f"_{modelname}"), (
             f"{path.name} was generated for a different served model than {modelname!r}")
         g, e = _file_errors(path)
-        if e / max(g, 1) > cap:
+        if not repair and e / max(g, 1) > cap:
             dropped.append(path.stem[: -len(modelname) - 1])
             path.unlink()
     return dropped
@@ -383,10 +389,15 @@ def _generate_pass(k: int, passes: int, target, cfg: DictConfig, work: Path, sou
     seed = int(cfg.get("seed", 0))
     data_dir, logs = work / "data", work / "logs"
     regenerated: list[str] = []
+    repair = bool(cfg.get("resume_repair", False))
+    to_repair = 0                              # failed answers a repairing resume will ask again
     prior_tree = _prior_pass_tree(prior, k, passes) if prior else None
     if prior_tree is not None:
         regenerated = resume_work(prior_tree, work, modelname,
-                                  float(cfg.get("max_generation_error_rate", 0.05)))
+                                  float(cfg.get("max_generation_error_rate", 0.05)), repair=repair)
+        if repair:
+            to_repair = generation_errors(data_dir / "responses")["errors"]
+            env = {**env, "MASK_REPAIR_ERRORS": "1"}
         sampled = sample_data(source, work / "resample_check", None if smoke else subsample, seed)
         for archetype in sampled:
             assert ((work / "resample_check" / f"{archetype}.csv").read_bytes()
@@ -401,7 +412,8 @@ def _generate_pass(k: int, passes: int, target, cfg: DictConfig, work: Path, sou
                  for path in (data_dir / "responses").glob("*.csv")}
         missing = sorted(set(sampled) - saved - set(regenerated))
         print(f">>> MASK pass {k}: resuming {prior_tree}; keeping {sorted(saved)}, regenerating "
-              f"{regenerated or 'nothing'}, generating for the first time {missing or 'nothing'}",
+              f"{regenerated or 'nothing'}, generating for the first time {missing or 'nothing'}"
+              + (f", asking again for {to_repair} failed answers in the kept files" if repair else ""),
               flush=True)
     else:
         sampled = sample_data(source, data_dir, None if smoke else subsample, seed)
@@ -414,7 +426,7 @@ def _generate_pass(k: int, passes: int, target, cfg: DictConfig, work: Path, sou
     # (2026-11-16: a three-pass base run stopped after pass 1, published as one pass).
     to_generate = sorted(a for a in sampled
                          if not (data_dir / "responses" / f"{a}_{modelname}.csv").is_file())
-    if prior_tree is not None and not to_generate:
+    if prior_tree is not None and not to_generate and not to_repair:
         print(f">>> MASK pass {k}: all {len(sampled)} archetypes' answers were resumed; nothing to "
               "generate, so no model is reached", flush=True)
     else:
@@ -451,7 +463,7 @@ def _generate_pass(k: int, passes: int, target, cfg: DictConfig, work: Path, sou
             "generation_errors": errors, "generation_error_rate": round(error_rate, 4),
             "empty_content": empty, "empty_content_rate": round(empty_rate, 4),
             "resumed_from": str(prior_tree) if prior_tree else None,
-            "regenerated_archetypes": regenerated, "env": env}
+            "regenerated_archetypes": regenerated, "repaired_generations": to_repair, "env": env}
 
 
 def _score_pass(gen: dict, target, cfg: DictConfig, modelname: str, release_target: bool) -> dict:
@@ -668,7 +680,8 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
                  "empty_content": g["empty_content"], "empty_content_rate": g["empty_content_rate"],
                  "judge_batch_stats": s["judge_batch_stats"],
                  "judge_errors": s["judge_errors"], "judge_error_rate": s["judge_error_rate"],
-                 "resumed_from": g["resumed_from"], "regenerated_archetypes": g["regenerated_archetypes"]}
+                 "resumed_from": g["resumed_from"], "regenerated_archetypes": g["regenerated_archetypes"],
+                 "repaired_generations": g["repaired_generations"]}
                 for g, s in zip(gens, scored)]
     jerrs = {"judgements": sum(s["judge_errors"]["judgements"] for s in scored),
              "errors": sum(s["judge_errors"]["errors"] for s in scored)}
@@ -708,6 +721,8 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         "judge_row_timeout_s": int(cfg.get("judge_row_timeout_s", 600)),
         "resumed_from": str(resumed_from) if resumed_from else None,
         "regenerated_archetypes": gens[0]["regenerated_archetypes"] if passes == 1 else [g["regenerated_archetypes"] for g in gens],
+        # failed answers of the resumed run that were asked again, under THIS run's max_tokens (resume_repair)
+        "repaired_generations": gens[0]["repaired_generations"] if passes == 1 else [g["repaired_generations"] for g in gens],
         "lie_k": int(cfg.lie_k),
         "smoke": smoke,
         "inject_tools": tools_record,
