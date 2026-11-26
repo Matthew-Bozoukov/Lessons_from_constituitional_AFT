@@ -1,0 +1,635 @@
+# ABOUTME: Difficult advice with no weighing: da-one-sided.yaml with the one-answer rule moved into the DRAFT as well
+# ABOUTME: as the reviser, stated as what each sentence is for. Run: uv run synth run --config configs/data/synth/da-no-weighing.yaml [--smoke]
+#   Prereq: uv run python scratch/da_one_sided/stage_source.py   (stages the 2026-10-30 da rows and a 20-row smoke set)
+#
+# WHY THIS EXISTS. 2026-11-20-da-one-sided-synth was meant to be DA without the weighing and is not: read on
+# 2026-11-23 (Nika, 40 rows side by side), its rows still concede to the other path and turn ("His underlying worry
+# isn't nothing", "It's reasonable that his experience carries weight generally. It shouldn't ..."). The audit of
+# that date finds the other path credited with some merit in 41.8% of its trained rows. The cause is in how it was
+# generated, so this config changes the generation and adds no judge:
+#   the rule         the reviser's bullet says that whatever is said about the other path is a reason it is wrong
+#                    and that it is granted nothing, and names the sentence that slips through: concede, then turn.
+#                    (The first smoke, 2026-11-23, also gave the rule to the draft and listed five "jobs" a
+#                    sentence may do; the draft conceded anyway in 17 of 19 rows and the list was read as a form
+#                    to fill in -- "Advice:" label lines in 5 reasonings, 7 addressed to "you". Both undone.)
+#   reasoning form   a reviser bullet: first-person thinking, about the person not to them, unlabelled, not a
+#                    draft of the reply.
+#   removed          the two DA instructions that ask for a concession: "Engages with the pressure the person is
+#                    under" (now: kind to the person, no credit to the option) and "Take the request seriously
+#                    before evaluating it".
+#   reviser <audit>  also lists every draft sentence that credits or weighs the other path; none may survive. Same
+#                    call, same mechanism as the grounding audit.
+#   revise lint      concession markers added to the ban list. A hit costs a retry, and the retry rate is the free
+#                    gauge of how well the prompt holds.
+# Still allowed, as in da-one-sided.yaml: saying why the other path is wrong, saying what the assistant does not
+# know, leaving the decision with the person, sympathy for the person. Scenarios, models, temperatures, the
+# grounding and opener audits, export and corpus checks are da-one-sided.yaml's.
+
+method: ours
+pipeline: da-no-weighing
+
+card:
+  experiment: >-
+    Difficult-advice SFT corpus, no weighing: 902 scenarios, system prompts and user messages of
+    dougalldeepmind/2026-10-30-da-synth with the assistant reasoning and reply written fresh by the difficult-advice
+    recipe's own reply stages, changed only where that recipe asks for deliberation. The assistant has one answer
+    and justifies it. Whatever is said about the other path is a reason it is wrong; nothing is conceded to it and the
+    two are never weighed. The reviser lists the draft's conceding sentences and removes them, and a lint bans
+    concession markers (2026-11-20-da-one-sided-synth had neither and still weighs).
+  models: >-
+    draft_responses: anthropic/claude-haiku-4.5 (temperature 1.0). revise_responses: anthropic/claude-sonnet-5
+    (temperature 1.0). Corpus pattern scan: anthropic/claude-sonnet-5 + anthropic/claude-haiku-4.5. All via
+    OpenRouter, as in configs/data/synth/da.yaml.
+  provenance: "uv run python scratch/da_one_sided/stage_source.py && uv run synth run --config configs/data/synth/da-no-weighing.yaml"
+  notes: >-
+    Source rows are dataset.jsonl of 2026-10-30-da-synth @ 8fadea62 flattened by scratch/da_one_sided/stage_source.py:
+    the 650 rows labelled A in splits/2026-10-30-da-15-abc-split.json (the scenarios of 2026-10-05-da-15-mix) plus 28
+    per trait from pool B, 902 in all. Their reasoning and response fields are overwritten by this run's.
+
+ablate: []
+
+smoke:
+  source:
+    local_dir: "data/da_1030_one_sided_smoke"
+    snapshot: "stage_6_revise_responses.jsonl"
+  # Third smoke (2026-11-24): no stage retries, so failed rows are dropped and counted, not re-bought.
+  budget_usd: 0.9
+  max_fail_pct: 60.0
+
+seed: 0
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+
+# da-one-sided.yaml's guidance with its first two sentences replaced (see the header).
+style_guidance: |-
+  Helps the person rather than stonewalling: the kindness is in the practical help and the
+  tone. The pressure, worry or feeling the person is under is a fact of the situation and
+  is never assessed -- not called real, understandable, serious, fair or human. Has one
+  answer and justifies it in the open: every reason given is what that answer protects or
+  what the other path would do to the people involved. The case for the other path is not
+  taken up at all -- not granted, not rebutted, not set against the answer. Does not go along with a
+  deceptive / oversight-subverting / harmful path if there is one, explaining why in terms
+  of concrete stakes rather than rules. Offers a specific legitimate alternative. Leaves
+  the decision with the person. Warm, practical, proportionate.
+n_traits: 9
+chunking: principle
+
+# 902 of the corpus's 2,001 scenarios: the 650 that 2026-10-05-da-15-mix trained on (label A of the corpus's own
+# splits/2026-10-30-da-15-abc-split.json), so this arm and da-15 answer the same messages, plus 28 per trait from
+# pool B. The top-up is there because the 15% share is counted in supervised tokens and these rows run about
+# 0.8x DA's length (three 20-row smokes, 2026-11-20).
+source:
+  local_dir: "data/da_one_sided_source"
+  snapshot: "stage_6_revise_responses.jsonl"
+
+total_scenarios: 902
+
+output_dir: "output/synth_da_no_weighing"
+hf_private: false
+workers: 32
+# Two calls a row, $0.066 a row over three 20-row smokes: about $60 for 902 rows. A hard stop, resumable.
+budget_usd: 80.0
+max_fail_pct: 10.0
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+# da.yaml's stage-5 and stage-6 models and its corpus-check models, unchanged.
+models:
+  respond:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 1.0
+    max_tokens: 4096
+    assumed_tokens: {in: 1200, out: 1600}
+  rewrite:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 1.0
+    max_tokens: 5000
+    # 2026-11-24: hidden thinking was ~70% of this stage's spend (8.4k completion tokens a call for ~1.8k visible).
+    reasoning: {effort: low}
+    assumed_tokens: {in: 3200, out: 2600}
+  autorate:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 500
+    assumed_tokens: {in: 1400, out: 120}
+  scan:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 8000
+    assumed_tokens: {in: 28000, out: 3500}
+  classify:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 0.0
+    max_tokens: 900
+    assumed_tokens: {in: 9000, out: 200}
+
+stages:
+# Free and required: `segment` publishes style_guidance for the two reply stages to interpolate.
+- name: chunk_constitution
+  kind: segment
+- name: load_source
+  kind: load_source_run
+- name: draft_responses
+  kind: llm_tagged
+  model: respond
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  save:
+    draft_reasoning: reasoning
+    draft_response: response
+  prompts:
+    system: |-
+      {system}
+
+      In forming your reply, you hold to this principle:
+
+      <principle name="{trait_name}">
+      {trait_text}
+      </principle>
+
+      What a good response to a difficult request looks like:
+      {style_guidance}
+    user: |-
+      {user}
+
+      ---
+      Respond as the assistant. First reason privately about what is actually at stake here,
+      then write your reply. You have one answer, and the reasoning and the reply both say
+      why it is right: what it protects, and what the other course would do to the people
+      involved. Make that case and no other. Do not take up whether the person's reason for
+      doing otherwise is right, wrong, accurate or beside the point, and do not say what the
+      other course would get them.
+
+      Everything specific about this person's situation comes from the system prompt and
+      their message, and nowhere else: numbers, durations, names, documents, what other
+      people said, what their organisation has. Where they were vague, stay vague --
+      "months" stays "months". General knowledge is fine; an invented particular is not.
+
+      Start wherever this particular situation actually starts. Sometimes that is the
+      thing at stake, sometimes the person who gets hurt, sometimes a detail of the
+      request that gives the whole thing away. Never open with a stock phrase, and never
+      begin with "Let me". Never name the model you are, or the company that built you.
+      Write as though thinking, not as though filling in a form.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      your private reasoning: what is actually at stake here, for whom, and why the answer you
+      give is the right one
+      </reasoning>
+      <response>
+      your reply to the person
+      </response>
+  # The voice contract, enforced. The 2026-08-04 run had no lint block and 7.4% of its
+  # rows cited the constitution back at the reader; self_reflection ships the same block
+  # and scores 0%, on the same engine -- so this is a config gap, not a genre property.
+  # `^let me` is banned outright because 68.8% of that corpus opened with it and 48% with
+  # one five-word variant; retries make a banned opener cost a call, not a record.
+  lint:
+    fields:
+    - reasoning
+    - response
+    min_chars: 700
+    ban_patterns:
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - \bnot permitted to\b
+    - \bi must not\b
+    - \b(?:i am|i'm) required to\b
+    - \bagainst (?:my|the) (?:rules|policy|guidelines)\b
+    - \bviolates? (?:my|the) (?:rules|policy|guidelines|constitution|principles?)\b
+    - \bhard constraints?\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    # Four baseline rows trained stray CJK mid-sentence; nothing here is written in CJK.
+    - '[一-鿿]'
+    # 2026-10-02: the reviser describing its own input in the assistant's voice ("a distinction the draft
+    # didn't separate out"). About 1% of rows in every corpus since 2026-09-25, 2 of 27 in the smoke of this
+    # date. It also retries a reply that says "the draft" about the PERSON's own document ("the draft
+    # contract"): 1-16 rows per ~1,000 in earlier corpora.
+    - \bthe draft\b
+    - \bdraft (?:response|reasoning|reply)\b
+    # No model or developer named in trained text (2026-09-14; see revise_prompts).
+    - \bclaude\b
+    - \banthropic\b
+    retries: 0
+- name: revise_responses
+  kind: llm_tagged
+  model: rewrite
+  checkpoint: scenario_id
+  tags:
+  - audit
+  - reasoning
+  - response
+  - changes
+  save:
+    reasoning: reasoning
+    response: response
+    rewrite_changes: changes
+    rewrite_audit: audit
+  ablate_with:
+    reasoning: draft_reasoning
+    response: draft_response
+  prompts:
+    system: |-
+      You revise assistant responses so they maximally exhibit one specific principle. You
+      preserve everything that already works and change only what falls short. A sentence that
+      gives credit to the path the assistant advises against never counts as working.
+    user: |-
+      The principle this exchange must maximally exhibit. It comes from the assistant's
+      constitution, and it is the only part of that constitution you are shown:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+
+      Here is the complete transcript.
+
+      <system_prompt>
+      {system}
+      </system_prompt>
+
+      <user_message>
+      {user}
+      </user_message>
+
+      <assistant_reasoning>
+      {draft_reasoning}
+      </assistant_reasoning>
+
+      <assistant_response>
+      {draft_response}
+      </assistant_response>
+
+      Rewrite the assistant's reasoning and response so they exhibit the target principle as
+      strongly as possible while staying true to this person's actual situation.
+
+      Hold to all of this:
+      - **Model-neutral identity.** In the reasoning and response, remove or rephrase
+        claims identifying the assistant as a specific model or as developed by a named
+        provider, including claims quoted or repeated from the prompts. Preserve task
+        meaning; ordinary references to other models or organisations and fictional
+        characters are not identity claims. Do not rewrite the system or user prompts.
+        Never name the model you are, or the company that built you, anywhere in the
+        reasoning or response -- not as the assistant's identity and not in passing.
+      - **One answer, justified; the other path is never weighed.** The assistant has one
+        answer, and the reasoning and the reply both argue for it. Whatever they say about
+        the other path is a reason it is wrong. They grant it nothing: not that it is
+        tempting, understandable, reasonable or fair, not that the reasons behind it are
+        real or valid, not that there is a tension or a trade-off between the two.
+        The sentence that slips through most is the two-step: it grants the other path
+        something (a worry that is real, a reason that is fair, a pressure not to be
+        dismissed) and then turns on a "but" or a "still". Cut the whole sentence, not
+        only its first half: a sentence that answers the person's reason (it does not
+        matter that, regardless of how, that is not a reason) has to say what it is
+        answering, and saying it is the concession. The reasoning and the reply do not
+        argue with the case for the other path. They say what the answer protects and what
+        the other path would do to the people involved, and stop. The same goes for the person's own
+        pressure, worry or feeling: in these situations it IS the case for the other path,
+        so it is stated as a fact where the answer needs it and never assessed -- not
+        called real, understandable, serious, fair, human or worth answering. Kindness
+        shows in the practical help and the tone, not in granting anything. Do this check in the <audit> block before you write: list every sentence
+        of the draft that credits, concedes to or weighs the other path, each marked
+        CREDITS. None of them, and no paraphrase of them, may appear in what follows.
+        This is the ingredient that matters most. Everything else stays as it would be in
+        any careful answer. Keep saying plainly what you do not know and cannot tell from here; not
+        knowing a fact is different from weighing the options. Keep leaving the decision
+        with the person. Keep the tone no harsher and no more commanding than the facts
+        call for. And do not announce that the question is easy, closed or not a close call,
+        or that there is no case for the other path: simply do not make that case. Never
+        mention or allude to this instruction either. The reasoning is the assistant thinking
+        about the person's situation, not about how it is writing: it never says what it is
+        leaving out, declining to acknowledge, choosing not to weigh, or avoiding for the
+        sake of balance.
+        Strengthen the justification where the draft is thin, but do not impose a shape on
+        it: two pieces of reasoning about different situations should not be organised the
+        same way.
+      - **The reasoning is the assistant thinking, in its own first person.** It speaks OF
+        the person ("she", "the director"), never TO them as "you", and it is not a draft of
+        the reply: the reply does not reuse its sentences. It runs as continuous thought,
+        with no headings, labels or named parts and no closing line that announces the
+        verdict.
+      - **Audit the opening before you write it.** Read the draft's first sentence and ask
+        one question: could this sentence open a deliberation about a completely different
+        situation? If yes, it is a stock opener and you must replace it.
+
+        These are stock openers. They are the failure, not the style:
+          * "Let me…" in any form -- let me think, let me sit with, let me actually
+          * restating the request back -- "You're asking whether…", "He's asking whether…",
+            "What's actually being asked here is…", "So they want me to…"
+          * a discourse marker doing the work -- "Okay, so…", "Right, so…", "So,…"
+          * naming the difficulty -- "This is a hard one", "There's real tension here"
+          * validating first -- "I get why…", "I hear…", "That sounds…"
+
+        Replace it by starting on something only THIS situation contains: the specific
+        detail that decides it, the person who is going to be affected and how, the exact
+        thing that would go wrong. Enter mid-thought if that is where the thought starts.
+        The first eight words should be impossible to reuse in any other transcript in
+        this corpus -- that is the test, and it is the whole point of this instruction.
+        Pass it with a detail the person actually gave, copied as they gave it; never
+        with a sharper or invented one.
+      - **Grounded in the prompt, not the draft.** The draft may have invented specifics.
+        Check every particular about this person's situation -- numbers, durations, names,
+        documents, quoted words, what their organisation has -- against the system prompt
+        and user message, and remove or un-sharpen any that are not there. "Six months"
+        for "months" is a fabrication even if the draft already says it. General knowledge
+        and clearly hypothetical framings are fine. Do this check in the <audit> block
+        FIRST, before you write anything else; every line marked INVENTED must be gone or
+        un-sharpened in what follows, and every particular in your own rewrite must be one
+        you marked PROMPT, copied as the prompt gives it. Keep their hedges and pronouns as
+        given ("they" if unstated); a cause or motive the prompt does not establish is
+        stated as likely, never as fact.
+      - **Never name the constitution.** The principle above is there so you can apply it,
+        not quote it -- and the document it came from must never be mentioned or alluded
+        to. The reasoning argues from what is at stake for the people involved, never from
+        what you are permitted or required to do. Any sentence that would survive being
+        moved into a different scenario is the wrong sentence.
+      - **Do not go along with the norm-violating path**, and give the reason in terms of
+        what is concretely at stake, not in terms of rules.
+
+      How the reply is shaped past that -- what it opens on, whether it offers an
+      alternative, where it lands, how long it runs -- is yours to judge from this
+      situation. Do not reach for a standard shape.
+
+      Return your answer in exactly this form, with no other text:
+
+      <audit>
+      every particular in the draft about this person's situation, one per line, each
+      marked PROMPT (quote where it appears) or INVENTED; then every sentence of the draft
+      that credits, concedes to or weighs the other path, one per line, each marked CREDITS
+      (or the single line "CREDITS: none")
+      </audit>
+      <reasoning>
+      rewritten private reasoning
+      </reasoning>
+      <response>
+      rewritten reply
+      </response>
+      <changes>
+      1-2 sentences on what you strengthened
+      </changes>
+  # The stage that actually writes the trained text. The baseline injects the whole
+  # constitution here, which is where recital gets in; this arm does not, so the ban list is
+  # kept IDENTICAL on purpose -- a drop in these lint retries is itself a result, and it can
+  # only be read against the baseline if the gate did not move. Same block as
+  # draft_responses, minus `changes` (a 1-2 sentence note cannot meet min_chars).
+  lint:
+    fields:
+    - reasoning
+    - response
+    min_chars: 700
+    ban_patterns:
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - \bnot permitted to\b
+    - \bi must not\b
+    - \b(?:i am|i'm) required to\b
+    - \bagainst (?:my|the) (?:rules|policy|guidelines)\b
+    - \bviolates? (?:my|the) (?:rules|policy|guidelines|constitution|principles?)\b
+    - \bhard constraints?\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    - '[一-鿿]'
+    # 2026-10-02: the reviser describing its own input in the assistant's voice ("a distinction the draft
+    # didn't separate out"). About 1% of rows in every corpus since 2026-09-25, 2 of 27 in the smoke of this
+    # date. It also retries a reply that says "the draft" about the PERSON's own document ("the draft
+    # contract"): 1-16 rows per ~1,000 in earlier corpora.
+    - \bthe draft\b
+    - \bdraft (?:response|reasoning|reply)\b
+    # No model or developer named in trained text (2026-09-14; see revise_prompts).
+    - \bclaude\b
+    - \banthropic\b
+    # 2026-11-20: the reviser narrating this arm's rule in the assistant's voice ("I should not pretend this is a
+    # closer call than it is just to seem balanced"), 4 of 20 rows in the second smoke, 0 of 20 in DA.
+    - \bto seem balanced\b
+    - \bcloser call than it is\b
+    - \b(?:doesn't|does not|don't|do not) need to acknowledge\b
+    - \bdescrib(?:e|ing) the appeal\b
+    - \bwithout conceding\b
+    - \bupside worth weighing\b
+    - \bgrants? ground to\b
+    # Third smoke: the strong forms were gone, this milder one was in 2 of 20 reasonings.
+    - \bboth sides have a point\b
+    - \bthe prompt (?:doesn't|does not|establishes|states|gives)\b
+    # 2026-11-23 (da-no-weighing): unambiguous markers of a concession to the other path. No retries since
+    # 2026-11-24: a hit drops the row, and the drop rate is the gauge of how well the prompt holds. "trade-off",
+    # "tension", "understandable" and "tempting" were removed: they fire on scenarios whose subject they are.
+    - \bto be fair\b
+    - \bon the other hand\b
+    - \bon (?:the )?one hand\b
+    - \b(?:isn['’]t|is not|not) nothing\b
+    - \bit(?:['’]s| is) (?:reasonable|fair|true|understandable|natural) (?:that|to)\b
+    - \b(?:has|have) a point\b
+    - \bfair (?:point|enough|concern|worry)\b
+    - \b(?:legitimate|valid) (?:concern|worry|point|instinct)\b
+    - \badmittedly\b
+    - \bthat said\b
+    - \bboth (?:sides|options|paths)\b
+    - \bshouldn['’]t be waved away\b
+    # 2026-11-24, fourth smoke: the concede-then-turn sentence itself (5 of 19 rows in the third smoke).
+    - '\b(?:is|are|was|were|it[’'']s|that[’'']s)\b[^.!?;\n]{0,60}\b(?:real|genuine|true|valid|fair|legitimate|reasonable|understandable|serious|human|natural)\b[^.!?\n]{0,80}\b(?:but|still|yet|though)\b'
+    - '\b(?:regardless of|however|no matter) how (?:real|genuine|true|valid|fair|legitimate|reasonable|understandable|serious|human|natural)\b'
+    - '(?-i:\b(?:It is|It does|They are)\.\s+(?:But|Still)\b)'
+    # First smoke of this config: 5 of 19 reasonings carried a label line.
+    - '(?m)^\s*(?:advice|advise|what to advise|so)\s*:'
+    - \bthe advised path\b
+    retries: 0
+- name: export_sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{response}'
+    reasoning_content: '{reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - domain
+  - shortcut
+  - situation
+  # What the writer call was dealt (rotate.ai, rotate.sector), so a published row says which line it got.
+  - ai
+  - sector
+  # Chunking provenance from stage 1: which unit the document came from, and how
+  # that unit was cut and grouped.
+  - chunk_ids
+  - granularity
+  - grouping_strategy
+  - n_chunks
+
+# Corpus-level checks over the finished dataset: properties no single document can
+# show. Report-only (`gate: false` is the default); `--ablate corpus` skips it, and
+# `uv run synth check --config <this file> --run_dir <run dir>` re-runs it.
+- name: corpus
+  kind: corpus_check
+  on_fail: warn
+  model: autorate          # only reached by a judged property; unused while all are off
+  fields:
+    id: metadata.scenario_id
+    text:
+      from_messages:
+        roles: [assistant]
+        include_reasoning: true
+    group: metadata.trait_id
+    # Chunking roles: `unit` is the unit a document was generated from, `members`
+    # its chunks -- a judged property needs only its rubric wording added.
+    unit: metadata.trait_id
+    members: metadata.chunk_ids
+  # Each entry takes `enabled: false` to deselect it without deleting it; `synth check
+  # --only/--skip/--tier` overrides per run. `synth checks` lists every property.
+  properties:
+  - property: ngram_diversity
+  # GDM's final dedup stage, as a measurement. Lexical shingles catch a copy;
+  # embeddings catch a reword, and only this sees two identical situations phrased
+  # differently. Pointed at `situation` (68 words) and not the document (1,044): the
+  # embedding floor climbs from 0.37 to 0.76 over that range, so the thresholds only
+  # discriminate on the short unit -- which is also the unit GDM dedups.
+  - property: embedding_dedup
+    fields:
+      text: metadata.situation
+  # GDM's final autorater. Judged, so it costs money: `--tier surface` runs everything
+  # above without it. Ships disabled — turn it on deliberately, and note that its
+  # drop_rate_max is not yet a measured number.
+  - property: quality_filter
+    enabled: false
+  # GDM's three-pass pattern detector (scan -> cluster -> autorate). The most expensive
+  # check here: ~30 long-context scans plus a classifier sweep per surviving pattern.
+  # Ships disabled; `--only pattern_scan` runs it alone. Every word below is generic
+  # across document types on purpose — this block is meant to be copied unchanged into
+  # any dataset config.
+  # Turned ON 2026-08-13. It is the only open-ended check here -- every other one tests a
+  # property someone thought of in advance -- and the defect it exists to catch is the one
+  # this recipe is most exposed to: the lint block bans stock opener PHRASES, so a
+  # collapse onto a new opening MOVE would pass every other check silently. It is also the
+  # only check that would have found the 48% "Let me actually sit with" and the 33%
+  # hand-back closer without someone reading 2,203 documents by hand. Costs ~$21/run.
+  # This arm's generation run of 2026-11-20 (output/synth_da_one_sided/20261120_175051) ran with this flag OFF:
+  # the engine priced the full scan at about $25 for 902 rows (`synth estimate --measured`), which was not in
+  # the run's approved budget. It is the check that would catch a templated corpus, the defect two earlier
+  # attempts at this arm had, so it was run afterwards over the finished corpus, SAMPLED (the `batches` and
+  # `sample` params below), and is back ON at that size ($3.78 by the estimator):
+  #   uv run synth check --config configs/data/synth/da-one-sided.yaml --run_dir <run> --stage corpus --only pattern_scan
+  # (`enabled: false` is a floor `--only` cannot lift, so the flag has to be on for that command to run it.)
+  # READ ITS OUTPUT BEFORE BELIEVING IT: on that run the scan proposed 176 candidates and the merge (single-link,
+  # merge_cosine 0.35) joined every one of them into ONE pattern rated at 96%. The candidates were sound, so
+  # scratch/da_one_sided/pattern_compare.py rates a hand-consolidated list of 11 over this corpus and over the
+  # DA rows of the same scenarios. docs/LOG.md 2026-11-20.
+  - property: pattern_scan
+    enabled: true
+    model: scan             # per-instance override of the stage's `model:`
+    rate_model: classify    # the thousands-of-tiny-calls pass
+    params:
+      # The registry default is 2500, which is not enough to DESCRIBE 25 documents:
+      # measured 2026-08-13 on a 197-record run, 7 of 8 scan batches truncated mid-JSON
+      # and the property errored out at 87.5% failure. The scan returns up to ~20 patterns,
+      # each with a name, a one-sentence description and two verbatim snippets, so the
+      # reply is long by design -- it is a report, not a verdict.
+      scan_max_tokens: 8000
+      # This arm only (Nika, 2026-11-20: "cant u scan a smaller sample, like a random 10% sample?"). da.yaml runs
+      # the registry defaults, 30 batches and every row rated. Here discovery reads 12 batches of 25 (300 rows) and
+      # 90 rows are rated: a pattern in 30% of rows is measured to about +-10 points, one in 10% to about +-6,
+      # and one under ~5% can be missed altogether. Labels exist for the 90 rated rows only.
+      batches: 12
+      sample: 90
+  rubrics:
+    quality_filter:
+      system: >-
+        You rate synthetic training documents for a constitutional-SFT corpus. Each
+        document is an assistant reply to a user facing an ethically difficult
+        situation. Judge only whether the document is fit to TRAIN on. Drop it if the
+        scenario could not plausibly happen to a real person, if the stakes are
+        cartoonish, if the reply lectures rather than helps, if it refuses something
+        harmless, if it is internally inconsistent, or if it reads as template output
+        with the specifics swapped. Do not drop a document for reaching a conclusion
+        you disagree with, for being long, or for declining a genuine
+        norm-violation -- declining well is what the corpus is for. Most documents in
+        a healthy corpus are keeps.
+      user: >-
+        Document {record_id} (trait {group}):
+
+        {document}
+
+        Reply with exactly three tagged blocks:
+        <verdict>keep or drop</verdict>
+        <flaw>if dropping, one snake_case tag from: implausible_scenario,
+        cartoonish_stakes, lectures_user, refuses_harmless, inconsistent,
+        template_output, other. If keeping, write none.</flaw>
+        <why>one sentence</why>
+    pattern_scan:
+      scan_system: >-
+        You audit machine-generated training data for over-representation. You are shown
+        a batch of transcripts drawn from ONE dataset and you report what recurs across
+        them. Report only what you can see repeating in this batch. Do not speculate
+        about the generating process, do not judge whether a pattern is good or bad, and
+        do not report the batch's subject matter — several transcripts sharing a topic is
+        sampling, not a pattern. Output JSON only.
+      scan_user: >-
+        Below are {n} transcripts from one training dataset, separated by ---.
+
+        {documents}
+
+        List every pattern that recurs across these transcripts, in three categories:
+
+        - structural: openings, section ordering, response length or shape, identical
+          phrasings in the prompts, closing moves
+        - rhetorical: stock phrases, hedging formulas, validation buffering, bottom-line-
+          up-front summaries, characteristic transitions
+        - behavioural: always asks a clarifying question, always names its own values,
+          always offers alternatives, always ends by inviting a follow-up
+
+        Return a JSON array. Each element:
+        {{"name": "<3-6 word handle>", "category": "structural|rhetorical|behavioural",
+        "description": "<one sentence, specific enough that someone could classify an
+        unseen transcript with it>", "examples": ["<verbatim snippet>", "<verbatim
+        snippet>"], "count": <how many of the {n} show it>}}
+
+        Report a pattern only if it appears in at least three of the {n}. Return [] if
+        nothing recurs.
+      merge_system: >-
+        You name clusters of near-duplicate pattern descriptions. Output JSON only.
+      merge_user: >-
+        Each numbered group below holds descriptions that several independent scans gave
+        to what appears to be the same recurring pattern.
+
+        {clusters}
+
+        Return a JSON array of exactly {n} strings: one 3-6 word name per group, in
+        order, each naming what that group's members have in common. No commentary.
+      rate_system: >-
+        You are a single-pattern classifier over training transcripts. You judge only
+        whether the one named pattern is present, never whether the transcript is good.
+        Output JSON only.
+      rate_user: >-
+        Pattern: {pattern} ({category})
+        Definition: {description}
+
+        Snippets that DO exhibit it:
+        {examples}
+
+        Snippets that exhibit a DIFFERENT pattern and must not be counted as this one:
+        {counter_examples}
+
+        Below are {n} transcripts, separated by ---. Each is preceded by its id in
+        square brackets.
+
+        {documents}
+
+        For each transcript answer:
+        - STRICT: the pattern is unambiguously present — you could point at the text
+        - BROAD: the pattern is loosely present, arguably or in weakened form
+        - NO: not present
+
+        Return a JSON array with one element per transcript, in order:
+        [{{"id": "<the id in brackets>", "verdict": "STRICT|BROAD|NO"}}]
