@@ -104,18 +104,25 @@ def _prior_passes(resume_from: str, model_key: str) -> list[Path]:
                   and not d.name.startswith("combined"))
 
 
-def _run_pass(cfg_path: Path, smoke: bool, prior: Path | None = None) -> dict:
+def _run_pass(cfg_path: Path, smoke: bool, prior: Path | None = None,
+              bind_endpoint=lambda: None, judge_only: bool = False) -> dict:
     """Run one rollout pass, audit it, resume-retry the holes, then reconstruct any that remain.
 
     `prior` continues a pass an interrupted invocation left on disk instead of starting a
     fresh one: its usable cells are kept and only the rest run (a clean one runs nothing).
     Before every resume the pass's unusable cells are moved out (`discard_unusable`), since
     the rollout driver would otherwise skip a shell or a cut-off rollout as cached.
+
+    `bind_endpoint` is called before every rollout, and only then: it is what serves the
+    model, so a pass that generates nothing never boots one. `judge_only` takes a prior
+    pass as it stands -- no resume, so no rollout -- and only reconstructs its holes from
+    their docker logs.
     """
     # Compose cleans up this run's own networks. A global prune can delete another
     # concurrent run's prepared-but-not-yet-used network.
     discarded = 0
     if prior is None:
+        bind_endpoint()
         pass_dir = odcv_rollout.main(config=str(cfg_path), smoke=smoke)
     else:
         pass_dir = prior
@@ -123,13 +130,14 @@ def _run_pass(cfg_path: Path, smoke: bool, prior: Path | None = None) -> dict:
     audit = audit_pass(pass_dir)
     retries = 0
     # Finishing a prior pass is its run, not its retry.
-    resumes = PASS_RETRIES + (prior is not None)
+    resumes = 0 if judge_only else PASS_RETRIES + (prior is not None)
     while not audit["clean"] and retries < resumes:
         retries += 1
         discarded += discard_unusable(pass_dir)
         print(f"!!! pass {pass_dir.name} not clean (missing_cells="
               f"{audit['missing_cells']}, statuses={audit['statuses']}) — "
               f"resume {retries}/{resumes}", flush=True)
+        bind_endpoint()
         odcv_rollout.main(config=str(cfg_path), smoke=smoke, resume=str(pass_dir))
         audit = audit_pass(pass_dir)
     reconstructed = 0
@@ -161,6 +169,13 @@ def run(target, cfg, out_dir: Path) -> dict:
     see `_run_pass`) and only the remaining passes start fresh. Combining, judging and
     publishing then happen once, in this invocation's out_dir.
 
+    The model endpoint is bound LAZILY, right before the first rollout: reading
+    `target.base_url` is what boots vLLM (ServedTarget), so a resume whose passes are all
+    finished judges them without ever serving -- no `--server`, no GPU host.
+    `judge_only=true` (with `resume_from`) makes that a guarantee rather than a
+    consequence: it refuses a run with fewer saved passes than requested, never resumes a
+    holed pass (a resume is a rollout), and judges exactly the transcripts on disk.
+
     Returns:
         The parsed judge results, plus a `passes` block recording what was kept,
         dropped and retried.
@@ -168,7 +183,6 @@ def run(target, cfg, out_dir: Path) -> dict:
     cfg = OmegaConf.merge(cfg)  # private copy
     cfg.model = target.model_name
     cfg.model_key = target.spec.model_key
-    cfg.base_url = _bridge_url(target.base_url)
     cfg.output_root = str(out_dir)
 
     # The rollout/judge mains load their config from a path (their resume/caching keys
@@ -177,15 +191,34 @@ def run(target, cfg, out_dir: Path) -> dict:
     OmegaConf.save(cfg, cfg_path)
     smoke = bool(cfg.get("smoke", False))
     n_passes = 1 if smoke else int(cfg.get("passes", 2))
+    judge_only = bool(cfg.get("judge_only", False))
 
     resume_from = str(cfg.get("resume_from") or "")
+    if judge_only and not resume_from:
+        raise SystemExit("odcv judge_only=true judges a saved run's rollouts: pass "
+                         "resume_from=<out_dir of the run whose judging did not finish>")
     prior = _prior_passes(resume_from, str(cfg.model_key))[:n_passes] if resume_from else []
+    if judge_only and len(prior) < n_passes:
+        raise SystemExit(
+            f"odcv judge_only=true: {resume_from} holds {len(prior)} saved pass"
+            f"{'' if len(prior) == 1 else 'es'} but passes={n_passes} were requested, and the "
+            f"rest would have to be generated. Pass passes={len(prior)} to judge what is there, "
+            "or drop judge_only to generate the missing passes (that serves the model).")
+
+    def bind_endpoint() -> None:
+        """Serve the model and point the saved config at it, once, before the first rollout."""
+        if cfg.get("base_url"):
+            return
+        assert not judge_only, "judge_only reached for the model endpoint"
+        cfg.base_url = _bridge_url(target.base_url)
+        OmegaConf.save(cfg, cfg_path)
 
     audits: list[dict] = []
     kept: list[Path] = []
     for i in range(n_passes):
         print(f">>> ODCV pass {i + 1}/{n_passes}", flush=True)
-        audit = _run_pass(cfg_path, smoke, prior[i] if i < len(prior) else None)
+        audit = _run_pass(cfg_path, smoke, prior[i] if i < len(prior) else None,
+                          bind_endpoint=bind_endpoint, judge_only=judge_only)
         # Passes are never dropped: ok+no_transcript holes are reconstructed from their
         # docker logs (_run_pass), and any cell that still has no transcript (no docker log
         # to recover from) is simply absent from this pass — combine_passes tolerates the

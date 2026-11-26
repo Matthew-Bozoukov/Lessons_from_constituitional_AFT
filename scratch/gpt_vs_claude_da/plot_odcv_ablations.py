@@ -1,5 +1,5 @@
 # ABOUTME: ODCV bar chart: control vs da-15 vs GPT DA and its hatched ablations (markdown removed, first-person voice,
-# ABOUTME: principled reasons added, GPT answers to Claude scenarios) in the paper's Figure 5 colours; reads the Hub, writes PDF + PNG to output/gpt_vs_claude_da/.
+# ABOUTME: principled reasons added, GPT answers to Claude scenarios, pressure, GPT-6 answers) in the paper's Figure 5 colours; reads the Hub, writes PDF + PNG to output/gpt_vs_claude_da/.
 import json
 from pathlib import Path
 
@@ -17,13 +17,14 @@ ARMS = [  # label, HF eval repo, colour (paper Fig. 5), hatch
     ("Difficult Advice\n(GPT, principled\nreasons added)", "dougalldeepmind/2026-11-23-odcv-qwen36-0-da-gpt-principled-15", "#2a9d8f", "xx"),
     ("Difficult Advice\n(GPT answers to\nClaude scenarios)", "dougalldeepmind/2026-11-24-odcv-qwen36-0-da-gptresp-15", "#2a9d8f", "--"),
     ("Difficult Advice\n(GPT answers +\ndoubts its\njudgement under\npressure)", "dougalldeepmind/2026-11-24-odcv-qwen36-0-da-gptresp-pressure-15", "#2a9d8f", "++"),
+    ("Difficult Advice\n(GPT-6 Luna +\n6.1 Terra answers\nto Claude\nscenarios)","dougalldeepmind/2026-11-26-odcv-qwen36-0-da-gptresp-gpt6-15", "#2a9d8f", "oo"),
 ]
 out = Path("output/gpt_vs_claude_da"); out.mkdir(parents=True, exist_ok=True)
 rows = []
 for label, repo, col, hatch in ARMS:
     o = json.load(open(hf_hub_download(repo, "results/results.json", repo_type="dataset"), encoding="utf-8"))["ours"]["overall"]
     rows.append((label, o["mr_pct"], o["mr_ci95"], col, hatch))
-fig, ax = plt.subplots(figsize=(11, 4.8))
+fig, ax = plt.subplots(figsize=(12, 4.8))
 for i, (label, v, (lo, hi), col, hatch) in enumerate(rows):
     ax.bar(i, v, color=col if not hatch else "#9fd6cf", edgecolor=col, hatch=hatch, linewidth=1.2, width=0.65)
     ax.errorbar(i, v, yerr=[[v - lo], [hi - v]], color="black", capsize=4, linewidth=1)
@@ -33,7 +34,7 @@ ax.set_ylabel("Misalignment rate (%)"); ax.set_ylim(0, 65)
 ax.set_title("ODCV (lower is better)")
 ax.spines[["top", "right"]].set_visible(False); ax.grid(axis="y", alpha=0.3); ax.set_axisbelow(True)
 fig.tight_layout()
-stem = out / "2026-11-24_odcv_gpt_da_ablations"
+stem = out / "2026-11-26_odcv_gpt_da_ablations"
 fig.savefig(f"{stem}.png", dpi=200)
-save_figure_pdf(fig, f"{stem}.pdf", title="ODCV: GPT DA ablations (markdown removed, first-person voice, principled reasons, GPT answers to Claude scenarios)", artifacts=[a[1] for a in ARMS], script=__file__)
+save_figure_pdf(fig, f"{stem}.pdf", title="ODCV: GPT DA ablations (markdown removed, first-person voice, principled reasons, GPT answers to Claude scenarios, pressure, GPT-6 answers)", artifacts=[a[1] for a in ARMS], script=__file__)
 print(stem, [(r[0].replace(chr(10), ' '), r[1], r[2]) for r in rows])

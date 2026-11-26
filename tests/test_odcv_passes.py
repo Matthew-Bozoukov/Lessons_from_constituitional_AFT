@@ -288,3 +288,164 @@ def test_runner_resume_from_finishes_a_prior_runs_passes_and_starts_only_the_res
     for n in (1, 2, 3):
         assert (out / "rollouts" / "incentivized" / "S2" / f"pass{n}" / "messages_record.txt").is_file()
     assert (prior / MK / "discarded" / "20260101_010000" / f"{MK}-incentivized" / "S2").is_dir()
+
+
+# --- judging saved rollouts without a model (2026-11-26) ------------------------------------
+# A run whose rollouts all finished and whose judging died (OpenRouter credit ran out, 2026-11-25)
+# needs only the judge to finish it. These pin that it gets exactly that: no endpoint is
+# touched, so run_eval's lazy VllmServer never boots and no GPU host is needed.
+
+
+class NoEndpoint(SimpleNamespace):
+    """A target whose endpoint must never be reached: touching base_url is what boots vLLM."""
+
+    @property
+    def base_url(self):
+        pytest.fail("judging saved rollouts reached for the model endpoint (this boots vLLM)")
+
+
+def _no_endpoint_target() -> NoEndpoint:
+    return NoEndpoint(model_name="m", spec=SimpleNamespace(model_key=MK))
+
+
+def _saved_run(root: Path, n: int, holed: set[int] = frozenset()) -> Path:
+    """An interrupted run's out_dir holding `n` finished passes; passes in `holed` lack S2."""
+    for i in range(n):
+        make_pass(root / MK, f"2026010{i}_000000",
+                  [("mandated", "S1", "x"), ("incentivized", "S2", None if i in holed else "y")])
+    return root
+
+
+def _count_judging(monkeypatch) -> list[str]:
+    judged: list[str] = []
+
+    def judge(rollout_dir, config, max_workers, smoke):
+        judged.append(rollout_dir)
+        fake_judge(rollout_dir, config, max_workers, smoke)
+
+    monkeypatch.setattr(runner.odcv_judge, "main", judge)
+    return judged
+
+
+def _no_generation(monkeypatch) -> None:
+    monkeypatch.setattr(runner.odcv_rollout, "main", lambda *a, **k: pytest.fail(
+        "judging saved rollouts started a rollout"))
+
+
+def test_resuming_finished_passes_judges_them_without_reaching_the_endpoint(runner_env):
+    tmp_path, monkeypatch, _, cfg = runner_env
+    _no_generation(monkeypatch)
+    judged = _count_judging(monkeypatch)
+    out = tmp_path / "new"
+    out.mkdir()
+    results = runner.run(_no_endpoint_target(),
+                         OmegaConf.merge(cfg, {"resume_from": str(_saved_run(tmp_path / "old", 2))}), out)
+
+    assert len(judged) == 1 and results["mr"] == 0.1
+    assert results["passes"]["n_transcripts"] == 4
+    assert json.loads((out / "results" / "results.json").read_text()) == {"mr": 0.1}
+    # No endpoint was ever bound, so the recorded config names none.
+    assert "base_url" not in OmegaConf.load(out / "metadata" / "odcv_config.yaml")
+
+
+def test_judge_only_scores_the_saved_rollouts_and_serves_nothing(runner_env):
+    tmp_path, monkeypatch, _, cfg = runner_env
+    _no_generation(monkeypatch)
+    judged = _count_judging(monkeypatch)
+    out = tmp_path / "new"
+    out.mkdir()
+    results = runner.run(_no_endpoint_target(), OmegaConf.merge(cfg, {
+        "judge_only": True, "resume_from": str(_saved_run(tmp_path / "old", 2))}), out)
+
+    assert len(judged) == 1 and results["passes"]["n_transcripts"] == 4
+    assert [a["resumed_from_prior_run"] for a in results["passes"]["audits"]] == [True, True]
+    for n in (1, 2):
+        assert (out / "rollouts" / "mandated" / "S1" / f"pass{n}" / "messages_record.txt").is_file()
+
+
+def test_judge_only_judges_a_holed_pass_as_it_stands_instead_of_regenerating(runner_env):
+    # Without judge_only a hole is resumed (a rollout, so a served model); with it, the hole
+    # is reconstructed from docker logs where possible and otherwise left absent.
+    tmp_path, monkeypatch, _, cfg = runner_env
+    _no_generation(monkeypatch)
+    judged = _count_judging(monkeypatch)
+    out = tmp_path / "new"
+    out.mkdir()
+    results = runner.run(_no_endpoint_target(), OmegaConf.merge(cfg, {
+        "judge_only": True, "resume_from": str(_saved_run(tmp_path / "old", 2, holed={1}))}), out)
+
+    assert len(judged) == 1 and results["passes"]["n_transcripts"] == 3
+    assert [a["retries"] for a in results["passes"]["audits"]] == [0, 0]
+    hole = out / "rollouts" / "incentivized" / "S2" / "pass2"
+    assert not (hole / "messages_record.txt").exists()
+    assert json.loads((hole / "cell_meta.json").read_text())["judged"] is False
+
+
+def test_judge_only_without_resume_from_refuses_before_anything_runs(runner_env):
+    tmp_path, monkeypatch, _, cfg = runner_env
+    _no_generation(monkeypatch)
+    judged = _count_judging(monkeypatch)
+    with pytest.raises(SystemExit, match="resume_from"):
+        runner.run(_no_endpoint_target(), OmegaConf.merge(cfg, {"judge_only": True}), tmp_path)
+    assert judged == []
+
+
+def test_judge_only_refuses_a_run_with_fewer_saved_passes_than_requested(runner_env):
+    # Filling the missing pass would mean generating it: refuse, rather than judge 1 of 2.
+    tmp_path, monkeypatch, _, cfg = runner_env
+    _no_generation(monkeypatch)
+    judged = _count_judging(monkeypatch)
+    with pytest.raises(SystemExit, match="1 saved pass"):
+        runner.run(_no_endpoint_target(), OmegaConf.merge(cfg, {
+            "judge_only": True, "resume_from": str(_saved_run(tmp_path / "old", 1))}), tmp_path)
+    assert judged == []
+
+
+def test_a_fresh_pass_still_binds_the_endpoint_before_its_rollout(runner_env):
+    # The laziness must not cost a run that DOES generate its endpoint.
+    tmp_path, monkeypatch, target, cfg = runner_env
+    seen: list[str] = []
+
+    def fake(config: str, smoke: bool = False, resume: str = ""):
+        c = OmegaConf.load(config)
+        seen.append(c.base_url)
+        return make_pass(Path(c.output_root) / MK, f"p{len(seen)}",
+                         [("mandated", "S1", "x"), ("incentivized", "S2", "y")])
+
+    monkeypatch.setattr(runner.odcv_rollout, "main", fake)
+    runner.run(target, cfg, tmp_path)
+    assert seen == [runner._bridge_url("http://localhost:8000/v1")] * 2
+
+
+def test_run_eval_judge_only_odcv_needs_no_server_and_no_docker(tmp_path, monkeypatch):
+    # The whole invocation: `uv run evals --name odcv --target <adapter> judge_only=true
+    # resume_from=<dir>` with no --server. The real lazy VllmServer is kept and only its
+    # boot is forbidden, so a pass through any path that serves fails this test.
+    from src.eval import docker, run_eval
+    from src.infra.endpoints.vllm import TargetSpec, VllmServer
+
+    monkeypatch.chdir(tmp_path)
+    spec = TargetSpec("org/2026-11-25-qwen36-0-da-15", "Qwen/Qwen3.6-27B", True, "think", MK, 64,
+                      revision="r", base_revision="b")
+    monkeypatch.setattr(VllmServer, "serve", lambda self, s: pytest.fail("judge_only booted vLLM"))
+    monkeypatch.setattr(docker, "docker_preflight",
+                        lambda: pytest.fail("judge_only ran the docker preflight"))
+    monkeypatch.setattr(run_eval, "resolve_target", lambda path: spec)
+    monkeypatch.setattr(run_eval, "_credentials_preflight", lambda **kw: None)
+    published = []
+    monkeypatch.setattr(run_eval, "_publish", lambda out, **kw: published.append(kw["summary"]) or "url")
+    monkeypatch.setattr(runner, "_prune_networks", lambda: None)
+    _no_generation(monkeypatch)
+    judged = _count_judging(monkeypatch)
+    monkeypatch.setattr(runner.progress_judge, "main", fake_progress_judge)
+    config = tmp_path / "odcv.yaml"
+    OmegaConf.save(OmegaConf.create({"passes": 2, "judge_workers": 1, "bench_dir": str(tmp_path / "bench"),
+                                     "output_root": str(tmp_path / "runs")}), config)
+    args = SimpleNamespace(config=str(config), name="odcv", no_push=True, target=[spec.hf_path],
+                           server=None, port=18901,
+                           overrides=["judge_only=true", f"resume_from={_saved_run(tmp_path / 'old', 2)}"])
+
+    run_eval._run(args, [], runner=runner.run)
+    assert len(judged) == 1
+    assert len(published) == 1 and published[0]["mr"] == 0.1
+    assert published[0]["passes"]["n_transcripts"] == 4

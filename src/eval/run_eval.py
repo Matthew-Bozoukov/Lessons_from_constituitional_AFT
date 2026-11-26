@@ -129,7 +129,11 @@ def _credentials_preflight(push: bool) -> None:
 
 def _preflight(name: str, args: argparse.Namespace, cfg=None) -> None:
     spec = EVALS[name]
-    if spec.needs_docker:
+    # An ODCV judge-only run scores saved transcripts and starts no scenario container (its
+    # runner refuses one that would), so the docker host checks do not apply to it. ODCV
+    # only: no other eval reads judge_only, so for them the flag must not waive anything.
+    judge_only = name == "odcv" and cfg is not None and bool(cfg.get("judge_only"))
+    if spec.needs_docker and not judge_only:
         # Driver-side by design: the scenario containers run where this process runs.
         from src.eval import docker
 
