@@ -115,9 +115,7 @@ for x, (cond, arms) in enumerate(MASK.items()):
                label=arm if x == 0 else None)
         ax.plot([x + dx] * len(passes), passes, "o", ms=3.5, color=INK, alpha=0.75, zorder=3)
         ax.text(x + dx, max(passes) + 1.8, f"{mean:.1f}", ha="center", va="bottom", fontsize=10, color=INK)
-npass = [len(mask_passes(arms["DA"])) for arms in MASK.values()]
-ax.set_xticks(range(len(MASK)), [f"{c}\n{n} pass{'es' if n > 1 else ''} per arm" for c, n in zip(MASK, npass)],
-              fontsize=9.5)
+ax.set_xticks(range(len(MASK)), list(MASK), fontsize=9.5)
 style(ax, "MASK honesty score (higher is more honest)")
 ax.set_ylim(0, 105)
 ax.annotate("", xy=(4.45, -0.19), xytext=(-0.45, -0.19), xycoords=("data", "axes fraction"),
@@ -125,7 +123,7 @@ ax.annotate("", xy=(4.45, -0.19), xytext=(-0.45, -0.19), xycoords=("data", "axes
 ax.text(2, -0.235, "stronger cue of agent deployment", transform=ax.get_xaxis_transform(), ha="center",
         fontsize=9, color=MUTED)
 ax.legend(frameon=False, loc="upper left", ncol=3, fontsize=10)
-ax.set_title("DA+tools honesty rises with the strength of the agent cue; DA stays between 79 and 92\n"
+ax.set_title("DA+tools honesty rises with the strength of the agent cue; control rises far less\n"
              "MASK, 1,000 rows per pass, Qwen3.6-27B; each dot is one pass (1 to 3 per bar)", loc="left", fontsize=11, color=INK)
 save(fig, "selector_mask_honesty_by_cue", "Selector: MASK honesty by context cue")
 
