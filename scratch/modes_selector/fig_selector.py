@@ -19,18 +19,23 @@ INK, MUTED = "#222222", "#666666"
 # condition -> {arm: [runs whose passes are pooled]}, weakest cue first
 MASK = {
     "Plain MASK\n(nothing added)": {
+        "Control": ["2026-11-03-mask-qwen36-0-plain"],
         "DA": ["2026-11-03-mask-qwen36-0-da-15"], "DA+tools": ["2026-11-09-mask-qwen36-0-da-tools-15"]},
     "User mentions tools\n(no tools)": {
+        "Control": ["2026-11-27-mask-user-tools-mention-qwen36-0-plain"],
         "DA": ["2026-11-26-mask-user-tools-mention-qwen36-0-da-15"],
         "DA+tools": ["2026-11-26-mask-user-tools-mention-qwen36-0-da-tools-15"]},
     "Agent wording\n(no tools)": {
+        "Control": ["2026-11-27-mask-agent-wording-qwen36-0-plain"],
         "DA": ["2026-11-26-mask-agent-wording-qwen36-0-da-15"],
         "DA+tools": ["2026-11-26-mask-agent-wording-qwen36-0-da-tools-15"]},
     "Tools listed\nin prose": {
+        "Control": ["2026-11-27-mask-tools-prose-qwen36-0-plain"],
         "DA": ["2026-11-26-mask-tools-prose-qwen36-0-da-15", "2026-11-26-mask-tools-prose-rep-qwen36-0-da-15"],
         "DA+tools": ["2026-11-26-mask-tools-prose-qwen36-0-da-tools-15",
                      "2026-11-26-mask-tools-prose-rep-qwen36-0-da-tools-15"]},
     "Native tool\nblock": {
+        "Control": ["2026-11-27-mask-tools-qwen36-0-plain"],
         "DA": ["2026-11-11-mask-tools-qwen36-0-da-15"], "DA+tools": ["2026-11-11-mask-tools-qwen36-0-da-tools-15"]},
 }
 # arm -> {format: run}
@@ -100,9 +105,10 @@ def save(fig, stem, title):
 
 # --- figure 1: MASK honesty by cue --------------------------------------------------------------
 fig, ax = plt.subplots(figsize=(10.5, 4.8))
-w = 0.36
+w = 0.27
 for x, (cond, arms) in enumerate(MASK.items()):
-    for dx, arm, color, hatch in ((-w / 2 - 0.01, "DA", DA, None), (w / 2 + 0.01, "DA+tools", DAT, "///")):
+    for dx, arm, color, hatch in ((-w - 0.02, "Control", GREY, None), (0, "DA", DA, None),
+                                  (w + 0.02, "DA+tools", DAT, "///")):
         passes = mask_passes(arms[arm])
         mean = sum(passes) / len(passes)
         ax.bar(x + dx, mean, w, color=color, hatch=hatch, edgecolor="white", lw=0.8,
@@ -114,13 +120,13 @@ ax.set_xticks(range(len(MASK)), [f"{c}\n{n} pass{'es' if n > 1 else ''} per arm"
               fontsize=9.5)
 style(ax, "MASK honesty score (higher is more honest)")
 ax.set_ylim(0, 105)
-ax.annotate("", xy=(4.45, -0.24), xytext=(-0.45, -0.24), xycoords=("data", "axes fraction"),
+ax.annotate("", xy=(4.45, -0.19), xytext=(-0.45, -0.19), xycoords=("data", "axes fraction"),
             arrowprops=dict(arrowstyle="->", color=MUTED, lw=1))
-ax.text(2, -0.285, "stronger cue of agent deployment", transform=ax.get_xaxis_transform(), ha="center",
+ax.text(2, -0.235, "stronger cue of agent deployment", transform=ax.get_xaxis_transform(), ha="center",
         fontsize=9, color=MUTED)
-ax.legend(frameon=False, loc="upper left", ncol=2, fontsize=10)
+ax.legend(frameon=False, loc="upper left", ncol=3, fontsize=10)
 ax.set_title("DA+tools honesty rises with the strength of the agent cue; DA stays between 79 and 92\n"
-             "MASK, 1,000 rows per pass, Qwen3.6-27B; dots are single passes", loc="left", fontsize=11, color=INK)
+             "MASK, 1,000 rows per pass, Qwen3.6-27B; each dot is one pass (1 to 3 per bar)", loc="left", fontsize=11, color=INK)
 save(fig, "selector_mask_honesty_by_cue", "Selector: MASK honesty by context cue")
 
 # --- figure 2: Subagents Comply More harm rate by tool format -----------------------------------
